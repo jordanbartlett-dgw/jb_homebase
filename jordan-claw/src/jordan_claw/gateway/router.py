@@ -21,6 +21,8 @@ async def handle_message(
     *,
     db: AsyncClient,
     tavily_api_key: str,
+    fastmail_username: str,
+    fastmail_app_password: str,
     history_limit: int = 50,
     environment: str = "development",
 ) -> GatewayResponse:
@@ -58,7 +60,11 @@ async def handle_message(
     # 5-7. Build agent, convert history, run
     try:
         start = time.monotonic()
-        agent = create_agent(tavily_api_key=tavily_api_key)
+        agent = create_agent(
+            tavily_api_key=tavily_api_key,
+            fastmail_username=fastmail_username,
+            fastmail_app_password=fastmail_app_password,
+        )
         history = db_messages_to_history(db_messages)
 
         result = await agent.run(msg.content, message_history=history)
