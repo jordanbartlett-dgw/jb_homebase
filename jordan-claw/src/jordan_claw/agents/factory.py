@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pydantic_ai import Agent, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
-from jordan_claw.tools.calendar import configure_calendar, create_calendar_event, get_calendar_events
+from jordan_claw.tools.calendar import (
+    configure_calendar,
+    create_calendar_event,
+    get_calendar_events,
+)
 from jordan_claw.tools.time import get_current_datetime
 from jordan_claw.tools.web_search import web_search
 

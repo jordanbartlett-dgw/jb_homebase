@@ -87,10 +87,7 @@ def _format_dt(dt: datetime | dt_module.date) -> str:
     # CalDAV can return bare date objects for all-day events.
     if type(dt) is dt_module.date:
         return "All day"
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=CENTRAL_TZ)
-    else:
-        dt = dt.astimezone(CENTRAL_TZ)
+    dt = dt.replace(tzinfo=CENTRAL_TZ) if dt.tzinfo is None else dt.astimezone(CENTRAL_TZ)
     return dt.strftime("%H:%M")
 
 

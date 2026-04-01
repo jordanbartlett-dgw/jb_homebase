@@ -20,7 +20,12 @@ def reset_calendar_module():
     _reset()
 
 
-def _make_vevent(summary: str, start: datetime, end: datetime, location: str | None = None) -> MagicMock:
+def _make_vevent(
+    summary: str,
+    start: datetime,
+    end: datetime,
+    location: str | None = None,
+) -> MagicMock:
     """Build a mock VEVENT component."""
     comp = MagicMock()
     comp.name = "VEVENT"
@@ -34,7 +39,9 @@ def _make_vevent(summary: str, start: datetime, end: datetime, location: str | N
         }[key]
     )
     comp.__contains__ = MagicMock(
-        side_effect=lambda key: key in (["SUMMARY", "DTSTART", "DTEND"] + (["LOCATION"] if location else []))
+        side_effect=lambda key: (
+            key in (["SUMMARY", "DTSTART", "DTEND"] + (["LOCATION"] if location else []))
+        )
     )
     return comp
 
@@ -80,7 +87,10 @@ async def test_get_events_returns_formatted_list():
     ]
     mock_cal = _make_mock_calendar(items)
 
-    with patch("jordan_claw.tools.calendar._get_calendar_async", new=AsyncMock(return_value=mock_cal)):
+    with patch(
+        "jordan_claw.tools.calendar._get_calendar_async",
+        new=AsyncMock(return_value=mock_cal),
+    ):
         result = await get_calendar_events(
             datetime(2026, 4, 1, tzinfo=CHICAGO),
             datetime(2026, 4, 2, tzinfo=CHICAGO),
@@ -100,7 +110,10 @@ async def test_get_events_empty_calendar():
 
     mock_cal = _make_mock_calendar([])
 
-    with patch("jordan_claw.tools.calendar._get_calendar_async", new=AsyncMock(return_value=mock_cal)):
+    with patch(
+        "jordan_claw.tools.calendar._get_calendar_async",
+        new=AsyncMock(return_value=mock_cal),
+    ):
         result = await get_calendar_events(
             datetime(2026, 4, 1, tzinfo=CHICAGO),
             datetime(2026, 4, 2, tzinfo=CHICAGO),
@@ -119,7 +132,10 @@ async def test_create_event_success():
     mock_cal = MagicMock()
     mock_cal.save_event.return_value = None
 
-    with patch("jordan_claw.tools.calendar._get_calendar_async", new=AsyncMock(return_value=mock_cal)):
+    with patch(
+        "jordan_claw.tools.calendar._get_calendar_async",
+        new=AsyncMock(return_value=mock_cal),
+    ):
         result = await create_calendar_event("Budget review", start, end)
 
     assert "Created" in result
@@ -146,7 +162,10 @@ async def test_create_event_with_optional_fields():
     mock_cal = MagicMock()
     mock_cal.save_event.return_value = None
 
-    with patch("jordan_claw.tools.calendar._get_calendar_async", new=AsyncMock(return_value=mock_cal)):
+    with patch(
+        "jordan_claw.tools.calendar._get_calendar_async",
+        new=AsyncMock(return_value=mock_cal),
+    ):
         result = await create_calendar_event(
             "Offsite planning",
             start,
@@ -189,7 +208,10 @@ async def test_create_event_naive_datetime_treated_as_central():
     start = datetime(2026, 4, 2, 14, 0)  # naive
     end = datetime(2026, 4, 2, 15, 0)  # naive
 
-    with patch("jordan_claw.tools.calendar._get_calendar_async", new=AsyncMock(return_value=mock_cal)):
+    with patch(
+        "jordan_claw.tools.calendar._get_calendar_async",
+        new=AsyncMock(return_value=mock_cal),
+    ):
         result = await create_calendar_event("Naive event", start, end)
 
     assert "Created" in result
@@ -214,8 +236,13 @@ async def test_create_event_accepts_iso_string():
     mock_cal = MagicMock()
     mock_cal.save_event.return_value = None
 
-    with patch("jordan_claw.tools.calendar._get_calendar_async", new=AsyncMock(return_value=mock_cal)):
-        result = await create_calendar_event("String event", "2026-04-10T09:00:00", "2026-04-10T10:00:00")
+    with patch(
+        "jordan_claw.tools.calendar._get_calendar_async",
+        new=AsyncMock(return_value=mock_cal),
+    ):
+        result = await create_calendar_event(
+            "String event", "2026-04-10T09:00:00", "2026-04-10T10:00:00"
+        )
 
     assert "Created" in result
     assert "String event" in result
