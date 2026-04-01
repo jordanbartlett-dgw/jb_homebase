@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 
@@ -72,10 +73,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     polling_task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await polling_task
-    except asyncio.CancelledError:
-        pass
     await bot.session.close()
     await close_supabase_client()
     logger.info("application_stopped")

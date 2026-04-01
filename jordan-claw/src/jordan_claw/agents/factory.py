@@ -27,7 +27,11 @@ def create_agent(*, tavily_api_key: str) -> Agent:
 
     @agent.tool_plain
     async def search_web(query: str) -> str:
-        """Search the web for current information. Use for questions about recent events, facts, or anything that benefits from up-to-date data."""
+        """Search the web for current information.
+
+        Use for questions about recent events, facts, or anything
+        that benefits from up-to-date data.
+        """
         return await web_search(query, api_key=tavily_api_key)
 
     return agent

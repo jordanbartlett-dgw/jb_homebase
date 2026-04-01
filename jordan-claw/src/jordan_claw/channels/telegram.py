@@ -58,9 +58,7 @@ def create_telegram_dispatcher(
                 await message.answer(response.content)
 
         except Exception:
-            logger.exception(
-                "telegram_handler_error", chat_id=chat_id, message_id=message_id
-            )
+            logger.exception("telegram_handler_error", chat_id=chat_id, message_id=message_id)
             await message.answer("Something went wrong. Try again.")
 
     return dp

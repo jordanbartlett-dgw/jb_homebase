@@ -29,9 +29,7 @@ def mock_db():
 @pytest.mark.asyncio
 async def test_duplicate_message_returns_empty(mock_db):
     """Duplicate messages should be skipped."""
-    with patch(
-        "jordan_claw.gateway.router.message_exists", return_value=True
-    ):
+    with patch("jordan_claw.gateway.router.message_exists", return_value=True):
         result = await handle_message(
             make_incoming(),
             db=mock_db,
@@ -47,8 +45,14 @@ async def test_successful_message_flow(mock_db):
     """A normal message should go through the full lifecycle and return a response."""
     fake_conversation = {"id": "conv-001"}
     fake_messages = [
-        {"role": "user", "content": "Hi", "created_at": "2026-01-01T00:00:00Z",
-         "token_count": None, "model": None, "metadata": {}},
+        {
+            "role": "user",
+            "content": "Hi",
+            "created_at": "2026-01-01T00:00:00Z",
+            "token_count": None,
+            "model": None,
+            "metadata": {},
+        },
     ]
 
     mock_usage = MagicMock()

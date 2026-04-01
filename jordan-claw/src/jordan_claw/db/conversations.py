@@ -45,8 +45,5 @@ async def update_conversation_status(
 ) -> None:
     """Update a conversation's status."""
     await (
-        client.table("conversations")
-        .update({"status": status})
-        .eq("id", conversation_id)
-        .execute()
+        client.table("conversations").update({"status": status}).eq("id", conversation_id).execute()
     )
