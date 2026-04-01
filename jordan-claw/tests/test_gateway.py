@@ -34,6 +34,8 @@ async def test_duplicate_message_returns_empty(mock_db):
             make_incoming(),
             db=mock_db,
             tavily_api_key="test-key",
+            fastmail_username="test@fastmail.com",
+            fastmail_app_password="test-password",
         )
 
     assert result.content == ""
@@ -87,6 +89,8 @@ async def test_successful_message_flow(mock_db):
             make_incoming(),
             db=mock_db,
             tavily_api_key="test-key",
+            fastmail_username="test@fastmail.com",
+            fastmail_app_password="test-password",
         )
 
     assert result.content == "Hello! How can I help?"
@@ -121,6 +125,8 @@ async def test_agent_error_returns_friendly_message(mock_db):
             make_incoming(channel_message_id="telegram:999"),
             db=mock_db,
             tavily_api_key="test-key",
+            fastmail_username="test@fastmail.com",
+            fastmail_app_password="test-password",
         )
 
     assert result.content == ERROR_RESPONSE
