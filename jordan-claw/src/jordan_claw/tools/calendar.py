@@ -1,20 +1,30 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
+import datetime as dt_module
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import caldav
+import icalendar
 import structlog
 
 log = structlog.get_logger()
 
-CHICAGO = ZoneInfo("America/Chicago")
+CENTRAL_TZ = ZoneInfo("America/Chicago")
 
 _username: str | None = None
 _app_password: str | None = None
 _calendar_cache: caldav.Calendar | None = None
+_cache_lock: asyncio.Lock | None = None
+
+
+def _get_lock() -> asyncio.Lock:
+    """Return the module-level lock, creating it lazily inside the running loop."""
+    global _cache_lock
+    if _cache_lock is None:
+        _cache_lock = asyncio.Lock()
+    return _cache_lock
 
 
 def configure_calendar(username: str, app_password: str) -> None:
@@ -25,13 +35,20 @@ def configure_calendar(username: str, app_password: str) -> None:
     _calendar_cache = None  # reset cache when credentials change
 
 
-def _get_calendar() -> caldav.Calendar:
-    """Connect to Fastmail CalDAV and return the default calendar, with caching."""
-    global _calendar_cache
+def _reset() -> None:
+    """Clear module-level cache and credentials. Intended for use in tests."""
+    global _username, _app_password, _calendar_cache, _cache_lock
+    _username = None
+    _app_password = None
+    _calendar_cache = None
+    _cache_lock = None
 
-    if _calendar_cache is not None:
-        return _calendar_cache
 
+def _connect_calendar() -> caldav.Calendar:
+    """Connect to Fastmail CalDAV and return the default calendar (no caching).
+
+    This runs inside asyncio.to_thread() only when the cache is empty.
+    """
     if not _username or not _app_password:
         raise RuntimeError("Calendar credentials not configured. Call configure_calendar() first.")
 
@@ -43,23 +60,50 @@ def _get_calendar() -> caldav.Calendar:
     if not calendars:
         raise RuntimeError("No calendars found on Fastmail account.")
 
-    _calendar_cache = calendars[0]
-    return _calendar_cache
+    # Fastmail puts the default calendar first; Jordan has only one calendar.
+    return calendars[0]
 
 
-def _format_dt(dt: datetime) -> str:
-    """Return HH:MM in Chicago time."""
+async def _get_calendar_async() -> caldav.Calendar:
+    """Return the cached calendar connection, connecting if necessary.
+
+    Uses an asyncio.Lock to prevent concurrent threads from racing to populate
+    the cache when called via asyncio.to_thread().
+    """
+    global _calendar_cache
+
+    if not _username or not _app_password:
+        raise RuntimeError("Calendar credentials not configured. Call configure_calendar() first.")
+
+    async with _get_lock():
+        if _calendar_cache is not None:
+            return _calendar_cache
+        _calendar_cache = await asyncio.to_thread(_connect_calendar)
+        return _calendar_cache
+
+
+def _format_dt(dt: datetime | dt_module.date) -> str:
+    """Return HH:MM in Central time, or 'All day' for date-only values."""
+    # CalDAV can return bare date objects for all-day events.
+    if type(dt) is dt_module.date:
+        return "All day"
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=CHICAGO)
+        dt = dt.replace(tzinfo=CENTRAL_TZ)
     else:
-        dt = dt.astimezone(CHICAGO)
+        dt = dt.astimezone(CENTRAL_TZ)
     return dt.strftime("%H:%M")
 
 
 async def get_calendar_events(start_date: datetime, end_date: datetime) -> str:
     """Query CalDAV for events in a date range and return formatted text."""
+    # Ensure search bounds are timezone-aware so CalDAV comparisons work correctly.
+    if start_date.tzinfo is None:
+        start_date = start_date.replace(tzinfo=CENTRAL_TZ)
+    if end_date.tzinfo is None:
+        end_date = end_date.replace(tzinfo=CENTRAL_TZ)
+
     try:
-        calendar = await asyncio.to_thread(_get_calendar)
+        calendar = await _get_calendar_async()
         items = await asyncio.to_thread(calendar.search, start=start_date, end=end_date, event=True)
     except Exception as exc:
         log.error("calendar.get_events.failed", error=str(exc))
@@ -96,49 +140,61 @@ def _build_ical(
     location: str | None = None,
     description: str | None = None,
 ) -> str:
-    """Build a minimal iCal string for a single event."""
+    """Build a well-formed iCal string using the icalendar library.
 
-    def fmt(dt: datetime) -> str:
-        # CalDAV expects UTC or floating local; use UTC
-        return dt.astimezone(ZoneInfo("UTC")).strftime("%Y%m%dT%H%M%SZ")
+    Using icalendar (caldav's own transitive dep) ensures correct encoding,
+    line folding per RFC 5545, and proper VTIMEZONE handling.
+    """
+    cal = icalendar.Calendar()
+    cal.add("PRODID", "-//jordan-claw//EN")
+    cal.add("VERSION", "2.0")
 
-    uid = str(uuid.uuid4())
-    lines = [
-        "BEGIN:VCALENDAR",
-        "VERSION:2.0",
-        "PRODID:-//jordan-claw//EN",
-        "BEGIN:VEVENT",
-        f"UID:{uid}",
-        f"SUMMARY:{title}",
-        f"DTSTART:{fmt(start)}",
-        f"DTEND:{fmt(end)}",
-    ]
+    event = icalendar.Event()
+    event.add("SUMMARY", title)
+    event.add("DTSTART", start.astimezone(ZoneInfo("UTC")))
+    event.add("DTEND", end.astimezone(ZoneInfo("UTC")))
     if location:
-        lines.append(f"LOCATION:{location}")
+        event.add("LOCATION", location)
     if description:
-        lines.append(f"DESCRIPTION:{description}")
-    lines += ["END:VEVENT", "END:VCALENDAR"]
-    return "\r\n".join(lines)
+        event.add("DESCRIPTION", description)
+
+    cal.add_component(event)
+    return cal.to_ical().decode()
 
 
 async def create_calendar_event(
     title: str,
-    start: datetime,
-    end: datetime,
+    start: str | datetime,
+    end: str | datetime,
     location: str | None = None,
     description: str | None = None,
 ) -> str:
-    """Create a CalDAV event and return a confirmation string."""
+    """Create a CalDAV event and return a confirmation string.
+
+    Accepts ISO 8601 strings or datetime objects for start/end. Naive datetimes
+    are treated as Central time, which matches what the agent passes.
+    """
+    if isinstance(start, str):
+        start = datetime.fromisoformat(start)
+    if isinstance(end, str):
+        end = datetime.fromisoformat(end)
+
+    # Agent passes ISO strings without timezone info (e.g. "2026-04-02T14:00:00").
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=CENTRAL_TZ)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=CENTRAL_TZ)
+
     try:
-        calendar = await asyncio.to_thread(_get_calendar)
+        calendar = await _get_calendar_async()
         ical = _build_ical(title, start, end, location, description)
         await asyncio.to_thread(calendar.save_event, ical)
     except Exception as exc:
         log.error("calendar.create_event.failed", error=str(exc))
         return f"Error creating calendar event: {exc}"
 
-    start_central = start.astimezone(CHICAGO)
-    end_central = end.astimezone(CHICAGO)
+    start_central = start.astimezone(CENTRAL_TZ)
+    end_central = end.astimezone(CENTRAL_TZ)
     date_str = start_central.strftime("%Y-%m-%d")
     start_str = start_central.strftime("%H:%M")
     end_str = end_central.strftime("%H:%M")
