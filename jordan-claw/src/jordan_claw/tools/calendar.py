@@ -91,9 +91,18 @@ def _format_dt(dt: datetime | dt_module.date) -> str:
     return dt.strftime("%H:%M")
 
 
-async def get_calendar_events(start_date: datetime, end_date: datetime) -> str:
-    """Query CalDAV for events in a date range and return formatted text."""
-    # Ensure search bounds are timezone-aware so CalDAV comparisons work correctly.
+async def get_calendar_events(start_date: str | datetime, end_date: str | datetime) -> str:
+    """Query CalDAV for events in a date range and return formatted text.
+
+    Accepts ISO date strings (YYYY-MM-DD) or datetime objects.
+    """
+    if isinstance(start_date, str):
+        start_date = datetime.strptime(start_date, "%Y-%m-%d")
+    if isinstance(end_date, str):
+        end_date = datetime.strptime(end_date, "%Y-%m-%d").replace(
+            hour=23, minute=59, second=59
+        )
+
     if start_date.tzinfo is None:
         start_date = start_date.replace(tzinfo=CENTRAL_TZ)
     if end_date.tzinfo is None:
