@@ -4,12 +4,12 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 WORKDIR /app
 
-# Install dependencies (cached layer)
+# Copy project files
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-editable
-
-# Copy application code
 COPY src/ src/
+
+# Install dependencies and the project itself
+RUN uv sync --frozen --no-dev
 
 ENV PATH="/app/.venv/bin:$PATH"
 
