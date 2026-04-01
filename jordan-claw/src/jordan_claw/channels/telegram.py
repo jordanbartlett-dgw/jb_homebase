@@ -55,7 +55,7 @@ def create_telegram_dispatcher(
             )
 
             if response.content:
-                await message.answer(response.content)
+                await message.answer(response.content, parse_mode="Markdown")
 
         except Exception:
             logger.exception("telegram_handler_error", chat_id=chat_id, message_id=message_id)
