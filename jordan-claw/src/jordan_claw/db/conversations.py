@@ -17,12 +17,12 @@ async def get_or_create_conversation(
         .eq("channel", channel)
         .eq("channel_thread_id", channel_thread_id)
         .eq("status", "active")
-        .maybe_single()
+        .limit(1)
         .execute()
     )
 
     if result.data:
-        return result.data
+        return result.data[0]
 
     result = (
         await client.table("conversations")

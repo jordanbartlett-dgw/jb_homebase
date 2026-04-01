@@ -9,10 +9,10 @@ async def message_exists(client: AsyncClient, channel_message_id: str) -> bool:
         await client.table("messages")
         .select("id")
         .eq("channel_message_id", channel_message_id)
-        .maybe_single()
+        .limit(1)
         .execute()
     )
-    return result.data is not None
+    return len(result.data) > 0
 
 
 async def save_message(
