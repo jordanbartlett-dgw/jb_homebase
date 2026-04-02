@@ -108,3 +108,59 @@ async def test_get_agent_config_not_found_raises():
 
     with pytest.raises(ValueError, match="Agent not found"):
         await get_agent_config(mock_db, "org-001", "missing-agent")
+
+
+from unittest.mock import patch
+
+from jordan_claw.agents.factory import build_agent
+
+
+@pytest.mark.asyncio
+async def test_build_agent_uses_db_config():
+    fake_config = AgentConfig(
+        id="agent-001",
+        org_id="org-001",
+        name="Test Agent",
+        slug="test-agent",
+        system_prompt="Be helpful.",
+        model="test",
+        tools=["current_datetime", "search_web"],
+        is_active=True,
+    )
+
+    mock_db = AsyncMock()
+
+    with patch("jordan_claw.agents.factory.get_agent_config", return_value=fake_config):
+        agent = await build_agent(mock_db, "org-001", "test-agent")
+
+    # Agent should have exactly 2 tools
+    # _function_toolset.tools is a dict keyed by tool name
+    tool_names = set(agent._function_toolset.tools.keys())
+    assert "current_datetime" in tool_names
+    assert "search_web" in tool_names
+    assert len(tool_names) == 2
+
+
+@pytest.mark.asyncio
+async def test_build_agent_skips_unknown_tools():
+    fake_config = AgentConfig(
+        id="agent-001",
+        org_id="org-001",
+        name="Test Agent",
+        slug="test-agent",
+        system_prompt="Be helpful.",
+        model="test",
+        tools=["current_datetime", "nonexistent_tool"],
+        is_active=True,
+    )
+
+    mock_db = AsyncMock()
+
+    with patch("jordan_claw.agents.factory.get_agent_config", return_value=fake_config):
+        agent = await build_agent(mock_db, "org-001", "test-agent")
+
+    # _function_toolset.tools is a dict keyed by tool name
+    tool_names = set(agent._function_toolset.tools.keys())
+    assert "current_datetime" in tool_names
+    assert "nonexistent_tool" not in tool_names
+    assert len(tool_names) == 1
