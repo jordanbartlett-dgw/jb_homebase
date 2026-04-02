@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 from pydantic_ai import ModelRequest, ModelResponse
 
 from jordan_claw.agents.deps import AgentDeps
-from jordan_claw.agents.factory import db_messages_to_history
+from jordan_claw.agents.factory import build_agent, db_messages_to_history
 from jordan_claw.db.agents import AgentConfig, get_agent_config
 
 
@@ -108,11 +109,6 @@ async def test_get_agent_config_not_found_raises():
 
     with pytest.raises(ValueError, match="Agent not found"):
         await get_agent_config(mock_db, "org-001", "missing-agent")
-
-
-from unittest.mock import patch
-
-from jordan_claw.agents.factory import build_agent
 
 
 @pytest.mark.asyncio
