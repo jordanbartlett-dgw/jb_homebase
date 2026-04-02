@@ -8,6 +8,9 @@ from zoneinfo import ZoneInfo
 import caldav
 import icalendar
 import structlog
+from pydantic_ai import RunContext
+
+from jordan_claw.agents.deps import AgentDeps
 
 log = structlog.get_logger()
 
@@ -30,9 +33,11 @@ def _get_lock() -> asyncio.Lock:
 def configure_calendar(username: str, app_password: str) -> None:
     """Store Fastmail CalDAV credentials for later use."""
     global _username, _app_password, _calendar_cache
+    if _username == username and _app_password == app_password:
+        return
     _username = username
     _app_password = app_password
-    _calendar_cache = None  # reset cache when credentials change
+    _calendar_cache = None
 
 
 def _reset() -> None:
@@ -99,9 +104,7 @@ async def get_calendar_events(start_date: str | datetime, end_date: str | dateti
     if isinstance(start_date, str):
         start_date = datetime.strptime(start_date, "%Y-%m-%d")
     if isinstance(end_date, str):
-        end_date = datetime.strptime(end_date, "%Y-%m-%d").replace(
-            hour=23, minute=59, second=59
-        )
+        end_date = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
 
     if start_date.tzinfo is None:
         start_date = start_date.replace(tzinfo=CENTRAL_TZ)
@@ -205,3 +208,35 @@ async def create_calendar_event(
     start_str = start_central.strftime("%H:%M")
     end_str = end_central.strftime("%H:%M")
     return f"Created: {title} on {date_str} from {start_str} to {end_str}"
+
+
+async def check_calendar(ctx: RunContext[AgentDeps], start_date: str, end_date: str) -> str:
+    """Check Jordan's calendar for events in a date range.
+
+    Args:
+        start_date: Start date as YYYY-MM-DD
+        end_date: End date as YYYY-MM-DD
+    """
+    configure_calendar(ctx.deps.fastmail_username, ctx.deps.fastmail_app_password)
+    return await get_calendar_events(start_date, end_date)
+
+
+async def schedule_event(
+    ctx: RunContext[AgentDeps],
+    title: str,
+    start: str,
+    end: str,
+    location: str | None = None,
+    description: str | None = None,
+) -> str:
+    """Create a new event on Jordan's calendar.
+
+    Args:
+        title: Event title
+        start: Start datetime as YYYY-MM-DDTHH:MM:SS
+        end: End datetime as YYYY-MM-DDTHH:MM:SS
+        location: Optional location
+        description: Optional description
+    """
+    configure_calendar(ctx.deps.fastmail_username, ctx.deps.fastmail_app_password)
+    return await create_calendar_event(title, start, end, location, description)

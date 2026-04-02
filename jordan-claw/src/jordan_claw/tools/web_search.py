@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from pydantic_ai import RunContext
 from tavily import AsyncTavilyClient
 
+from jordan_claw.agents.deps import AgentDeps
 
-async def web_search(query: str, *, api_key: str, max_results: int = 3) -> str:
-    """Search the web using Tavily and return a formatted summary."""
-    client = AsyncTavilyClient(api_key=api_key)
-    response = await client.search(query=query, max_results=max_results)
+
+async def search_web(ctx: RunContext[AgentDeps], query: str) -> str:
+    """Search the web for current information.
+
+    Use for questions about recent events, facts, or anything
+    that benefits from up-to-date data.
+    """
+    client = AsyncTavilyClient(api_key=ctx.deps.tavily_api_key)
+    response = await client.search(query=query, max_results=3)
 
     results = response.get("results", [])
     if not results:
