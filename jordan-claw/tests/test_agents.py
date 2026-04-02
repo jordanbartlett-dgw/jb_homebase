@@ -2,7 +2,19 @@ from __future__ import annotations
 
 from pydantic_ai import ModelRequest, ModelResponse
 
+from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.agents.factory import db_messages_to_history
+
+
+def test_agent_deps_construction():
+    deps = AgentDeps(
+        org_id="test-org",
+        tavily_api_key="tavily-key",
+        fastmail_username="user@fastmail.com",
+        fastmail_app_password="app-pass",
+    )
+    assert deps.org_id == "test-org"
+    assert deps.tavily_api_key == "tavily-key"
 
 
 def test_empty_history():
