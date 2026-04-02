@@ -33,6 +33,7 @@ async def test_duplicate_message_returns_empty(mock_db):
         result = await handle_message(
             make_incoming(),
             db=mock_db,
+            agent_slug="claw-main",
             tavily_api_key="test-key",
             fastmail_username="test@fastmail.com",
             fastmail_app_password="test-password",
@@ -66,6 +67,9 @@ async def test_successful_message_flow(mock_db):
     mock_result.output = "Hello! How can I help?"
     mock_result.usage.return_value = mock_usage
 
+    mock_agent = AsyncMock()
+    mock_agent.run.return_value = mock_result
+
     with (
         patch("jordan_claw.gateway.router.message_exists", return_value=False),
         patch(
@@ -78,16 +82,14 @@ async def test_successful_message_flow(mock_db):
             return_value=fake_messages,
         ),
         patch(
-            "jordan_claw.gateway.router.create_agent",
-        ) as mock_create_agent,
+            "jordan_claw.gateway.router.build_agent",
+            return_value=mock_agent,
+        ),
     ):
-        mock_agent = AsyncMock()
-        mock_agent.run.return_value = mock_result
-        mock_create_agent.return_value = mock_agent
-
         result = await handle_message(
             make_incoming(),
             db=mock_db,
+            agent_slug="claw-main",
             tavily_api_key="test-key",
             fastmail_username="test@fastmail.com",
             fastmail_app_password="test-password",
@@ -97,6 +99,12 @@ async def test_successful_message_flow(mock_db):
     assert result.conversation_id == "conv-001"
     assert result.token_count == 15
     assert result.model == "claude-sonnet-4-20250514"
+
+    # Verify deps were passed to agent.run
+    call_kwargs = mock_agent.run.call_args.kwargs
+    assert "deps" in call_kwargs
+    assert call_kwargs["deps"].org_id == "1408252a-fd36-4fd3-b527-3b2f495d7b9c"
+    assert call_kwargs["deps"].tavily_api_key == "test-key"
 
 
 @pytest.mark.asyncio
@@ -113,7 +121,7 @@ async def test_agent_error_returns_friendly_message(mock_db):
         patch("jordan_claw.gateway.router.save_message", return_value={}),
         patch("jordan_claw.gateway.router.get_recent_messages", return_value=[]),
         patch(
-            "jordan_claw.gateway.router.create_agent",
+            "jordan_claw.gateway.router.build_agent",
             side_effect=Exception("LLM timeout"),
         ),
         patch(
@@ -124,6 +132,7 @@ async def test_agent_error_returns_friendly_message(mock_db):
         result = await handle_message(
             make_incoming(channel_message_id="telegram:999"),
             db=mock_db,
+            agent_slug="claw-main",
             tavily_api_key="test-key",
             fastmail_username="test@fastmail.com",
             fastmail_app_password="test-password",

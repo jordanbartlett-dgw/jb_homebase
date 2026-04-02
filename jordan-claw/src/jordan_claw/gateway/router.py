@@ -5,7 +5,8 @@ import time
 import structlog
 from supabase._async.client import AsyncClient
 
-from jordan_claw.agents.factory import create_agent, db_messages_to_history
+from jordan_claw.agents.deps import AgentDeps
+from jordan_claw.agents.factory import build_agent, db_messages_to_history
 from jordan_claw.db.conversations import get_or_create_conversation, update_conversation_status
 from jordan_claw.db.messages import get_recent_messages, message_exists, save_message
 from jordan_claw.gateway.models import GatewayResponse, IncomingMessage
@@ -20,6 +21,7 @@ async def handle_message(
     msg: IncomingMessage,
     *,
     db: AsyncClient,
+    agent_slug: str,
     tavily_api_key: str,
     fastmail_username: str,
     fastmail_app_password: str,
@@ -43,7 +45,7 @@ async def handle_message(
         db, msg.org_id, msg.channel, msg.channel_thread_id
     )
     conversation_id = conversation["id"]
-    log = log.bind(conversation_id=conversation_id, agent_id="claw-main")
+    log = log.bind(conversation_id=conversation_id, agent_slug=agent_slug)
 
     # 3. Save user message
     await save_message(
@@ -57,17 +59,20 @@ async def handle_message(
     # 4. Load history
     db_messages = await get_recent_messages(db, conversation_id, limit=history_limit)
 
-    # 5-7. Build agent, convert history, run
+    # 5. Build agent from DB config, run with deps
     try:
         start = time.monotonic()
-        agent = create_agent(
+
+        agent = await build_agent(db, msg.org_id, agent_slug)
+        deps = AgentDeps(
+            org_id=msg.org_id,
             tavily_api_key=tavily_api_key,
             fastmail_username=fastmail_username,
             fastmail_app_password=fastmail_app_password,
         )
         history = db_messages_to_history(db_messages)
 
-        result = await agent.run(msg.content, message_history=history)
+        result = await agent.run(msg.content, message_history=history, deps=deps)
 
         latency_ms = int((time.monotonic() - start) * 1000)
         response_text = result.output
@@ -98,7 +103,7 @@ async def handle_message(
         )
         return GatewayResponse(content=ERROR_RESPONSE, conversation_id=conversation_id)
 
-    # 8. Save assistant response
+    # 6. Save assistant response
     await save_message(
         db,
         conversation_id=conversation_id,
@@ -108,7 +113,7 @@ async def handle_message(
         model=model_name,
     )
 
-    # 9. Return
+    # 7. Return
     return GatewayResponse(
         content=response_text,
         conversation_id=conversation_id,

@@ -60,6 +60,7 @@ async def lifespan(app: FastAPI):
         bot,
         db=db,
         default_org_id=settings.default_org_id,
+        agent_slug=settings.default_agent_slug,
         tavily_api_key=settings.tavily_api_key,
         fastmail_username=settings.fastmail_username,
         fastmail_app_password=settings.fastmail_app_password,

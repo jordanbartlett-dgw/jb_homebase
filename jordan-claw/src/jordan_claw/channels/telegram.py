@@ -16,6 +16,7 @@ def create_telegram_dispatcher(
     *,
     db: AsyncClient,
     default_org_id: str,
+    agent_slug: str,
     tavily_api_key: str,
     fastmail_username: str,
     fastmail_app_password: str,
@@ -51,6 +52,7 @@ def create_telegram_dispatcher(
             response = await handle_message(
                 incoming,
                 db=db,
+                agent_slug=agent_slug,
                 tavily_api_key=tavily_api_key,
                 fastmail_username=fastmail_username,
                 fastmail_app_password=fastmail_app_password,
