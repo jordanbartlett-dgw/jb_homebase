@@ -63,7 +63,7 @@ async def handle_message(
     try:
         start = time.monotonic()
 
-        agent = await build_agent(db, msg.org_id, agent_slug)
+        agent, model_name = await build_agent(db, msg.org_id, agent_slug)
         deps = AgentDeps(
             org_id=msg.org_id,
             tavily_api_key=tavily_api_key,
@@ -77,7 +77,6 @@ async def handle_message(
         latency_ms = int((time.monotonic() - start) * 1000)
         response_text = result.output
         usage = extract_usage(result.usage())
-        model_name = "claude-sonnet-4-20250514"
 
         if environment == "development":
             log.debug("agent_message_content", content=msg.content, response=response_text)

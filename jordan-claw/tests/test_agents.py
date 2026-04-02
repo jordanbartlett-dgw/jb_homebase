@@ -127,10 +127,11 @@ async def test_build_agent_uses_db_config():
     mock_db = AsyncMock()
 
     with patch("jordan_claw.agents.factory.get_agent_config", return_value=fake_config):
-        agent = await build_agent(mock_db, "org-001", "test-agent")
+        agent, model_name = await build_agent(mock_db, "org-001", "test-agent")
 
-    # Agent should have exactly 2 tools
-    # _function_toolset.tools is a dict keyed by tool name
+    assert model_name == "test"
+    # Pydantic AI internal: _function_toolset.tools is a dict keyed by tool name.
+    # May change across versions.
     tool_names = set(agent._function_toolset.tools.keys())
     assert "current_datetime" in tool_names
     assert "search_web" in tool_names
@@ -153,9 +154,11 @@ async def test_build_agent_skips_unknown_tools():
     mock_db = AsyncMock()
 
     with patch("jordan_claw.agents.factory.get_agent_config", return_value=fake_config):
-        agent = await build_agent(mock_db, "org-001", "test-agent")
+        agent, model_name = await build_agent(mock_db, "org-001", "test-agent")
 
-    # _function_toolset.tools is a dict keyed by tool name
+    assert model_name == "test"
+    # Pydantic AI internal: _function_toolset.tools is a dict keyed by tool name.
+    # May change across versions.
     tool_names = set(agent._function_toolset.tools.keys())
     assert "current_datetime" in tool_names
     assert "nonexistent_tool" not in tool_names

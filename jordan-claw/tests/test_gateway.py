@@ -83,7 +83,7 @@ async def test_successful_message_flow(mock_db):
         ),
         patch(
             "jordan_claw.gateway.router.build_agent",
-            return_value=mock_agent,
+            return_value=(mock_agent, "claude-sonnet-4-20250514"),
         ),
     ):
         result = await handle_message(

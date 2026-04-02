@@ -15,8 +15,12 @@ async def build_agent(
     db: AsyncClient,
     org_id: str,
     agent_slug: str,
-) -> Agent[AgentDeps]:
-    """Build a Pydantic AI agent from DB config and the tool registry."""
+) -> tuple[Agent[AgentDeps], str]:
+    """Build a Pydantic AI agent from DB config and the tool registry.
+
+    Returns (agent, model_name) so callers can log/store the model
+    without reaching into Pydantic AI internals.
+    """
     config = await get_agent_config(db, org_id, agent_slug)
 
     tools = []
@@ -26,12 +30,13 @@ async def build_agent(
         else:
             log.warning("unknown_tool_skipped", tool_name=name, agent_slug=agent_slug)
 
-    return Agent(
+    agent = Agent(
         config.model,
         system_prompt=config.system_prompt,
         tools=tools,
         deps_type=AgentDeps,
     )
+    return agent, config.model
 
 
 def db_messages_to_history(messages: list[dict]) -> list[ModelRequest | ModelResponse]:

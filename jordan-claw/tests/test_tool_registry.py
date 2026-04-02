@@ -4,7 +4,6 @@ import inspect
 
 from jordan_claw.tools import TOOL_REGISTRY
 
-
 EXPECTED_TOOLS = ["current_datetime", "search_web", "check_calendar", "schedule_event"]
 
 

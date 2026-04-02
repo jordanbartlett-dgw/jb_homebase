@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import structlog
 from pydantic import BaseModel
 from supabase._async.client import AsyncClient
-
-log = structlog.get_logger()
 
 
 class AgentConfig(BaseModel):
