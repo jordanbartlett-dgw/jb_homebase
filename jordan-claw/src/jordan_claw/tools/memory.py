@@ -11,8 +11,8 @@ async def recall_memory(
     query: str,
     category: str | None = None,
 ) -> str:
-    """Search memory for specific facts. Use when asked 'what do you know about...'
-    or when you need deeper context than what's in your memory summary."""
+    """Search memory for specific facts by keyword. Use short search terms like 'DGW'
+    or 'newsletter', not full sentences. Try multiple short searches if the first misses."""
     facts = await search_facts(
         ctx.deps.supabase_client, ctx.deps.org_id, query=query, category=category
     )
