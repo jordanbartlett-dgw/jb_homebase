@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 
 import structlog
@@ -10,6 +11,8 @@ from jordan_claw.agents.factory import build_agent, db_messages_to_history
 from jordan_claw.db.conversations import get_or_create_conversation, update_conversation_status
 from jordan_claw.db.messages import get_recent_messages, message_exists, save_message
 from jordan_claw.gateway.models import GatewayResponse, IncomingMessage
+from jordan_claw.memory.extractor import extract_memory_background
+from jordan_claw.memory.reader import load_memory_context
 from jordan_claw.utils.token_counting import extract_usage
 
 logger = structlog.get_logger()
@@ -59,16 +62,26 @@ async def handle_message(
     # 4. Load history
     db_messages = await get_recent_messages(db, conversation_id, limit=history_limit)
 
-    # 5. Build agent from DB config, run with deps
+    # 5. Load memory context (fallback to empty if memory DB fails)
+    try:
+        memory_context = await load_memory_context(db, msg.org_id)
+    except Exception:
+        log.warning("memory_context_load_failed", org_id=msg.org_id)
+        memory_context = ""
+
+    # 6. Build agent from DB config, run with deps
     try:
         start = time.monotonic()
 
-        agent, model_name = await build_agent(db, msg.org_id, agent_slug)
+        agent, model_name = await build_agent(
+            db, msg.org_id, agent_slug, memory_context=memory_context
+        )
         deps = AgentDeps(
             org_id=msg.org_id,
             tavily_api_key=tavily_api_key,
             fastmail_username=fastmail_username,
             fastmail_app_password=fastmail_app_password,
+            supabase_client=db,
         )
         history = db_messages_to_history(db_messages)
 
@@ -102,7 +115,7 @@ async def handle_message(
         )
         return GatewayResponse(content=ERROR_RESPONSE, conversation_id=conversation_id)
 
-    # 6. Save assistant response
+    # 7. Save assistant response
     await save_message(
         db,
         conversation_id=conversation_id,
@@ -112,7 +125,13 @@ async def handle_message(
         model=model_name,
     )
 
-    # 7. Return
+    # 8. Fire-and-forget memory extraction
+    asyncio.create_task(
+        extract_memory_background(db, msg.org_id, msg.content, response_text),
+        name=f"memory-extract-{msg.org_id}",
+    )
+
+    # 9. Return
     return GatewayResponse(
         content=response_text,
         conversation_id=conversation_id,

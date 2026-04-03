@@ -19,6 +19,7 @@ def test_agent_deps_construction():
     )
     assert deps.org_id == "test-org"
     assert deps.tavily_api_key == "tavily-key"
+    assert deps.supabase_client is None
 
 
 def test_empty_history():
