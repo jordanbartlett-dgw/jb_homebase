@@ -4,7 +4,14 @@ import inspect
 
 from jordan_claw.tools import TOOL_REGISTRY
 
-EXPECTED_TOOLS = ["current_datetime", "search_web", "check_calendar", "schedule_event"]
+EXPECTED_TOOLS = [
+    "current_datetime",
+    "search_web",
+    "check_calendar",
+    "schedule_event",
+    "recall_memory",
+    "forget_memory",
+]
 
 
 def test_registry_has_all_expected_tools():
