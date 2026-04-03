@@ -15,6 +15,7 @@ async def build_agent(
     db: AsyncClient,
     org_id: str,
     agent_slug: str,
+    memory_context: str = "",
 ) -> tuple[Agent[AgentDeps], str]:
     """Build a Pydantic AI agent from DB config and the tool registry.
 
@@ -30,9 +31,13 @@ async def build_agent(
         else:
             log.warning("unknown_tool_skipped", tool_name=name, agent_slug=agent_slug)
 
+    system_prompt = config.system_prompt
+    if memory_context:
+        system_prompt = memory_context + "\n\n" + system_prompt
+
     agent = Agent(
         config.model,
-        system_prompt=config.system_prompt,
+        system_prompt=system_prompt,
         tools=tools,
         deps_type=AgentDeps,
     )
