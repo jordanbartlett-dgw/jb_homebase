@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ExtractedFact(BaseModel):
@@ -11,7 +11,7 @@ class ExtractedFact(BaseModel):
     content: str
     category: Literal["preference", "decision", "entity", "workflow", "relationship"]
     source: Literal["conversation", "explicit", "inferred"]
-    confidence: float
+    confidence: float = Field(ge=0.0, le=1.0)
     replaces_fact_id: str | None = None
 
 
@@ -39,7 +39,7 @@ class MemoryFact(BaseModel):
     content: str
     source: str
     confidence: float
-    metadata: dict = {}
+    metadata: dict = Field(default_factory=dict)
     created_at: str
     updated_at: str
     expires_at: str | None = None

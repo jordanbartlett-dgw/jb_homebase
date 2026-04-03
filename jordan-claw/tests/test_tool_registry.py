@@ -37,7 +37,7 @@ def test_plain_tools_have_no_ctx_param():
 
 def test_deps_tools_have_ctx_param():
     """Tools needing credentials should accept RunContext as first param."""
-    for name in ["search_web", "check_calendar", "schedule_event"]:
+    for name in ["search_web", "check_calendar", "schedule_event", "recall_memory", "forget_memory"]:
         sig = inspect.signature(TOOL_REGISTRY[name])
         first_param = list(sig.parameters.keys())[0]
         assert first_param == "ctx", f"{name} first param should be 'ctx', got '{first_param}'"

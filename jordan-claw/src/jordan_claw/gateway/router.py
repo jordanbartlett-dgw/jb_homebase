@@ -62,8 +62,12 @@ async def handle_message(
     # 4. Load history
     db_messages = await get_recent_messages(db, conversation_id, limit=history_limit)
 
-    # 5. Load memory context
-    memory_context = await load_memory_context(db, msg.org_id)
+    # 5. Load memory context (fallback to empty if memory DB fails)
+    try:
+        memory_context = await load_memory_context(db, msg.org_id)
+    except Exception:
+        log.warning("memory_context_load_failed", org_id=msg.org_id)
+        memory_context = ""
 
     # 6. Build agent from DB config, run with deps
     try:
@@ -123,7 +127,8 @@ async def handle_message(
 
     # 8. Fire-and-forget memory extraction
     asyncio.create_task(
-        extract_memory_background(db, msg.org_id, msg.content, response_text)
+        extract_memory_background(db, msg.org_id, msg.content, response_text),
+        name=f"memory-extract-{msg.org_id}",
     )
 
     # 9. Return

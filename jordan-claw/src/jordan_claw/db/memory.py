@@ -156,6 +156,7 @@ async def upsert_memory_context(
                 "is_stale": False,
                 "last_computed": datetime.now(UTC).isoformat(),
             },
+            on_conflict="org_id,scope",
         )
         .execute()
     )
