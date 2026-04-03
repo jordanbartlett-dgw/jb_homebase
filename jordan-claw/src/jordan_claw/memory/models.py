@@ -18,7 +18,7 @@ class ExtractedFact(BaseModel):
 class ExtractedEvent(BaseModel):
     """A notable event extracted from a conversation turn."""
 
-    event_type: Literal["decision", "task_completed", "feedback", "milestone"]
+    event_type: Literal["decision", "task_completed", "feedback", "milestone", "correction"]
     summary: str
 
 
