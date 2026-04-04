@@ -28,6 +28,7 @@ async def handle_message(
     tavily_api_key: str,
     fastmail_username: str,
     fastmail_app_password: str,
+    openai_api_key: str = "",
     history_limit: int = 50,
     environment: str = "development",
 ) -> GatewayResponse:
@@ -82,6 +83,7 @@ async def handle_message(
             fastmail_username=fastmail_username,
             fastmail_app_password=fastmail_app_password,
             supabase_client=db,
+            openai_api_key=openai_api_key,
         )
         history = db_messages_to_history(db_messages)
 

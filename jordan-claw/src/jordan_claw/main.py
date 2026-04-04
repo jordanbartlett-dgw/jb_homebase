@@ -64,6 +64,7 @@ async def lifespan(app: FastAPI):
         tavily_api_key=settings.tavily_api_key,
         fastmail_username=settings.fastmail_username,
         fastmail_app_password=settings.fastmail_app_password,
+        openai_api_key=settings.openai_api_key,
         history_limit=settings.message_history_limit,
         environment=settings.environment,
     )

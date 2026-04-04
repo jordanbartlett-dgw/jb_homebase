@@ -20,6 +20,7 @@ def create_telegram_dispatcher(
     tavily_api_key: str,
     fastmail_username: str,
     fastmail_app_password: str,
+    openai_api_key: str,
     history_limit: int,
     environment: str,
 ) -> Dispatcher:
@@ -56,6 +57,7 @@ def create_telegram_dispatcher(
                 tavily_api_key=tavily_api_key,
                 fastmail_username=fastmail_username,
                 fastmail_app_password=fastmail_app_password,
+                openai_api_key=openai_api_key,
                 history_limit=history_limit,
                 environment=environment,
             )
