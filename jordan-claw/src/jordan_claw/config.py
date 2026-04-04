@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     tavily_api_key: str
     fastmail_username: str
     fastmail_app_password: str
+    openai_api_key: str
     default_org_id: str
     default_agent_slug: str = "claw-main"
     log_level: str = "INFO"

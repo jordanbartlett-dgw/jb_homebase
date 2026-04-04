@@ -17,6 +17,7 @@ def test_settings_includes_fastmail_fields():
         "DEFAULT_ORG_ID": "test-org",
         "FASTMAIL_USERNAME": "jordan@fastmail.com",
         "FASTMAIL_APP_PASSWORD": "app-password-123",
+        "OPENAI_API_KEY": "test-openai",
     }
     for k, v in env.items():
         os.environ[k] = v
@@ -28,3 +29,18 @@ def test_settings_includes_fastmail_fields():
     finally:
         for k in env:
             os.environ.pop(k, None)
+
+
+def test_settings_has_openai_api_key(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_KEY", "test-key")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "test-anon")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-bot")
+    monkeypatch.setenv("TAVILY_API_KEY", "test-tavily")
+    monkeypatch.setenv("FASTMAIL_USERNAME", "test@fastmail.com")
+    monkeypatch.setenv("FASTMAIL_APP_PASSWORD", "test-pw")
+    monkeypatch.setenv("DEFAULT_ORG_ID", "org-123")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai")
+    settings = Settings()
+    assert settings.openai_api_key == "test-openai"

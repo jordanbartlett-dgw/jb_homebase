@@ -15,3 +15,4 @@ class AgentDeps(BaseModel):
     fastmail_username: str
     fastmail_app_password: str
     supabase_client: Any = None
+    openai_api_key: str = ""
