@@ -98,9 +98,10 @@ def chunk_text(text: str) -> list[dict]:
 async def generate_embeddings(
     texts: list[str],
     api_key: str,
+    client: AsyncOpenAI | None = None,
 ) -> list[list[float]]:
     """Generate embeddings for a list of texts using OpenAI API."""
-    client = AsyncOpenAI(api_key=api_key)
+    client = client or AsyncOpenAI(api_key=api_key)
     response = await client.embeddings.create(
         model=EMBEDDING_MODEL,
         input=texts,

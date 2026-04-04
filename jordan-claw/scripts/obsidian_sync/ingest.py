@@ -13,6 +13,8 @@ from jordan_claw.db.obsidian import (
     insert_note,
     update_note,
 )
+from openai import AsyncOpenAI
+
 from jordan_claw.obsidian.embeddings import chunk_text, generate_embeddings
 from jordan_claw.obsidian.parser import parse_note_file
 
@@ -30,6 +32,7 @@ async def ingest_vault(
     """Ingest vault notes into Supabase. Returns stats dict."""
     stats = {"inserted": 0, "updated": 0, "skipped": 0, "archived": 0}
     vault = Path(vault_path)
+    openai_client = AsyncOpenAI(api_key=openai_api_key)
 
     # Load existing notes for diff
     existing = await get_notes_by_vault_paths(db, org_id)
@@ -67,7 +70,7 @@ async def ingest_vault(
                 )
                 await delete_chunks_for_note(db, ex["id"])
                 await _embed_and_insert_chunks(
-                    db, ex["id"], parsed["content"], openai_api_key
+                    db, ex["id"], parsed["content"], openai_api_key, openai_client
                 )
                 stats["updated"] += 1
                 log.info("note_updated", vault_path=relative)
@@ -89,7 +92,7 @@ async def ingest_vault(
                 )
                 note_id = note_row.get("id", "")
                 await _embed_and_insert_chunks(
-                    db, note_id, parsed["content"], openai_api_key
+                    db, note_id, parsed["content"], openai_api_key, openai_client
                 )
                 stats["inserted"] += 1
                 log.info("note_inserted", vault_path=relative)
@@ -110,6 +113,7 @@ async def _embed_and_insert_chunks(
     note_id: str,
     content: str,
     openai_api_key: str,
+    openai_client: AsyncOpenAI | None = None,
 ) -> None:
     """Chunk content, generate embeddings, and insert into DB."""
     chunks = chunk_text(content)
@@ -120,7 +124,7 @@ async def _embed_and_insert_chunks(
     if not texts:
         return
 
-    embeddings = await generate_embeddings(texts, api_key=openai_api_key)
+    embeddings = await generate_embeddings(texts, api_key=openai_api_key, client=openai_client)
 
     chunk_rows = [
         {
