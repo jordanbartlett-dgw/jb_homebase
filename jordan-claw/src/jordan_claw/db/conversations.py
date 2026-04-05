@@ -1,6 +1,28 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
+import structlog
 from supabase._async.client import AsyncClient
+
+log = structlog.get_logger()
+
+SESSION_TIMEOUT_MINUTES = 30
+
+
+async def _last_message_time(client: AsyncClient, conversation_id: str) -> datetime | None:
+    """Get the timestamp of the most recent message in a conversation."""
+    result = (
+        await client.table("messages")
+        .select("created_at")
+        .eq("conversation_id", conversation_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        return None
+    return datetime.fromisoformat(result.data[0]["created_at"])
 
 
 async def get_or_create_conversation(
@@ -9,7 +31,11 @@ async def get_or_create_conversation(
     channel: str,
     channel_thread_id: str,
 ) -> dict:
-    """Find an active conversation or create a new one."""
+    """Find an active conversation or create a new one.
+
+    Closes conversations that have been idle longer than SESSION_TIMEOUT_MINUTES
+    and starts a fresh one, so unrelated topics don't bleed into context.
+    """
     result = (
         await client.table("conversations")
         .select("*")
@@ -22,7 +48,20 @@ async def get_or_create_conversation(
     )
 
     if result.data:
-        return result.data[0]
+        conversation = result.data[0]
+        last_msg = await _last_message_time(client, conversation["id"])
+
+        if last_msg and (datetime.now(UTC) - last_msg) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+            log.info(
+                "conversation_session_expired",
+                conversation_id=conversation["id"],
+                idle_minutes=int((datetime.now(UTC) - last_msg).total_seconds() / 60),
+            )
+            await client.table("conversations").update({"status": "closed"}).eq(
+                "id", conversation["id"]
+            ).execute()
+        else:
+            return conversation
 
     result = (
         await client.table("conversations")
