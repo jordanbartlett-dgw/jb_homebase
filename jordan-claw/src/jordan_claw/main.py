@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from jordan_claw.channels.telegram import create_telegram_dispatcher, start_polling
 from jordan_claw.config import get_settings
 from jordan_claw.db.client import close_supabase_client, get_supabase_client
+from jordan_claw.proactive.scheduler import scheduler_loop
 
 
 def configure_logging(environment: str, log_level: str) -> None:
@@ -71,6 +72,14 @@ async def lifespan(app: FastAPI):
 
     # Start Telegram polling as background task
     polling_task = asyncio.create_task(start_polling(bot, dp))
+
+    # Start proactive messaging scheduler
+    scheduler_task = asyncio.create_task(
+        scheduler_loop(db, bot, settings),
+        name="proactive-scheduler",
+    )
+    logger.info("proactive_scheduler_started")
+
     logger.info("application_started", environment=settings.environment)
 
     yield
@@ -79,6 +88,9 @@ async def lifespan(app: FastAPI):
     polling_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await polling_task
+    scheduler_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await scheduler_task
     await bot.session.close()
     await close_supabase_client()
     logger.info("application_stopped")
