@@ -25,7 +25,7 @@ The agent also proactively reaches out via Telegram:
 - **Memory corrections** notifies when a remembered fact is updated
 - **Daily scan** alerts on calendar conflicts (quiet, only messages if something found)
 
-Conversation history is token-budgeted (4000 tokens max) to prevent context pollution on long conversations. Tool docstrings include explicit routing signals so the LLM knows when to use internal tools (notes, memory, calendar) vs external tools (web search).
+Conversation history is token-budgeted (4000 tokens max) to prevent context pollution on long conversations. Tool docstrings include explicit routing signals so the LLM knows when to use internal tools (notes, memory, calendar) vs external tools (web search). Conversations auto-expire after 30 minutes of inactivity, so unrelated prior topics don't bleed into new sessions.
 
 Conversations and messages persist in Supabase. The schema is multi-tenant from day one.
 
@@ -89,7 +89,7 @@ jordan-claw/
       proactive.py       # Schedule and proactive message CRUD
     utils/
       token_counting.py  # Extract token counts from agent results
-  tests/                 # 150 unit and integration tests
+  tests/                 # 153 unit and integration tests
   scripts/
     obsidian_sync/       # CLI for vault ingest/export
   supabase/migrations/   # 001-005 schema migrations
