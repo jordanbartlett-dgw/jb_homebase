@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import structlog
+from aiogram import Bot
 from pydantic_ai import Agent
 from supabase._async.client import AsyncClient
 
@@ -74,11 +75,50 @@ Analyze this conversation turn and extract any new facts or notable events.
 Extract new or updated facts and events. Return empty lists if nothing is worth remembering."""
 
 
+async def notify_memory_correction(
+    db: AsyncClient,
+    org_id: str,
+    old_content: str,
+    new_content: str,
+    bot: Bot | None = None,
+) -> None:
+    """Send a proactive notification about a memory correction.
+
+    If a Bot instance is available, deliver via Telegram immediately.
+    Otherwise, insert an audit row for later delivery.
+    """
+    from jordan_claw.proactive.executors import format_memory_flag
+
+    content = format_memory_flag(old_content, new_content)
+    if bot:
+        from jordan_claw.proactive.delivery import send_proactive_message
+
+        await send_proactive_message(
+            bot=bot,
+            db=db,
+            org_id=org_id,
+            content=content,
+            task_type="memory_flag",
+            trigger="memory_flag",
+        )
+    else:
+        from jordan_claw.db.proactive import insert_proactive_message
+
+        await insert_proactive_message(
+            db,
+            org_id=org_id,
+            task_type="memory_flag",
+            trigger="memory_flag",
+            content=content,
+        )
+
+
 async def extract_memory_background(
     db: AsyncClient,
     org_id: str,
     user_message: str,
     assistant_response: str,
+    bot: Bot | None = None,
 ) -> None:
     """Fire-and-forget memory extraction from a conversation turn."""
     try:
@@ -103,6 +143,18 @@ async def extract_memory_background(
                 if f.replaces_fact_id
             ]
             extraction.events.extend(correction_events)
+
+            # Notify about corrections via proactive messaging
+            for fact in extraction.facts:
+                if fact.replaces_fact_id:
+                    old_fact = next(
+                        (f for f in existing_facts if f.id == fact.replaces_fact_id),
+                        None,
+                    )
+                    if old_fact:
+                        await notify_memory_correction(
+                            db, org_id, old_fact.content, fact.content, bot=bot
+                        )
 
         await upsert_facts(db, org_id, extraction.facts, existing_facts)
         await append_events(db, org_id, extraction.events)

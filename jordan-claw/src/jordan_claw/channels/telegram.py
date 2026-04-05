@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+
 import structlog
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 from supabase._async.client import AsyncClient
 
+from jordan_claw.db.proactive import save_telegram_chat_id
 from jordan_claw.gateway.models import IncomingMessage
 from jordan_claw.gateway.router import handle_message
 
@@ -41,6 +44,12 @@ def create_telegram_dispatcher(
         chat_id = str(message.chat.id)
         message_id = str(message.message_id)
 
+        # Persist Telegram chat ID for proactive messaging (fire-and-forget)
+        asyncio.create_task(
+            save_telegram_chat_id(db, default_org_id, message.chat.id),
+            name=f"save-chat-id-{message.chat.id}",
+        )
+
         incoming = IncomingMessage(
             channel="telegram",
             channel_thread_id=chat_id,
@@ -60,6 +69,7 @@ def create_telegram_dispatcher(
                 openai_api_key=openai_api_key,
                 history_limit=history_limit,
                 environment=environment,
+                bot=bot,
             )
 
             if response.content:
