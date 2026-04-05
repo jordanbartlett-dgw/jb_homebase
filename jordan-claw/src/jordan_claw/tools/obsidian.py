@@ -6,9 +6,13 @@ from datetime import UTC, datetime
 import yaml
 from pydantic_ai import RunContext
 
+from tavily import AsyncTavilyClient
+
 from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.db.obsidian import get_note_by_title, insert_chunks, insert_note, search_notes_semantic
 from jordan_claw.obsidian.embeddings import chunk_text, generate_embeddings
+
+MAX_EXTRACT_CHARS = 15000  # ~3750 tokens, enough for agent to summarize
 
 SNIPPET_MAX_CHARS = 800  # ~200 tokens
 
@@ -176,3 +180,29 @@ async def create_source_note(
     await insert_chunks(ctx.deps.supabase_client, chunk_rows)
 
     return f"Source note '{title}' created. It will appear in your vault after the next sync."
+
+
+async def fetch_article(
+    ctx: RunContext[AgentDeps],
+    url: str,
+) -> str:
+    """Fetch and extract the main content from a URL.
+    Use this when Jordan shares an article to save. Read the returned content,
+    then use create_source_note with a title, author, summary, key takeaways, and tags."""
+    client = AsyncTavilyClient(api_key=ctx.deps.tavily_api_key)
+    response = await client.extract(urls=[url])
+
+    results = response.get("results", [])
+    if not results:
+        return f"Could not extract content from {url}."
+
+    result = results[0]
+    raw_content = result.get("raw_content", "") or result.get("text", "")
+    if not raw_content:
+        return f"No readable content found at {url}."
+
+    # Truncate to keep agent context manageable
+    if len(raw_content) > MAX_EXTRACT_CHARS:
+        raw_content = raw_content[:MAX_EXTRACT_CHARS] + "\n\n[Content truncated]"
+
+    return f"**Source URL:** {url}\n\n{raw_content}"

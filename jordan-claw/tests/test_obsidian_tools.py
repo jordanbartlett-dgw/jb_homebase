@@ -6,7 +6,7 @@ import pytest
 from pydantic_ai import RunContext
 
 from jordan_claw.agents.deps import AgentDeps
-from jordan_claw.tools.obsidian import create_source_note, read_note, search_notes
+from jordan_claw.tools.obsidian import create_source_note, fetch_article, read_note, search_notes
 
 
 def _make_ctx() -> RunContext[AgentDeps]:
@@ -195,3 +195,46 @@ async def test_create_source_note_renders_correct_markdown(mock_insert, mock_emb
     assert "Point two" in content
     assert "## Related Topics" in content
     assert "## Notes" in content
+
+
+@pytest.mark.asyncio
+@patch("jordan_claw.tools.obsidian.AsyncTavilyClient")
+async def test_fetch_article_returns_content(mock_tavily_cls):
+    mock_client = AsyncMock()
+    mock_client.extract.return_value = {
+        "results": [
+            {"raw_content": "This is the article body text."}
+        ]
+    }
+    mock_tavily_cls.return_value = mock_client
+    ctx = _make_ctx()
+    result = await fetch_article(ctx, url="https://example.com/article")
+    assert "https://example.com/article" in result
+    assert "This is the article body text." in result
+    mock_tavily_cls.assert_called_once_with(api_key="test")
+
+
+@pytest.mark.asyncio
+@patch("jordan_claw.tools.obsidian.AsyncTavilyClient")
+async def test_fetch_article_no_results(mock_tavily_cls):
+    mock_client = AsyncMock()
+    mock_client.extract.return_value = {"results": []}
+    mock_tavily_cls.return_value = mock_client
+    ctx = _make_ctx()
+    result = await fetch_article(ctx, url="https://example.com/bad")
+    assert "Could not extract" in result
+
+
+@pytest.mark.asyncio
+@patch("jordan_claw.tools.obsidian.AsyncTavilyClient")
+async def test_fetch_article_truncates_long_content(mock_tavily_cls):
+    mock_client = AsyncMock()
+    mock_client.extract.return_value = {
+        "results": [
+            {"raw_content": "A" * 20000}
+        ]
+    }
+    mock_tavily_cls.return_value = mock_client
+    ctx = _make_ctx()
+    result = await fetch_article(ctx, url="https://example.com/long")
+    assert "[Content truncated]" in result
