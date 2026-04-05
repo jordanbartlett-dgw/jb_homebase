@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from datetime import date, datetime
 from pathlib import Path
 
 import frontmatter
@@ -38,6 +39,19 @@ def _note_type_from_folder(vault_path: str) -> str:
     return FOLDER_TYPE_MAP.get(top_folder, "note")
 
 
+def _sanitize_frontmatter(fm: dict) -> dict:
+    """Convert non-JSON-serializable YAML values (dates) to strings."""
+    sanitized = {}
+    for key, value in fm.items():
+        if isinstance(value, (date, datetime)):
+            sanitized[key] = value.isoformat()
+        elif isinstance(value, list):
+            sanitized[key] = [v.isoformat() if isinstance(v, (date, datetime)) else v for v in value]
+        else:
+            sanitized[key] = value
+    return sanitized
+
+
 def parse_note_file(raw_content: str, vault_path: str) -> dict:
     """Parse a markdown note file into structured fields.
 
@@ -51,7 +65,7 @@ def parse_note_file(raw_content: str, vault_path: str) -> dict:
     """
     post = frontmatter.loads(raw_content)
 
-    fm = dict(post.metadata)
+    fm = _sanitize_frontmatter(dict(post.metadata))
     body = post.content
 
     title = fm.get("title") or _title_from_path(vault_path)
