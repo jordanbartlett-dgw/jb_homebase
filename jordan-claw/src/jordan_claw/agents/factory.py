@@ -84,4 +84,9 @@ def db_messages_to_history(
         total_chars += char_count
 
     kept.reverse()
+
+    # Strip any leading assistant messages — history must start with a user turn
+    while kept and isinstance(kept[0], ModelResponse):
+        kept.pop(0)
+
     return kept

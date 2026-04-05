@@ -210,3 +210,17 @@ async def test_build_agent_skips_unknown_tools():
     assert "current_datetime" in tool_names
     assert "nonexistent_tool" not in tool_names
     assert len(tool_names) == 1
+
+
+def test_history_budget_no_orphan_response_at_start():
+    """History should never start with an assistant message (ModelResponse)."""
+    db_rows = [
+        {"role": "user", "content": "A" * 4000},
+        {"role": "assistant", "content": "B" * 4000},
+        {"role": "user", "content": "C" * 400},   # current unanswered turn
+    ]
+    result = db_messages_to_history(db_rows, max_tokens=300)
+
+    # First message must always be a user message (ModelRequest)
+    assert len(result) >= 1
+    assert isinstance(result[0], ModelRequest)
