@@ -74,6 +74,26 @@ Analyze this conversation turn and extract any new facts or notable events.
 Extract new or updated facts and events. Return empty lists if nothing is worth remembering."""
 
 
+async def notify_memory_correction(
+    db: AsyncClient,
+    org_id: str,
+    old_content: str,
+    new_content: str,
+) -> None:
+    """Queue a proactive notification about a memory correction."""
+    from jordan_claw.db.proactive import insert_proactive_message
+    from jordan_claw.proactive.executors import format_memory_flag
+
+    content = format_memory_flag(old_content, new_content)
+    await insert_proactive_message(
+        db,
+        org_id=org_id,
+        task_type="memory_flag",
+        trigger="memory_flag",
+        content=content,
+    )
+
+
 async def extract_memory_background(
     db: AsyncClient,
     org_id: str,
@@ -103,6 +123,18 @@ async def extract_memory_background(
                 if f.replaces_fact_id
             ]
             extraction.events.extend(correction_events)
+
+            # Notify about corrections via proactive messaging
+            for fact in extraction.facts:
+                if fact.replaces_fact_id:
+                    old_fact = next(
+                        (f for f in existing_facts if f.id == fact.replaces_fact_id),
+                        None,
+                    )
+                    if old_fact:
+                        await notify_memory_correction(
+                            db, org_id, old_fact.content, fact.content
+                        )
 
         await upsert_facts(db, org_id, extraction.facts, existing_facts)
         await append_events(db, org_id, extraction.events)

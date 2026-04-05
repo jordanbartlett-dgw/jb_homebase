@@ -190,3 +190,64 @@ async def test_extract_memory_background_logs_errors():
         )
 
     mock_log.exception.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_extract_memory_with_correction_sends_proactive_message():
+    """When has_corrections=True and a fact is replaced, a proactive message is sent."""
+    mock_db = AsyncMock()
+
+    existing_facts = [
+        MemoryFact(
+            id="fact-1",
+            org_id="org-1",
+            category="preference",
+            content="Jordan prefers tea",
+            source="explicit",
+            confidence=0.5,
+            created_at="2026-04-01T00:00:00",
+            updated_at="2026-04-01T00:00:00",
+        )
+    ]
+
+    extraction = ExtractionResult(
+        facts=[
+            ExtractedFact(
+                content="Jordan prefers coffee",
+                category="preference",
+                source="explicit",
+                confidence=1.0,
+                replaces_fact_id="fact-1",
+            )
+        ],
+        events=[],
+        has_corrections=True,
+    )
+
+    mock_result = MagicMock()
+    mock_result.output = extraction
+
+    with (
+        patch(
+            "jordan_claw.memory.extractor.get_active_facts",
+            new=AsyncMock(return_value=existing_facts),
+        ),
+        patch("jordan_claw.memory.extractor.create_extraction_agent") as mock_create,
+        patch("jordan_claw.memory.extractor.archive_fact", new=AsyncMock()),
+        patch("jordan_claw.memory.extractor.upsert_facts", new=AsyncMock()),
+        patch("jordan_claw.memory.extractor.append_events", new=AsyncMock()),
+        patch("jordan_claw.memory.extractor.mark_context_stale", new=AsyncMock()),
+        patch(
+            "jordan_claw.memory.extractor.notify_memory_correction",
+            new=AsyncMock(),
+        ) as mock_notify,
+    ):
+        mock_agent = AsyncMock()
+        mock_agent.run = AsyncMock(return_value=mock_result)
+        mock_create.return_value = mock_agent
+
+        await extract_memory_background(mock_db, "org-1", "I prefer coffee", "Noted!")
+
+    mock_notify.assert_called_once_with(
+        mock_db, "org-1", "Jordan prefers tea", "Jordan prefers coffee"
+    )
