@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -112,3 +113,39 @@ async def test_dispatch_task_calls_executor():
 
     mock_exec.assert_called_once()
     mock_send.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_schedule_calendar_reminders_sets_timers():
+    from datetime import timedelta
+
+    from jordan_claw.proactive.scheduler import schedule_calendar_reminders
+
+    mock_db = AsyncMock()
+    mock_bot = AsyncMock()
+    mock_settings = MagicMock()
+    mock_settings.fastmail_username = "user@test.com"
+    mock_settings.fastmail_app_password = "test-pass"
+
+    tz = ZoneInfo("America/Chicago")
+    now = datetime.now(tz)
+    future_start = now + timedelta(hours=2)
+    future_end = future_start + timedelta(hours=1)
+
+    events_text = f"- Big meeting: {future_start.strftime('%H:%M')} - {future_end.strftime('%H:%M')}"
+
+    with (
+        patch(
+            "jordan_claw.proactive.scheduler.get_calendar_events",
+            new=AsyncMock(return_value=events_text),
+        ),
+        patch(
+            "jordan_claw.proactive.scheduler._parse_event_times",
+            return_value=[("Big meeting", future_start, future_end)],
+        ),
+    ):
+        timers = await schedule_calendar_reminders(
+            mock_db, "org-1", {"agent_slug": "claw-main"}, mock_settings, mock_bot,
+        )
+
+    assert len(timers) == 1
