@@ -16,49 +16,11 @@ log = structlog.get_logger()
 
 CENTRAL_TZ = ZoneInfo("America/Chicago")
 
-_username: str | None = None
-_app_password: str | None = None
-_calendar_cache: caldav.Calendar | None = None
-_cache_lock: asyncio.Lock | None = None
 
-
-def _get_lock() -> asyncio.Lock:
-    """Return the module-level lock, creating it lazily inside the running loop."""
-    global _cache_lock
-    if _cache_lock is None:
-        _cache_lock = asyncio.Lock()
-    return _cache_lock
-
-
-def configure_calendar(username: str, app_password: str) -> None:
-    """Store Fastmail CalDAV credentials for later use."""
-    global _username, _app_password, _calendar_cache
-    if _username == username and _app_password == app_password:
-        return
-    _username = username
-    _app_password = app_password
-    _calendar_cache = None
-
-
-def _reset() -> None:
-    """Clear module-level cache and credentials. Intended for use in tests."""
-    global _username, _app_password, _calendar_cache, _cache_lock
-    _username = None
-    _app_password = None
-    _calendar_cache = None
-    _cache_lock = None
-
-
-def _connect_calendar() -> caldav.Calendar:
-    """Connect to Fastmail CalDAV and return the default calendar (no caching).
-
-    This runs inside asyncio.to_thread() only when the cache is empty.
-    """
-    if not _username or not _app_password:
-        raise RuntimeError("Calendar credentials not configured. Call configure_calendar() first.")
-
-    url = f"https://caldav.fastmail.com/dav/calendars/user/{_username}/"
-    client = caldav.DAVClient(url=url, username=_username, password=_app_password)
+def _connect_calendar(username: str, app_password: str) -> caldav.Calendar:
+    """Connect to Fastmail CalDAV and return the default calendar."""
+    url = f"https://caldav.fastmail.com/dav/calendars/user/{username}/"
+    client = caldav.DAVClient(url=url, username=username, password=app_password)
     principal = client.principal()
     calendars = principal.calendars()
 
@@ -67,24 +29,6 @@ def _connect_calendar() -> caldav.Calendar:
 
     # Fastmail puts the default calendar first; Jordan has only one calendar.
     return calendars[0]
-
-
-async def _get_calendar_async() -> caldav.Calendar:
-    """Return the cached calendar connection, connecting if necessary.
-
-    Uses an asyncio.Lock to prevent concurrent threads from racing to populate
-    the cache when called via asyncio.to_thread().
-    """
-    global _calendar_cache
-
-    if not _username or not _app_password:
-        raise RuntimeError("Calendar credentials not configured. Call configure_calendar() first.")
-
-    async with _get_lock():
-        if _calendar_cache is not None:
-            return _calendar_cache
-        _calendar_cache = await asyncio.to_thread(_connect_calendar)
-        return _calendar_cache
 
 
 def _format_dt(dt: datetime | dt_module.date) -> str:
@@ -96,7 +40,12 @@ def _format_dt(dt: datetime | dt_module.date) -> str:
     return dt.strftime("%H:%M")
 
 
-async def get_calendar_events(start_date: str | datetime, end_date: str | datetime) -> str:
+async def get_calendar_events(
+    username: str,
+    app_password: str,
+    start_date: str | datetime,
+    end_date: str | datetime,
+) -> str:
     """Query CalDAV for events in a date range and return formatted text.
 
     Accepts ISO date strings (YYYY-MM-DD) or datetime objects.
@@ -112,7 +61,7 @@ async def get_calendar_events(start_date: str | datetime, end_date: str | dateti
         end_date = end_date.replace(tzinfo=CENTRAL_TZ)
 
     try:
-        calendar = await _get_calendar_async()
+        calendar = await asyncio.to_thread(_connect_calendar, username, app_password)
         items = await asyncio.to_thread(calendar.search, start=start_date, end=end_date, event=True)
     except Exception as exc:
         log.error("calendar.get_events.failed", error=str(exc))
@@ -172,6 +121,8 @@ def _build_ical(
 
 
 async def create_calendar_event(
+    username: str,
+    app_password: str,
     title: str,
     start: str | datetime,
     end: str | datetime,
@@ -195,7 +146,7 @@ async def create_calendar_event(
         end = end.replace(tzinfo=CENTRAL_TZ)
 
     try:
-        calendar = await _get_calendar_async()
+        calendar = await asyncio.to_thread(_connect_calendar, username, app_password)
         ical = _build_ical(title, start, end, location, description)
         await asyncio.to_thread(calendar.save_event, ical)
     except Exception as exc:
@@ -217,8 +168,9 @@ async def check_calendar(ctx: RunContext[AgentDeps], start_date: str, end_date: 
         start_date: Start date as YYYY-MM-DD
         end_date: End date as YYYY-MM-DD
     """
-    configure_calendar(ctx.deps.fastmail_username, ctx.deps.fastmail_app_password)
-    return await get_calendar_events(start_date, end_date)
+    return await get_calendar_events(
+        ctx.deps.fastmail_username, ctx.deps.fastmail_app_password, start_date, end_date
+    )
 
 
 async def schedule_event(
@@ -238,5 +190,7 @@ async def schedule_event(
         location: Optional location
         description: Optional description
     """
-    configure_calendar(ctx.deps.fastmail_username, ctx.deps.fastmail_app_password)
-    return await create_calendar_event(title, start, end, location, description)
+    return await create_calendar_event(
+        ctx.deps.fastmail_username, ctx.deps.fastmail_app_password,
+        title, start, end, location, description,
+    )
