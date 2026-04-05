@@ -7,10 +7,11 @@ from jordan_claw.agents.deps import AgentDeps
 
 
 async def search_web(ctx: RunContext[AgentDeps], query: str) -> str:
-    """Search the web for current information.
-
-    Use for questions about recent events, facts, or anything
-    that benefits from up-to-date data.
+    """Search the web for information from the outside world.
+    Use for discovering new people, companies, content creators, products,
+    recommendations, current events, comparisons, or anything not already
+    in Jordan's notes or memory. Default to this tool when unsure whether
+    information is in Jordan's notes or on the web.
     """
     client = AsyncTavilyClient(api_key=ctx.deps.tavily_api_key)
     response = await client.search(query=query, max_results=3)

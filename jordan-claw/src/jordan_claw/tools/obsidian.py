@@ -23,8 +23,9 @@ async def search_notes(
     note_type: str | None = None,
     tags: list[str] | None = None,
 ) -> str:
-    """Search Jordan's Obsidian knowledge base by concept or keyword.
-    Returns titles, types, tags, and snippets of matching notes.
+    """Search Jordan's personal Obsidian notes and saved research.
+    Only use when Jordan asks about his own notes, past research, or previously saved content.
+    Do NOT use this to discover new people, companies, content, or external information.
     Use read_note to get the full content of a specific result."""
     embeddings = await generate_embeddings([query], api_key=ctx.deps.openai_api_key)
     embedding = embeddings[0]
@@ -60,6 +61,7 @@ async def read_note(
     title: str,
 ) -> str:
     """Read the full content of an Obsidian note by title.
+    Only use after search_notes returns a relevant result.
     Returns the complete note body, tags, and linked notes."""
     notes = await get_note_by_title(
         ctx.deps.supabase_client, ctx.deps.org_id, title
