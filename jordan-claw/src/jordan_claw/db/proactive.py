@@ -86,7 +86,7 @@ async def get_telegram_chat_id(
 ) -> int | None:
     """Look up the Telegram chat ID for an org."""
     result = (
-        await client.table("orgs")
+        await client.table("organizations")
         .select("telegram_chat_id")
         .eq("id", org_id)
         .limit(1)
@@ -104,7 +104,7 @@ async def save_telegram_chat_id(
 ) -> None:
     """Persist the Telegram chat ID on the org record."""
     await (
-        client.table("orgs")
+        client.table("organizations")
         .update({"telegram_chat_id": chat_id})
         .eq("id", org_id)
         .execute()

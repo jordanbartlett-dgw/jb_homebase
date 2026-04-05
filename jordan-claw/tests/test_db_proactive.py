@@ -131,4 +131,4 @@ async def test_save_telegram_chat_id():
     db.table.return_value = MagicMock(update=MagicMock(return_value=chain))
 
     await save_telegram_chat_id(db, "org-1", 12345)
-    db.table.assert_called_with("orgs")
+    db.table.assert_called_with("organizations")

@@ -1,12 +1,12 @@
 -- Proactive Messaging tables (Phase 3c)
 
--- Add telegram_chat_id to orgs for outbound message delivery
-ALTER TABLE orgs ADD COLUMN IF NOT EXISTS telegram_chat_id bigint;
+-- Add telegram_chat_id to organizations for outbound message delivery
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS telegram_chat_id bigint;
 
 -- Scheduled proactive task definitions
 CREATE TABLE IF NOT EXISTS proactive_schedules (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    org_id uuid NOT NULL REFERENCES orgs(id),
+    org_id uuid NOT NULL REFERENCES organizations(id),
     name text NOT NULL,
     cron_expression text NOT NULL,
     timezone text NOT NULL DEFAULT 'America/Chicago',
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS proactive_schedules (
 -- Audit log of proactive messages sent
 CREATE TABLE IF NOT EXISTS proactive_messages (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    org_id uuid NOT NULL REFERENCES orgs(id),
+    org_id uuid NOT NULL REFERENCES organizations(id),
     schedule_id uuid REFERENCES proactive_schedules(id),
     task_type text NOT NULL,
     trigger text NOT NULL,
