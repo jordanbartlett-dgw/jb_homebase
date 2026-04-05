@@ -88,7 +88,8 @@ async def execute_morning_briefing(
     settings: Settings,
 ) -> str:
     """Compose a morning briefing with today's calendar and memory context."""
-    today = datetime.now(ZoneInfo("America/Chicago"))
+    tz_name = config.get("timezone", "America/Chicago")
+    today = datetime.now(ZoneInfo(tz_name))
     today_str = today.strftime("%Y-%m-%d")
 
     calendar = await get_calendar_events(
@@ -112,7 +113,8 @@ async def execute_weekly_review(
     settings: Settings,
 ) -> str:
     """Compose a weekly review with this week's calendar, memory, and events."""
-    tz = ZoneInfo("America/Chicago")
+    tz_name = config.get("timezone", "America/Chicago")
+    tz = ZoneInfo(tz_name)
     today = datetime.now(tz)
     monday = today - timedelta(days=today.weekday())
     sunday = monday + timedelta(days=6)
@@ -142,13 +144,14 @@ async def execute_weekly_review(
 
 def _parse_event_times(
     events_text: str,
+    tz_name: str = "America/Chicago",
 ) -> list[tuple[str, datetime, datetime]]:
     """Parse event lines into (title, start, end) tuples.
 
     Expected format: "- Title: HH:MM - HH:MM" or "- Title: All day"
     Returns empty list for unparseable lines.
     """
-    tz = ZoneInfo("America/Chicago")
+    tz = ZoneInfo(tz_name)
     today = datetime.now(tz).date()
     results = []
 
@@ -173,7 +176,8 @@ async def execute_daily_scan(
     settings: Settings,
 ) -> str:
     """Scan today's calendar for conflicts. Returns empty string if none found."""
-    today = datetime.now(ZoneInfo("America/Chicago"))
+    tz_name = config.get("timezone", "America/Chicago")
+    today = datetime.now(ZoneInfo(tz_name))
     today_str = today.strftime("%Y-%m-%d")
 
     events_text = await get_calendar_events(
@@ -186,7 +190,7 @@ async def execute_daily_scan(
     if events_text == "No events scheduled.":
         return ""
 
-    events = _parse_event_times(events_text)
+    events = _parse_event_times(events_text, tz_name=tz_name)
     conflicts = []
 
     for i, (title_a, start_a, end_a) in enumerate(events):

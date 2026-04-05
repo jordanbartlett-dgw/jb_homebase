@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS proactive_schedules (
     task_type text NOT NULL,
     config jsonb NOT NULL DEFAULT '{}',
     last_run_at timestamptz,
-    created_at timestamptz NOT NULL DEFAULT now()
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (org_id, name)
 );
 
 -- Audit log of proactive messages sent
@@ -43,7 +44,7 @@ VALUES
     ('1408252a-fd36-4fd3-b527-3b2f495d7b9c', 'morning_briefing', '0 7 * * *', 'America/Chicago', 'morning_briefing', '{"agent_slug": "claw-main"}'),
     ('1408252a-fd36-4fd3-b527-3b2f495d7b9c', 'weekly_review', '0 8 * * 1', 'America/Chicago', 'weekly_review', '{"agent_slug": "claw-main"}'),
     ('1408252a-fd36-4fd3-b527-3b2f495d7b9c', 'daily_scan', '0 7 * * *', 'America/Chicago', 'daily_scan', '{"agent_slug": "claw-main"}')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (org_id, name) DO NOTHING;
 
 -- Notify PostgREST to pick up new tables
 SELECT pg_notify('pgrst', 'reload schema');

@@ -63,7 +63,8 @@ async def dispatch_task(
         return
 
     try:
-        content = await executor(db, schedule.org_id, schedule.config, settings)
+        task_config = {**schedule.config, "timezone": schedule.timezone}
+        content = await executor(db, schedule.org_id, task_config, settings)
 
         await send_proactive_message(
             bot=bot,
@@ -80,8 +81,9 @@ async def dispatch_task(
 
         # After morning briefing, schedule calendar reminders for today
         if schedule.task_type == "morning_briefing":
+            reminder_config = {**schedule.config, "timezone": schedule.timezone}
             await schedule_calendar_reminders(
-                db, schedule.org_id, schedule.config, settings, bot,
+                db, schedule.org_id, reminder_config, settings, bot,
             )
 
         log.info(
@@ -106,7 +108,8 @@ async def schedule_calendar_reminders(
     bot: Bot,
 ) -> list[asyncio.TimerHandle]:
     """Scan today's events and set 30-min-before reminder timers."""
-    tz = ZoneInfo("America/Chicago")
+    tz_name = config.get("timezone", "America/Chicago")
+    tz = ZoneInfo(tz_name)
     now = datetime.now(tz)
     today_str = now.strftime("%Y-%m-%d")
 
@@ -118,7 +121,7 @@ async def schedule_calendar_reminders(
     if events_text == "No events scheduled.":
         return []
 
-    events = _parse_event_times(events_text)
+    events = _parse_event_times(events_text, tz_name=tz_name)
     timers: list[asyncio.TimerHandle] = []
     loop = asyncio.get_running_loop()
 

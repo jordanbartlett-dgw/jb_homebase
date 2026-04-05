@@ -69,6 +69,7 @@ def create_telegram_dispatcher(
                 openai_api_key=openai_api_key,
                 history_limit=history_limit,
                 environment=environment,
+                bot=bot,
             )
 
             if response.content:
