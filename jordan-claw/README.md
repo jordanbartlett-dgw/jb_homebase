@@ -11,10 +11,10 @@ One deployed process. One agent today, many tomorrow. Messages come in from Tele
 The agent ("claw-main") has ten tools:
 
 - **current_datetime** returns the current time in US Central
-- **search_web** searches the web via Tavily and summarizes results
+- **search_web** searches the web via Tavily for external discovery (default when unsure)
 - **check_calendar** / **schedule_event** reads and creates Fastmail calendar events via CalDAV
 - **recall_memory** / **forget_memory** queries and manages persistent memory facts
-- **search_notes** / **read_note** semantic search over Obsidian vault notes via pgvector
+- **search_notes** / **read_note** semantic search over Obsidian vault notes via pgvector (personal notes only)
 - **create_source_note** / **fetch_article** creates source notes from URLs or manual input
 
 The agent also proactively reaches out via Telegram:
@@ -24,6 +24,8 @@ The agent also proactively reaches out via Telegram:
 - **Calendar reminders** 30 minutes before meetings with attendee context
 - **Memory corrections** notifies when a remembered fact is updated
 - **Daily scan** alerts on calendar conflicts (quiet, only messages if something found)
+
+Conversation history is token-budgeted (4000 tokens max) to prevent context pollution on long conversations. Tool docstrings include explicit routing signals so the LLM knows when to use internal tools (notes, memory, calendar) vs external tools (web search).
 
 Conversations and messages persist in Supabase. The schema is multi-tenant from day one.
 
@@ -87,10 +89,10 @@ jordan-claw/
       proactive.py       # Schedule and proactive message CRUD
     utils/
       token_counting.py  # Extract token counts from agent results
-  tests/                 # 146 unit and integration tests
+  tests/                 # 150 unit and integration tests
   scripts/
     obsidian_sync/       # CLI for vault ingest/export
-  supabase/migrations/   # 001-004 schema migrations
+  supabase/migrations/   # 001-005 schema migrations
   Dockerfile
   pyproject.toml
 ```
