@@ -100,4 +100,4 @@ async def test_stale_conversation_is_closed_and_new_created():
     result = await get_or_create_conversation(db, ORG_ID, CHANNEL, THREAD_ID)
     assert result["id"] == "new-conv"
     # Verify the old conversation was closed
-    update_mock.update.assert_called_once_with({"status": "closed"})
+    update_mock.update.assert_called_once_with({"status": "archived"})
