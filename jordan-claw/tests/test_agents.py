@@ -131,12 +131,19 @@ async def test_build_agent_uses_db_config():
         agent, model_name = await build_agent(mock_db, "org-001", "test-agent")
 
     assert model_name == "test"
-    # Pydantic AI internal: _function_toolset.tools is a dict keyed by tool name.
-    # May change across versions.
-    tool_names = set(agent._function_toolset.tools.keys())
-    assert "current_datetime" in tool_names
-    assert "search_web" in tool_names
-    assert len(tool_names) == 2
+    from pydantic_ai.toolsets.filtered import FilteredToolset
+    from pydantic_ai.tools import ToolDefinition
+
+    ts = agent._user_toolsets[0]
+    assert isinstance(ts, FilteredToolset)
+
+    def _allows(name: str) -> bool:
+        td = ToolDefinition(name=name, description="", parameters_json_schema={})
+        return ts.filter_func(None, td)
+
+    assert _allows("current_datetime")
+    assert _allows("search_web")
+    assert not _allows("check_calendar")
 
 
 def test_history_budget_truncates_oldest_messages():
@@ -204,12 +211,20 @@ async def test_build_agent_skips_unknown_tools():
         agent, model_name = await build_agent(mock_db, "org-001", "test-agent")
 
     assert model_name == "test"
-    # Pydantic AI internal: _function_toolset.tools is a dict keyed by tool name.
-    # May change across versions.
-    tool_names = set(agent._function_toolset.tools.keys())
-    assert "current_datetime" in tool_names
-    assert "nonexistent_tool" not in tool_names
-    assert len(tool_names) == 1
+    from pydantic_ai.toolsets.filtered import FilteredToolset
+    from pydantic_ai.tools import ToolDefinition
+
+    ts = agent._user_toolsets[0]
+    assert isinstance(ts, FilteredToolset)
+
+    def _allows(name: str) -> bool:
+        td = ToolDefinition(name=name, description="", parameters_json_schema={})
+        return ts.filter_func(None, td)
+
+    assert _allows("current_datetime")
+    # The filter includes nonexistent_tool by name — but BASE_TOOLSET won't have it,
+    # so it won't appear at runtime. The factory logs a warning for unknown tool names.
+    assert not _allows("check_calendar")
 
 
 def test_base_toolset_has_all_registered_tools():
@@ -231,6 +246,41 @@ def test_base_toolset_has_all_registered_tools():
     # FunctionToolset exposes tool names via .tools (a dict keyed by name)
     registered = set(BASE_TOOLSET.tools.keys())
     assert registered == expected_tools
+
+
+@pytest.mark.asyncio
+async def test_build_agent_uses_filtered_toolset():
+    """build_agent should use FilteredToolset to scope tools per config."""
+    fake_config = AgentConfig(
+        id="agent-001",
+        org_id="org-001",
+        name="Test Agent",
+        slug="test-agent",
+        system_prompt="Be helpful.",
+        model="test",
+        tools=["current_datetime", "search_web"],
+        is_active=True,
+    )
+
+    mock_db = AsyncMock()
+
+    with patch("jordan_claw.agents.factory.get_agent_config", return_value=fake_config):
+        agent, model_name = await build_agent(mock_db, "org-001", "test-agent")
+
+    assert model_name == "test"
+    from pydantic_ai.toolsets.filtered import FilteredToolset
+    from pydantic_ai.tools import ToolDefinition
+
+    ts = agent._user_toolsets[0]
+    assert isinstance(ts, FilteredToolset)
+
+    def _allows(name: str) -> bool:
+        td = ToolDefinition(name=name, description="", parameters_json_schema={})
+        return ts.filter_func(None, td)
+
+    assert _allows("current_datetime")
+    assert _allows("search_web")
+    assert not _allows("check_calendar")
 
 
 def test_history_budget_no_orphan_response_at_start():

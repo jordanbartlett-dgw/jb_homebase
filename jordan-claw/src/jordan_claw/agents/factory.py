@@ -2,13 +2,24 @@ from __future__ import annotations
 
 import structlog
 from pydantic_ai import Agent, ModelRequest, ModelResponse, TextPart, UserPromptPart
+from pydantic_ai.tools import RunContext, ToolDefinition
 from supabase._async.client import AsyncClient
 
 from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.db.agents import get_agent_config
-from jordan_claw.tools import TOOL_REGISTRY
+from jordan_claw.tools import BASE_TOOLSET
 
 log = structlog.get_logger()
+
+
+def _make_tool_filter(allowed_tools: list[str]):
+    """Return a filter function for FilteredToolset that allows only named tools."""
+    allowed = set(allowed_tools)
+
+    def filter_func(ctx: RunContext[AgentDeps], tool_def: ToolDefinition) -> bool:
+        return tool_def.name in allowed
+
+    return filter_func
 
 
 async def build_agent(
@@ -17,19 +28,19 @@ async def build_agent(
     agent_slug: str,
     memory_context: str = "",
 ) -> tuple[Agent[AgentDeps], str]:
-    """Build a Pydantic AI agent from DB config and the tool registry.
+    """Build a Pydantic AI agent from DB config using toolsets.
 
     Returns (agent, model_name) so callers can log/store the model
     without reaching into Pydantic AI internals.
     """
     config = await get_agent_config(db, org_id, agent_slug)
 
-    tools = []
+    # Log any tools in config that don't exist in BASE_TOOLSET
     for name in config.tools:
-        if name in TOOL_REGISTRY:
-            tools.append(TOOL_REGISTRY[name])
-        else:
+        if name not in BASE_TOOLSET.tools:
             log.warning("unknown_tool_skipped", tool_name=name, agent_slug=agent_slug)
+
+    filtered = BASE_TOOLSET.filtered(_make_tool_filter(config.tools))
 
     system_prompt = config.system_prompt
     if memory_context:
@@ -37,8 +48,8 @@ async def build_agent(
 
     agent = Agent(
         config.model,
-        system_prompt=system_prompt,
-        tools=tools,
+        instructions=system_prompt,
+        toolsets=[filtered],
         deps_type=AgentDeps,
     )
     return agent, config.model
@@ -57,7 +68,6 @@ def db_messages_to_history(
     When max_tokens > 0, drops oldest messages first to stay within budget.
     Always preserves at least the most recent user+assistant exchange.
     """
-    # First pass: filter to user/assistant and convert
     converted: list[tuple[ModelRequest | ModelResponse, int]] = []
     for msg in messages:
         role = msg["role"]
@@ -72,7 +82,6 @@ def db_messages_to_history(
     if not converted or max_tokens <= 0:
         return [item for item, _ in converted]
 
-    # Second pass: walk newest-to-oldest, accumulate within budget
     max_chars = max_tokens * CHARS_PER_TOKEN
     kept: list[ModelRequest | ModelResponse] = []
     total_chars = 0
@@ -85,7 +94,6 @@ def db_messages_to_history(
 
     kept.reverse()
 
-    # Strip any leading assistant messages — history must start with a user turn
     while kept and isinstance(kept[0], ModelResponse):
         kept.pop(0)
 
