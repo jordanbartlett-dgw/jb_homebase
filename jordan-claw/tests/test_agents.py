@@ -212,6 +212,27 @@ async def test_build_agent_skips_unknown_tools():
     assert len(tool_names) == 1
 
 
+def test_base_toolset_has_all_registered_tools():
+    """BASE_TOOLSET should contain all 10 tools from the old TOOL_REGISTRY."""
+    from jordan_claw.tools import BASE_TOOLSET
+
+    expected_tools = {
+        "current_datetime",
+        "search_web",
+        "check_calendar",
+        "schedule_event",
+        "recall_memory",
+        "forget_memory",
+        "search_notes",
+        "read_note",
+        "create_source_note",
+        "fetch_article",
+    }
+    # FunctionToolset exposes tool names via .tools (a dict keyed by name)
+    registered = set(BASE_TOOLSET.tools.keys())
+    assert registered == expected_tools
+
+
 def test_history_budget_no_orphan_response_at_start():
     """History should never start with an assistant message (ModelResponse)."""
     db_rows = [
