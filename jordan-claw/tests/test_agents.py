@@ -229,7 +229,7 @@ async def test_build_agent_skips_unknown_tools():
 
 
 def test_base_toolset_has_all_registered_tools():
-    """BASE_TOOLSET should contain all 10 tools from the old TOOL_REGISTRY."""
+    """BASE_TOOLSET should contain all 10 tools."""
     from jordan_claw.tools import BASE_TOOLSET
 
     expected_tools = {
