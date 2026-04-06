@@ -87,7 +87,7 @@ async def handle_message(
             supabase_client=db,
             openai_api_key=openai_api_key,
         )
-        history = db_messages_to_history(db_messages)
+        history = db_messages_to_history(db_messages, max_tokens=0)
 
         result = await agent.run(msg.content, message_history=history, deps=deps)
 

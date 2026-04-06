@@ -50,12 +50,44 @@ async def build_agent(
         config.model,
         instructions=system_prompt,
         toolsets=[filtered],
+        history_processors=[trim_history_processor],
         deps_type=AgentDeps,
     )
     return agent, config.model
 
 
 CHARS_PER_TOKEN = 4
+
+
+def trim_history_processor(
+    messages: list[ModelRequest | ModelResponse],
+    max_tokens: int = 4000,
+) -> list[ModelRequest | ModelResponse]:
+    """History processor that trims oldest messages to stay within token budget.
+
+    Always preserves at least the most recent user+assistant exchange.
+    Ensures history never starts with an assistant message.
+    """
+    if not messages or max_tokens <= 0:
+        return messages
+
+    max_chars = max_tokens * CHARS_PER_TOKEN
+    kept: list[ModelRequest | ModelResponse] = []
+    total_chars = 0
+    for i in range(len(messages) - 1, -1, -1):
+        msg = messages[i]
+        char_count = sum(len(p.content) for p in msg.parts if hasattr(p, "content"))
+        if total_chars + char_count > max_chars and len(kept) >= 2:
+            break
+        kept.append(msg)
+        total_chars += char_count
+
+    kept.reverse()
+
+    while kept and isinstance(kept[0], ModelResponse):
+        kept.pop(0)
+
+    return kept
 
 
 def db_messages_to_history(

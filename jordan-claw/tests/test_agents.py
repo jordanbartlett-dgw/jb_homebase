@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic_ai import ModelRequest, ModelResponse
+from pydantic_ai.messages import TextPart, UserPromptPart
 
 from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.agents.factory import build_agent, db_messages_to_history
@@ -295,3 +296,24 @@ def test_history_budget_no_orphan_response_at_start():
     # First message must always be a user message (ModelRequest)
     assert len(result) >= 1
     assert isinstance(result[0], ModelRequest)
+
+
+def test_trim_history_processor_trims_to_budget():
+    """trim_history_processor should drop oldest messages to stay within token budget."""
+    from jordan_claw.agents.factory import trim_history_processor
+
+    messages = [
+        ModelRequest(parts=[UserPromptPart(content="A" * 4000)]),       # ~1000 tokens
+        ModelResponse(parts=[TextPart(content="B" * 4000)]),            # ~1000 tokens
+        ModelRequest(parts=[UserPromptPart(content="C" * 4000)]),       # ~1000 tokens
+        ModelResponse(parts=[TextPart(content="D" * 4000)]),            # ~1000 tokens
+        ModelRequest(parts=[UserPromptPart(content="E" * 400)]),        # ~100 tokens
+        ModelResponse(parts=[TextPart(content="F" * 400)]),             # ~100 tokens
+    ]
+    result = trim_history_processor(messages)
+
+    # Default budget is 4000 tokens (16000 chars). Total is ~4200 tokens.
+    # Should drop the first exchange to fit.
+    assert len(result) == 4
+    assert isinstance(result[0], ModelRequest)
+    assert result[0].parts[0].content == "C" * 4000
