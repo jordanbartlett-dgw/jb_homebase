@@ -20,7 +20,3 @@ BASE_TOOLSET.add_function(search_notes, name="search_notes")
 BASE_TOOLSET.add_function(read_note, name="read_note")
 BASE_TOOLSET.add_function(create_source_note, name="create_source_note")
 BASE_TOOLSET.add_function(fetch_article, name="fetch_article")
-
-# Keep TOOL_REGISTRY for backward compatibility during migration.
-# Remove once agents/factory.py no longer references it.
-TOOL_REGISTRY = {name: tool.function for name, tool in BASE_TOOLSET.tools.items()}
