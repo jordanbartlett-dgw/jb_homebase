@@ -41,7 +41,18 @@ def test_plain_tools_have_no_ctx_param():
 
 def test_deps_tools_have_ctx_param():
     """Tools needing credentials should accept RunContext as first param."""
-    for name in ["search_web", "check_calendar", "schedule_event", "recall_memory", "forget_memory", "search_notes", "read_note", "create_source_note", "fetch_article"]:
+    deps_tools = [
+        "search_web",
+        "check_calendar",
+        "schedule_event",
+        "recall_memory",
+        "forget_memory",
+        "search_notes",
+        "read_note",
+        "create_source_note",
+        "fetch_article",
+    ]
+    for name in deps_tools:
         sig = inspect.signature(BASE_TOOLSET.tools[name].function)
         first_param = list(sig.parameters.keys())[0]
         assert first_param == "ctx", f"{name} first param should be 'ctx', got '{first_param}'"

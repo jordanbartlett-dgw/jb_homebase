@@ -132,8 +132,8 @@ async def test_build_agent_uses_db_config():
         agent, model_name = await build_agent(mock_db, "org-001", "test-agent")
 
     assert model_name == "test"
-    from pydantic_ai.toolsets.filtered import FilteredToolset
     from pydantic_ai.tools import ToolDefinition
+    from pydantic_ai.toolsets.filtered import FilteredToolset
 
     ts = agent._user_toolsets[0]
     assert isinstance(ts, FilteredToolset)
@@ -150,12 +150,12 @@ async def test_build_agent_uses_db_config():
 def test_history_budget_truncates_oldest_messages():
     """When messages exceed token budget, oldest are dropped."""
     db_rows = [
-        {"role": "user", "content": "A" * 4000},      # ~1000 tokens
+        {"role": "user", "content": "A" * 4000},  # ~1000 tokens
         {"role": "assistant", "content": "B" * 4000},  # ~1000 tokens
-        {"role": "user", "content": "C" * 4000},       # ~1000 tokens
+        {"role": "user", "content": "C" * 4000},  # ~1000 tokens
         {"role": "assistant", "content": "D" * 4000},  # ~1000 tokens
-        {"role": "user", "content": "E" * 400},        # ~100 tokens
-        {"role": "assistant", "content": "F" * 400},   # ~100 tokens
+        {"role": "user", "content": "E" * 400},  # ~100 tokens
+        {"role": "assistant", "content": "F" * 400},  # ~100 tokens
     ]
     # Budget of 2200 tokens (~8800 chars) should keep the last 2 exchanges
     result = db_messages_to_history(db_rows, max_tokens=2200)
@@ -170,7 +170,7 @@ def test_history_budget_truncates_oldest_messages():
 def test_history_budget_preserves_most_recent_exchange():
     """Even with a tiny budget, the most recent user+assistant pair is kept."""
     db_rows = [
-        {"role": "user", "content": "A" * 40000},      # ~10000 tokens, way over budget
+        {"role": "user", "content": "A" * 40000},  # ~10000 tokens, way over budget
         {"role": "assistant", "content": "B" * 40000},  # ~10000 tokens
     ]
     result = db_messages_to_history(db_rows, max_tokens=100)
@@ -212,8 +212,8 @@ async def test_build_agent_skips_unknown_tools():
         agent, model_name = await build_agent(mock_db, "org-001", "test-agent")
 
     assert model_name == "test"
-    from pydantic_ai.toolsets.filtered import FilteredToolset
     from pydantic_ai.tools import ToolDefinition
+    from pydantic_ai.toolsets.filtered import FilteredToolset
 
     ts = agent._user_toolsets[0]
     assert isinstance(ts, FilteredToolset)
@@ -269,8 +269,8 @@ async def test_build_agent_uses_filtered_toolset():
         agent, model_name = await build_agent(mock_db, "org-001", "test-agent")
 
     assert model_name == "test"
-    from pydantic_ai.toolsets.filtered import FilteredToolset
     from pydantic_ai.tools import ToolDefinition
+    from pydantic_ai.toolsets.filtered import FilteredToolset
 
     ts = agent._user_toolsets[0]
     assert isinstance(ts, FilteredToolset)
@@ -289,7 +289,7 @@ def test_history_budget_no_orphan_response_at_start():
     db_rows = [
         {"role": "user", "content": "A" * 4000},
         {"role": "assistant", "content": "B" * 4000},
-        {"role": "user", "content": "C" * 400},   # current unanswered turn
+        {"role": "user", "content": "C" * 400},  # current unanswered turn
     ]
     result = db_messages_to_history(db_rows, max_tokens=300)
 
@@ -303,12 +303,12 @@ def test_trim_history_processor_trims_to_budget():
     from jordan_claw.agents.factory import trim_history_processor
 
     messages = [
-        ModelRequest(parts=[UserPromptPart(content="A" * 4000)]),       # ~1000 tokens
-        ModelResponse(parts=[TextPart(content="B" * 4000)]),            # ~1000 tokens
-        ModelRequest(parts=[UserPromptPart(content="C" * 4000)]),       # ~1000 tokens
-        ModelResponse(parts=[TextPart(content="D" * 4000)]),            # ~1000 tokens
-        ModelRequest(parts=[UserPromptPart(content="E" * 400)]),        # ~100 tokens
-        ModelResponse(parts=[TextPart(content="F" * 400)]),             # ~100 tokens
+        ModelRequest(parts=[UserPromptPart(content="A" * 4000)]),  # ~1000 tokens
+        ModelResponse(parts=[TextPart(content="B" * 4000)]),  # ~1000 tokens
+        ModelRequest(parts=[UserPromptPart(content="C" * 4000)]),  # ~1000 tokens
+        ModelResponse(parts=[TextPart(content="D" * 4000)]),  # ~1000 tokens
+        ModelRequest(parts=[UserPromptPart(content="E" * 400)]),  # ~100 tokens
+        ModelResponse(parts=[TextPart(content="F" * 400)]),  # ~100 tokens
     ]
     result = trim_history_processor(messages)
 
