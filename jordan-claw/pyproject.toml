@@ -19,6 +19,7 @@ dependencies = [
     "openai>=1.50.0",
     "click>=8.1.0",
     "pyyaml>=6.0",
+    "logfire[fastapi,httpx]>=3.0.0",
 ]
 
 [project.optional-dependencies]

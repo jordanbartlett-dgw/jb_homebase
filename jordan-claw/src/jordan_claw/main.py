@@ -5,6 +5,7 @@ import contextlib
 import logging
 from contextlib import asynccontextmanager
 
+import logfire
 import structlog
 from aiogram import Bot
 from fastapi import FastAPI
@@ -48,8 +49,22 @@ def configure_logging(environment: str, log_level: str) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+
+    # Configure Logfire before structlog so traces are active from the start
+    if settings.logfire_token:
+        logfire.configure(
+            token=settings.logfire_token,
+            service_name="jordan-claw",
+            environment=settings.environment,
+        )
+        logfire.instrument_fastapi(app)
+        logfire.instrument_httpx()
+
     configure_logging(settings.environment, settings.log_level)
     logger = structlog.get_logger()
+
+    if settings.logfire_token:
+        logger.info("logfire_configured", environment=settings.environment)
 
     # Initialize Supabase client
     db = await get_supabase_client(settings.supabase_url, settings.supabase_service_key)

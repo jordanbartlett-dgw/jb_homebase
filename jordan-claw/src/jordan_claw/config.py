@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     environment: str = "development"
     message_history_limit: int = 50
+    logfire_token: str | None = None
 
     model_config = ConfigDict(env_file=".env")
 
