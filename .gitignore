@@ -1,1 +1,4 @@
 .worktrees/
+.claude/
+.serena/
+.infisical.json
