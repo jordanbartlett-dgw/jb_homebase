@@ -60,7 +60,7 @@ jordan-claw/
       models.py          # IncomingMessage, GatewayResponse
       router.py          # Message lifecycle: dedup, history, agent run, persist
     tools/
-      __init__.py        # TOOL_REGISTRY mapping names to callables
+      __init__.py        # BASE_TOOLSET (FunctionToolset) with all agent tools
       calendar.py        # Fastmail CalDAV client
       memory.py          # recall_memory, forget_memory tools
       obsidian.py        # search_notes, read_note, create_source_note, fetch_article
@@ -89,7 +89,7 @@ jordan-claw/
       proactive.py       # Schedule and proactive message CRUD
     utils/
       token_counting.py  # Extract token counts from agent results
-  tests/                 # 153 unit and integration tests
+  tests/                 # 157 unit and integration tests
   scripts/
     obsidian_sync/       # CLI for vault ingest/export
   supabase/migrations/   # 001-005 schema migrations
@@ -187,6 +187,5 @@ RLS is enabled on all tables. Uses the service role key (server-side only).
 
 ## Docs
 
-- `jordan-claw-prd.md` in the repo root has the full product spec with architecture and phased roadmap
 - `docs/superpowers/specs/` has design specs
 - `docs/superpowers/plans/` has implementation plans
