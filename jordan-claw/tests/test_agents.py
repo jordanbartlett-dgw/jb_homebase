@@ -298,6 +298,30 @@ def test_history_budget_no_orphan_response_at_start():
     assert isinstance(result[0], ModelRequest)
 
 
+def test_trim_history_processor_strips_orphaned_tool_results():
+    """trim_history_processor should strip leading ToolReturnPart messages after trimming."""
+    from pydantic_ai import ToolReturnPart
+    from pydantic_ai.messages import ToolCallPart
+
+    from jordan_claw.agents.factory import trim_history_processor
+
+    messages = [
+        ModelRequest(parts=[UserPromptPart(content="A" * 4000)]),
+        ModelResponse(parts=[ToolCallPart(tool_name="search_web", args="", tool_call_id="tc1")]),
+        ModelRequest(parts=[ToolReturnPart(tool_name="search_web", content="result", tool_call_id="tc1")]),
+        ModelResponse(parts=[TextPart(content="B" * 4000)]),
+        ModelRequest(parts=[UserPromptPart(content="C" * 400)]),
+        ModelResponse(parts=[TextPart(content="D" * 400)]),
+    ]
+    # Budget tight enough to drop first user message + tool_use, leaving orphaned tool_result
+    result = trim_history_processor(messages, max_tokens=1500)
+
+    # Should NOT start with a ToolReturnPart
+    assert len(result) >= 1
+    assert isinstance(result[0], ModelRequest)
+    assert all(isinstance(p, UserPromptPart) for p in result[0].parts)
+
+
 def test_trim_history_processor_trims_to_budget():
     """trim_history_processor should drop oldest messages to stay within token budget."""
     from jordan_claw.agents.factory import trim_history_processor

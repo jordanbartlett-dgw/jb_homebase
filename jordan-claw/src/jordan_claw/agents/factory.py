@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import structlog
-from pydantic_ai import Agent, ModelRequest, ModelResponse, TextPart, UserPromptPart
+from pydantic_ai import Agent, ModelRequest, ModelResponse, TextPart, ToolReturnPart, UserPromptPart
 from pydantic_ai.tools import RunContext, ToolDefinition
 from supabase._async.client import AsyncClient
 
@@ -84,8 +84,18 @@ def trim_history_processor(
 
     kept.reverse()
 
-    while kept and isinstance(kept[0], ModelResponse):
-        kept.pop(0)
+    # Strip leading ModelResponse (orphaned assistant) and ModelRequest
+    # containing ToolReturnPart (orphaned tool_result without tool_use).
+    while kept:
+        first = kept[0]
+        if isinstance(first, ModelResponse):
+            kept.pop(0)
+        elif isinstance(first, ModelRequest) and any(
+            isinstance(p, ToolReturnPart) for p in first.parts
+        ):
+            kept.pop(0)
+        else:
+            break
 
     return kept
 
