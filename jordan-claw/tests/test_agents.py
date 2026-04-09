@@ -341,3 +341,25 @@ def test_trim_history_processor_trims_to_budget():
     assert len(result) == 4
     assert isinstance(result[0], ModelRequest)
     assert result[0].parts[0].content == "C" * 4000
+
+
+def test_trim_history_processor_never_returns_empty():
+    """trim_history_processor must never return empty even if all messages are tool-related.
+
+    Regression: pydantic-ai calls history processor mid-run after tool use. The in-flight
+    history may contain only ToolCallPart/ToolReturnPart messages. The stripping loop must
+    not remove all of them, or pydantic-ai raises 'Processed history cannot be empty.'
+    """
+    from pydantic_ai import ToolReturnPart
+    from pydantic_ai.messages import ToolCallPart
+
+    from jordan_claw.agents.factory import trim_history_processor
+
+    # Simulate in-flight history: only tool call + tool return (no user prompt)
+    messages = [
+        ModelResponse(parts=[ToolCallPart(tool_name="search_notes", args="", tool_call_id="tc1")]),
+        ModelRequest(parts=[ToolReturnPart(tool_name="search_notes", content="x" * 2000, tool_call_id="tc1")]),
+    ]
+    result = trim_history_processor(messages, max_tokens=4000)
+
+    assert len(result) >= 1

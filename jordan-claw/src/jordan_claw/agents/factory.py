@@ -86,7 +86,8 @@ def trim_history_processor(
 
     # Strip leading ModelResponse (orphaned assistant) and ModelRequest
     # containing ToolReturnPart (orphaned tool_result without tool_use).
-    while kept:
+    # Never strip to empty — pydantic-ai requires non-empty processed history.
+    while len(kept) > 1:
         first = kept[0]
         if isinstance(first, ModelResponse):
             kept.pop(0)
