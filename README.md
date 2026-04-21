@@ -47,8 +47,7 @@ Conversations and messages persist in Supabase. The schema is multi-tenant from 
 ## Project Structure
 
 ```
-jordan-claw/
-  src/jordan_claw/
+src/jordan_claw/
     main.py              # FastAPI app, lifespan, scheduler startup
     config.py            # pydantic-settings, env vars
     agents/
@@ -112,7 +111,6 @@ jordan-claw/
 ### Install
 
 ```bash
-cd jordan-claw
 uv sync --dev
 ```
 

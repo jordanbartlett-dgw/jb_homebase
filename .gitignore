@@ -1,4 +1,15 @@
+# Project tooling
 .worktrees/
 .claude/
 .serena/
 .infisical.json
+
+# Python
+__pycache__/
+*.pyc
+.env
+.venv/
+*.egg-info/
+dist/
+.ruff_cache/
+.pytest_cache/
