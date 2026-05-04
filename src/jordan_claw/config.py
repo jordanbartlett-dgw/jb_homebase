@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     posthog_host: str = "https://us.i.posthog.com"
     posthog_enabled: bool = True
     frontend_analytics_token: str | None = None
+    eval_judge_model: str = "anthropic:claude-sonnet-4-5-20250929"
+    eval_test_org_id: str = "eaa1eaa1-eaa1-eaa1-eaa1-eaa1eaa1eaa1"
 
     model_config = ConfigDict(env_file=".env")
 
