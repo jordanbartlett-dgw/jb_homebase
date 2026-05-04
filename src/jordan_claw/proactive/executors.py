@@ -9,10 +9,12 @@ from supabase._async.client import AsyncClient
 
 from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.agents.factory import build_agent
+from jordan_claw.analytics.types import RunKind
 from jordan_claw.config import Settings
 from jordan_claw.db.memory import get_recent_events
 from jordan_claw.memory.reader import load_memory_context
 from jordan_claw.tools.calendar import get_calendar_events
+from jordan_claw.utils.agent_runner import run_agent_instrumented
 
 log = structlog.get_logger()
 
@@ -66,9 +68,11 @@ async def _run_agent_prompt(
     agent_slug: str,
     settings: Settings,
     prompt: str,
+    *,
+    schedule_name: str,
 ) -> str:
-    """Build the agent and run a single prompt, returning the output text."""
-    agent, _ = await build_agent(db, org_id, agent_slug)
+    """Build the agent and run a single prompt through the instrumented wrapper."""
+    agent, model_name = await build_agent(db, org_id, agent_slug)
     deps = AgentDeps(
         org_id=org_id,
         tavily_api_key=settings.tavily_api_key,
@@ -77,7 +81,18 @@ async def _run_agent_prompt(
         supabase_client=db,
         openai_api_key=settings.openai_api_key,
     )
-    result = await agent.run(prompt, deps=deps)
+    result = await run_agent_instrumented(
+        agent=agent,
+        prompt=prompt,
+        deps=deps,
+        db=db,
+        org_id=org_id,
+        agent_slug=agent_slug,
+        model=model_name,
+        run_kind=RunKind.PROACTIVE,
+        channel="proactive",
+        schedule_name=schedule_name,
+    )
     return result.output
 
 
@@ -103,7 +118,10 @@ async def execute_morning_briefing(
     prompt = MORNING_BRIEFING_PROMPT.format(calendar=calendar, memory=memory)
     agent_slug = config.get("agent_slug", settings.default_agent_slug)
 
-    return await _run_agent_prompt(db, org_id, agent_slug, settings, prompt)
+    return await _run_agent_prompt(
+        db, org_id, agent_slug, settings, prompt,
+        schedule_name="morning_briefing",
+    )
 
 
 async def execute_weekly_review(
@@ -139,7 +157,10 @@ async def execute_weekly_review(
     )
     agent_slug = config.get("agent_slug", settings.default_agent_slug)
 
-    return await _run_agent_prompt(db, org_id, agent_slug, settings, prompt)
+    return await _run_agent_prompt(
+        db, org_id, agent_slug, settings, prompt,
+        schedule_name="weekly_review",
+    )
 
 
 def _parse_event_times(
@@ -223,7 +244,10 @@ async def execute_calendar_reminder(
     )
     agent_slug = config.get("agent_slug", settings.default_agent_slug)
 
-    return await _run_agent_prompt(db, org_id, agent_slug, settings, prompt)
+    return await _run_agent_prompt(
+        db, org_id, agent_slug, settings, prompt,
+        schedule_name="calendar_reminder",
+    )
 
 
 def format_memory_flag(old_content: str, new_content: str) -> str:

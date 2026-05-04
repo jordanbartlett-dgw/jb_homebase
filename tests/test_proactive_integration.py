@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -68,8 +69,12 @@ async def test_full_scheduled_flow():
         ),
         patch(
             "jordan_claw.proactive.executors.build_agent",
-            new_callable=AsyncMock,
-        ) as mock_build,
+            new=AsyncMock(return_value=(MagicMock(), "test-model")),
+        ),
+        patch(
+            "jordan_claw.proactive.executors.run_agent_instrumented",
+            new=AsyncMock(return_value=SimpleNamespace(output="Good morning, Jordan!")),
+        ),
         patch(
             "jordan_claw.proactive.delivery.get_telegram_chat_id",
             new=AsyncMock(return_value=12345),
@@ -92,12 +97,6 @@ async def test_full_scheduled_flow():
             new=AsyncMock(return_value=[]),
         ),
     ):
-        mock_agent = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.output = "Good morning, Jordan!"
-        mock_agent.run = AsyncMock(return_value=mock_result)
-        mock_build.return_value = (mock_agent, "test-model")
-
         await dispatch_task(schedule, mock_db, mock_bot, mock_settings)
 
     # Verify Telegram message was sent

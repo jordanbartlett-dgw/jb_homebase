@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 
 import structlog
 from aiogram import Bot
@@ -9,12 +8,13 @@ from supabase._async.client import AsyncClient
 
 from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.agents.factory import build_agent, db_messages_to_history
+from jordan_claw.analytics.types import RunKind
 from jordan_claw.db.conversations import get_or_create_conversation, update_conversation_status
 from jordan_claw.db.messages import get_recent_messages, message_exists, save_message
 from jordan_claw.gateway.models import GatewayResponse, IncomingMessage
 from jordan_claw.memory.extractor import extract_memory_background
 from jordan_claw.memory.reader import load_memory_context
-from jordan_claw.utils.token_counting import extract_usage
+from jordan_claw.utils.agent_runner import run_agent_instrumented
 
 logger = structlog.get_logger()
 
@@ -72,10 +72,8 @@ async def handle_message(
         log.warning("memory_context_load_failed", org_id=msg.org_id)
         memory_context = ""
 
-    # 6. Build agent from DB config, run with deps
+    # 6. Build agent from DB config, run with deps via instrumented wrapper
     try:
-        start = time.monotonic()
-
         agent, model_name = await build_agent(
             db, msg.org_id, agent_slug, memory_context=memory_context
         )
@@ -89,24 +87,23 @@ async def handle_message(
         )
         history = db_messages_to_history(db_messages, max_tokens=0)
 
-        result = await agent.run(msg.content, message_history=history, deps=deps)
-
-        latency_ms = int((time.monotonic() - start) * 1000)
+        result = await run_agent_instrumented(
+            agent=agent,
+            prompt=msg.content,
+            deps=deps,
+            db=db,
+            org_id=msg.org_id,
+            agent_slug=agent_slug,
+            model=model_name,
+            run_kind=RunKind.USER_MESSAGE,
+            channel=msg.channel,
+            conversation_id=conversation_id,
+            message_history=history,
+        )
         response_text = result.output
-        usage = extract_usage(result.usage())
 
         if environment == "development":
             log.debug("agent_message_content", content=msg.content, response=response_text)
-
-        log.info(
-            "agent_run_complete",
-            status="success",
-            input_tokens=usage["input_tokens"],
-            output_tokens=usage["output_tokens"],
-            total_tokens=usage["total_tokens"],
-            model=model_name,
-            latency_ms=latency_ms,
-        )
 
     except Exception:
         log.exception("agent_run_failed", status="error")
@@ -125,8 +122,9 @@ async def handle_message(
         conversation_id=conversation_id,
         role="assistant",
         content=response_text,
-        token_count=usage["total_tokens"],
+        token_count=result.total_tokens,
         model=model_name,
+        cost_usd=float(result.cost_usd) if result.cost_usd is not None else None,
     )
 
     # 8. Fire-and-forget memory extraction
@@ -139,6 +137,6 @@ async def handle_message(
     return GatewayResponse(
         content=response_text,
         conversation_id=conversation_id,
-        token_count=usage["total_tokens"],
+        token_count=result.total_tokens,
         model=model_name,
     )
