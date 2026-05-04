@@ -86,12 +86,18 @@ src/jordan_claw/
       messages.py        # Message CRUD
       obsidian.py        # Obsidian notes and chunks CRUD
       proactive.py       # Schedule and proactive message CRUD
+      usage_events.py    # Per-run analytics rows + most_recent_agent helper
+    analytics/
+      types.py           # RunKind StrEnum, AgentRunResult dataclass
     utils/
       token_counting.py  # Extract token counts from agent results
-  tests/                 # 157 unit and integration tests
+      pricing.py         # Hand-edited Claude price table + compute_cost
+      agent_runner.py    # Shared instrumented wrapper around agent.run()
+  tests/                 # 180 unit and integration tests
   scripts/
     obsidian_sync/       # CLI for vault ingest/export
-  supabase/migrations/   # 001-005 schema migrations
+  supabase/migrations/   # 001-006 schema migrations
+  docs/plans/            # Implementation plans (analytics-observability.md)
   Dockerfile
   pyproject.toml
 ```
@@ -162,7 +168,7 @@ Port:   8000
 
 ## Database
 
-Ten tables in Supabase:
+Eleven tables in Supabase:
 
 - **organizations** stores tenants (one today: Jordan Bartlett)
 - **agents** stores agent config (one today: claw-main), DB-driven tools and system prompts
@@ -174,16 +180,33 @@ Ten tables in Supabase:
 - **obsidian_notes** / **obsidian_note_chunks** vault notes with pgvector embeddings
 - **proactive_schedules** cron-driven task definitions for outbound messaging
 - **proactive_messages** audit log of every proactive message sent
+- **usage_events** one row per agent run — cost, tokens, latency, outcome (source of truth for cost / quality dashboards)
 
 RLS is enabled on all tables. Uses the service role key (server-side only).
 
+## Observability
+
+Every agent run goes through `src/jordan_claw/utils/agent_runner.py:run_agent_instrumented`, which produces three signals:
+
+1. **Logfire trace** — parent `agent run` span carrying `agent_slug`, `channel`, `run_kind`, `usage.cost_usd`, `usage.duration_ms`, `usage.tool_call_count`, `outcome.success`. Auto-instrumentation via `logfire.instrument_pydantic_ai()` populates the child `chat anthropic:*` spans with `gen_ai.input.messages` / `gen_ai.output.messages`.
+2. **`usage_events` row** — fire-and-forget INSERT for queryable analytics (`run_kind` ∈ `user_message` / `proactive` / `memory_extract` / `eval`).
+3. **Token-budget guardrail** — runs that exceed 200K total tokens raise `TokenBudgetExceededError` and record a failure row instead of melting the bill.
+
+The full plan is at `docs/plans/analytics-observability.md` — a 5-PR sequence: Logfire labels (PR1, shipped) → `usage_events` + wrapper (PR2, shipped) → PostHog dashboards (PR3, next) → feedback loop (PR4) → evals harness (PR5).
+
 ## What's Next
 
-- **Slack adapter**: Second channel
-- **Sub-agent delegation**: Specialized agents for specific tasks
-- **Multi-agent routing**: Route conversations to the right agent per org
+- **PR3 — PostHog dashboards**: queryable rollups over `usage_events`, six baseline insights (cost per agent, p95 latency, etc.). Blocked on a PostHog project + `POSTHOG_API_KEY` env var. See `docs/plans/analytics-observability.md` Item 3.
+- **PR4 — Personal feedback loop**: `/feedback` Telegram command + weekly review prompt (see plan Item 5).
+- **PR5 — Pydantic Evals**: regression-safe baselines + nightly Railway cron.
+- **Slack adapter**: second channel.
+- **Sub-agent delegation**: specialized agents for specific tasks.
+- **Multi-agent routing**: route conversations to the right agent per org.
 
 ## Docs
 
-- `docs/superpowers/specs/` has design specs
-- `docs/superpowers/plans/` has implementation plans
+- `docs/plans/analytics-observability.md` — 5-PR analytics + observability rollout
+- `docs/jordan-claw-lessons-learned.md` — retrospective notes
+- `docs/claw-main-prompt-reference.md` — agent prompt reference
+- `docs/superpowers/specs/` — older design specs
+- `docs/superpowers/plans/` — older implementation plans
