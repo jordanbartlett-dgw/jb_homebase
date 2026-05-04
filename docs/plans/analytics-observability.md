@@ -1,5 +1,19 @@
 # Jordan Claw — Analytics & Observability Plan
 
+## Status (2026-05-04)
+
+| PR | Item | Status |
+|---|---|---|
+| PR1 | Logfire `instrument_pydantic_ai()` | **Shipped** (commit `27cc5f4`) |
+| PR2 | `usage_events` table + shared agent_runner | **Shipped** (commit `45febc6`) |
+| PR3 | PostHog client + emitter + frontend proxy | **Shipped** (commit `ec1ea71`) |
+| PR4 | `feedback` table + `/feedback` command + weekly review | **Shipped** (commit `3aa0ef5`) |
+| PR5 | Pydantic Evals + datasets + Railway cron | **Not started** |
+
+Production dashboard ("Jordan Claw — Production", id `1543058`) has all 6 insights live and verified end-to-end. See `docs/observability.md` for the dashboard catalogue and verification log. The "PR5 starting checklist" in the project memory (`memory/project_analytics_observability_prs.md`) is the definitive next-session prompt.
+
+---
+
 ## Context
 
 Jordan Claw has pivoted from "multi-tenant consultancy product" to **personal agent OS** — a workbench where Jordan builds and runs a growing roster of agents and observes whether they earn their keep. Multi-tenant concerns are deferred to a future repo.

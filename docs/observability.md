@@ -28,22 +28,22 @@ Event names are constants in `jordan_claw.analytics.emitter.ALLOWED_EVENTS`. Nev
 
 Browser / Flutter clients hit `POST /api/analytics/event` with `Authorization: Bearer <FRONTEND_ANALYTICS_TOKEN>`. The route validates the event against `ALLOWED_EVENTS`, enriches with the server-side `org_id`, and dispatches to the same emitter functions used in-process. There is no second emission path.
 
-## First dashboard
+## Production dashboard
 
-Build via the PostHog MCP server (install: `npx @posthog/wizard mcp add`). Claude can call `dashboard-create` + `insight-create` directly — no UI clicking required. Definitions are kept here so the dashboard is reproducible if PostHog state is lost or if the MCP is unavailable.
+**Name:** Jordan Claw — Production
+**Dashboard id:** `1543058`
+**URL:** https://us.posthog.com/project/409412/dashboard/1543058
 
-Pin all insights to a single dashboard named **"Jordan Claw — Production"**.
+Built via the PostHog MCP server (install: `npx @posthog/wizard mcp add`). Definitions are kept here so the dashboard is reproducible if PostHog state is lost or the MCP is unavailable. To rebuild: call `dashboard-create` then `insight-create` with `dashboards: [<dashboard_id>]` for each row below.
 
-| # | Insight | Definition |
-|---|---|---|
-| 1 | Daily cost per agent | `agent_run_completed`, sum(`cost_usd`), breakdown `agent_slug`, daily, last 30d |
-| 2 | Runs per agent per day | `agent_run_completed`, count, breakdown `agent_slug`, daily, last 30d |
-| 3 | p95 latency | `agent_run_completed`, p95(`duration_ms`), breakdown `agent_slug` × `run_kind`, last 14d |
-| 4 | Proactive delivery rate | `proactive_sent`, count, breakdown `schedule_name`, last 30d |
-| 5 | Avg feedback per agent | `feedback_submitted`, avg(`rating`), breakdown `agent_slug`, weekly, last 90d |
-| 6 | Low-rating count | `feedback_submitted` where `rating <= 2`, count, breakdown `agent_slug`, last 30d |
-
-Insights 5 and 6 begin populating once PR4 (`feedback`) ships — defer building them until then so the dashboard doesn't show empty tiles.
+| # | Insight | short_id | Definition |
+|---|---|---|---|
+| 1 | Daily cost per agent | `gObWujy1` | `agent_run_completed`, sum(`cost_usd`), breakdown `agent_slug`, daily, last 30d, `$`-prefixed Y axis |
+| 2 | Runs per agent per day | `lSiprPuZ` | `agent_run_completed`, count, breakdown `agent_slug`, daily, last 30d |
+| 3 | p95 latency by agent and run kind | `MNyUxBXZ` | `agent_run_completed`, p95(`duration_ms`), breakdown `agent_slug` × `run_kind`, daily, last 14d, `duration_ms` Y axis |
+| 4 | Proactive delivery rate | `jPYFbymj` | `proactive_sent`, count, breakdown `schedule_name`, daily, last 30d |
+| 5 | Avg feedback per agent | `j8ldY5Dv` | `feedback_submitted`, avg(`rating`), breakdown `agent_slug`, weekly, last 90d |
+| 6 | Low-rating count (rating ≤ 2) | `Qa0lS17U` | `feedback_submitted` filtered to `rating < 3` (PostHog has no `lte` operator on numerics; integer-equivalent), count, breakdown `agent_slug`, daily, last 30d |
 
 ## Data starts on migration date
 
@@ -61,3 +61,5 @@ Insights 5 and 6 begin populating once PR4 (`feedback`) ships — defer building
 ## Verification log
 
 - 2026-05-04: PR3 deployed to Railway, `POSTHOG_API_KEY` (project key) and `FRONTEND_ANALYTICS_TOKEN` set. Live `agent_run_completed` events confirmed in PostHog US. `posthog_client_initialized` log line present in Railway runtime logs with no upload errors following.
+- 2026-05-04: Dashboard 1543058 created via PostHog MCP. Insights 1-4 (`agent_run_completed` + `proactive_sent`) pinned. Tiles render correctly; the `proactive_sent` tile is empty until the next proactive run fires.
+- 2026-05-04: PR4 deployed to Railway, migration 007 applied. `/feedback 4 testing` and `/feedback weekly 5 great week` both produce rows in `feedback` (`prompt_source` correctly attributed) and `feedback_submitted` PostHog events with all 5 props. Cross-reference confirmed: `feedback.agent_slug` matches `most_recent_agent` from `usage_events` for the same channel. Insights 5 and 6 added to the dashboard.
