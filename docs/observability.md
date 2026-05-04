@@ -30,7 +30,9 @@ Browser / Flutter clients hit `POST /api/analytics/event` with `Authorization: B
 
 ## First dashboard
 
-Build these in PostHog UI and pin to a "Jordan Claw — Production" dashboard. Definitions are kept here so the dashboard is reproducible if PostHog state is lost.
+Build via the PostHog MCP server (install: `npx @posthog/wizard mcp add`). Claude can call `dashboard-create` + `insight-create` directly — no UI clicking required. Definitions are kept here so the dashboard is reproducible if PostHog state is lost or if the MCP is unavailable.
+
+Pin all insights to a single dashboard named **"Jordan Claw — Production"**.
 
 | # | Insight | Definition |
 |---|---|---|
@@ -41,7 +43,7 @@ Build these in PostHog UI and pin to a "Jordan Claw — Production" dashboard. D
 | 5 | Avg feedback per agent | `feedback_submitted`, avg(`rating`), breakdown `agent_slug`, weekly, last 90d |
 | 6 | Low-rating count | `feedback_submitted` where `rating <= 2`, count, breakdown `agent_slug`, last 30d |
 
-Insights 5 and 6 begin populating once PR4 (`feedback`) ships.
+Insights 5 and 6 begin populating once PR4 (`feedback`) ships — defer building them until then so the dashboard doesn't show empty tiles.
 
 ## Data starts on migration date
 
@@ -53,3 +55,9 @@ Insights 5 and 6 begin populating once PR4 (`feedback`) ships.
 - **PostHog goes down**: emits become no-ops at WARN level. The agent never fails because PostHog is unavailable. Token usage is still captured in `usage_events` and Logfire.
 - **Disable PostHog locally**: unset `POSTHOG_API_KEY` or set `POSTHOG_ENABLED=false`.
 - **Drain the queue**: `posthog.shutdown()` is registered in the FastAPI lifespan teardown. Pending captures are awaited via `emitter.drain_pending_emits()` before shutdown.
+- **PostHog "Sessions" tab is empty by design**: we use the server-side Python SDK and don't emit `$session_id`. PostHog Sessions is a frontend-SDK concept. Use Live events / the Events explorer / the dashboard above instead.
+- **Project key vs. personal key**: `POSTHOG_API_KEY` must be the *Project* API key (`phc_*`) from PostHog → Project settings. The *Personal* API key (`phx_*`) from user settings will return 401 from the capture endpoint.
+
+## Verification log
+
+- 2026-05-04: PR3 deployed to Railway, `POSTHOG_API_KEY` (project key) and `FRONTEND_ANALYTICS_TOKEN` set. Live `agent_run_completed` events confirmed in PostHog US. `posthog_client_initialized` log line present in Railway runtime logs with no upload errors following.
