@@ -5,6 +5,8 @@ from datetime import UTC, datetime, timedelta
 import structlog
 from supabase._async.client import AsyncClient
 
+from jordan_claw.analytics import emitter
+
 log = structlog.get_logger()
 
 SESSION_TIMEOUT_MINUTES = 30
@@ -30,6 +32,7 @@ async def get_or_create_conversation(
     org_id: str,
     channel: str,
     channel_thread_id: str,
+    agent_slug: str | None = None,
 ) -> dict:
     """Find an active conversation or create a new one.
 
@@ -74,6 +77,13 @@ async def get_or_create_conversation(
         )
         .execute()
     )
+    if agent_slug is not None:
+        await emitter.agent_session_started(
+            org_id=org_id,
+            user_id=None,
+            channel=channel,
+            agent_slug=agent_slug,
+        )
     return result.data[0]
 
 

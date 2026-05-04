@@ -10,9 +10,12 @@ import structlog
 from aiogram import Bot
 from fastapi import FastAPI
 
+from jordan_claw.analytics import emitter
+from jordan_claw.analytics.posthog_client import shutdown_posthog
 from jordan_claw.channels.telegram import create_telegram_dispatcher, start_polling
 from jordan_claw.config import get_settings
 from jordan_claw.db.client import close_supabase_client, get_supabase_client
+from jordan_claw.gateway.analytics_proxy import build_analytics_router
 from jordan_claw.proactive.scheduler import scheduler_loop
 
 
@@ -96,6 +99,14 @@ async def lifespan(app: FastAPI):
     )
     logger.info("proactive_scheduler_started")
 
+    # Mount analytics proxy after settings are loaded so org_id/token are available
+    app.include_router(
+        build_analytics_router(
+            token=settings.frontend_analytics_token,
+            org_id=settings.default_org_id,
+        )
+    )
+
     logger.info("application_started", environment=settings.environment)
 
     yield
@@ -107,6 +118,8 @@ async def lifespan(app: FastAPI):
     scheduler_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await scheduler_task
+    await emitter.drain_pending_emits()
+    shutdown_posthog()
     await bot.session.close()
     await close_supabase_client()
     logger.info("application_stopped")

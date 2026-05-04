@@ -10,6 +10,7 @@ from pydantic_ai import Agent
 from pydantic_ai.messages import ToolCallPart
 from supabase._async.client import AsyncClient
 
+from jordan_claw.analytics import emitter
 from jordan_claw.analytics.types import AgentRunResult, RunKind
 from jordan_claw.db.usage_events import save_usage_event
 from jordan_claw.utils.pricing import compute_cost
@@ -157,6 +158,23 @@ async def run_agent_instrumented[OutputT](
                     error_severity=error_severity,
                 )
             )
+            await emitter.agent_run_completed(
+                org_id=org_id,
+                user_id=None,
+                agent_slug=agent_slug,
+                run_kind=run_kind,
+                channel=channel,
+                conversation_id=conversation_id,
+                schedule_name=schedule_name,
+                model=model,
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=None,
+                duration_ms=duration_ms,
+                tool_call_count=0,
+                success=False,
+                error_type=error_type,
+            )
             raise
 
         duration_ms = int((time.monotonic() - start) * 1000)
@@ -196,6 +214,23 @@ async def run_agent_instrumented[OutputT](
                     error_severity="high",
                 )
             )
+            await emitter.agent_run_completed(
+                org_id=org_id,
+                user_id=None,
+                agent_slug=agent_slug,
+                run_kind=run_kind,
+                channel=channel,
+                conversation_id=conversation_id,
+                schedule_name=schedule_name,
+                model=model,
+                input_tokens=usage["input_tokens"],
+                output_tokens=usage["output_tokens"],
+                cost_usd=cost,
+                duration_ms=duration_ms,
+                tool_call_count=tool_call_count,
+                success=False,
+                error_type="token_budget_exceeded",
+            )
             raise TokenBudgetExceededError(
                 f"agent_run total_tokens={usage['total_tokens']} > budget={max_total_tokens}"
             )
@@ -226,6 +261,23 @@ async def run_agent_instrumented[OutputT](
                 error_type=None,
                 error_severity=None,
             )
+        )
+        await emitter.agent_run_completed(
+            org_id=org_id,
+            user_id=None,
+            agent_slug=agent_slug,
+            run_kind=run_kind,
+            channel=channel,
+            conversation_id=conversation_id,
+            schedule_name=schedule_name,
+            model=model,
+            input_tokens=usage["input_tokens"],
+            output_tokens=usage["output_tokens"],
+            cost_usd=cost,
+            duration_ms=duration_ms,
+            tool_call_count=tool_call_count,
+            success=True,
+            error_type=None,
         )
 
         return AgentRunResult(

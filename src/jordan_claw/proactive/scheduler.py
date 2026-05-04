@@ -74,6 +74,8 @@ async def dispatch_task(
             task_type=schedule.task_type,
             trigger="scheduled",
             schedule_id=schedule.id,
+            schedule_name=schedule.name,
+            agent_slug=schedule.config.get("agent_slug", settings.default_agent_slug),
             timezone=schedule.timezone,
         )
 
@@ -145,6 +147,7 @@ async def schedule_calendar_reminders(
                     content=content,
                     task_type="calendar_reminder",
                     trigger="calendar_reminder",
+                    agent_slug=config.get("agent_slug", settings.default_agent_slug),
                 )
             except Exception:
                 log.exception("proactive.calendar_reminder_failed", event_title=t)
