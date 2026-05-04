@@ -4,6 +4,7 @@ import structlog
 from aiogram import Bot
 from supabase._async.client import AsyncClient
 
+from jordan_claw.analytics import emitter
 from jordan_claw.db.proactive import (
     get_telegram_chat_id,
     insert_proactive_message,
@@ -22,6 +23,8 @@ async def send_proactive_message(
     task_type: str,
     trigger: str,
     schedule_id: str | None = None,
+    schedule_name: str | None = None,
+    agent_slug: str | None = None,
     timezone: str = "America/Chicago",
 ) -> None:
     """Send a proactive message via Telegram and log it."""
@@ -53,6 +56,17 @@ async def send_proactive_message(
         trigger=trigger,
         content=content,
         schedule_id=schedule_id,
+    )
+
+    await emitter.proactive_sent(
+        org_id=org_id,
+        user_id=None,
+        schedule_name=schedule_name,
+        task_type=task_type,
+        channel="telegram",
+        content_length=len(content),
+        agent_slug=agent_slug,
+        trigger=trigger,
     )
 
     log.info("proactive.sent", org_id=org_id, task_type=task_type, trigger=trigger)

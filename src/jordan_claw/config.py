@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     environment: str = "development"
     message_history_limit: int = 50
     logfire_token: str | None = None
+    posthog_api_key: str | None = None
+    posthog_host: str = "https://us.i.posthog.com"
+    posthog_enabled: bool = True
+    frontend_analytics_token: str | None = None
 
     model_config = ConfigDict(env_file=".env")
 

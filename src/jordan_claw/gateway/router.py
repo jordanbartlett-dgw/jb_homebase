@@ -48,7 +48,7 @@ async def handle_message(
 
     # 2. Get or create conversation
     conversation = await get_or_create_conversation(
-        db, msg.org_id, msg.channel, msg.channel_thread_id
+        db, msg.org_id, msg.channel, msg.channel_thread_id, agent_slug=agent_slug
     )
     conversation_id = conversation["id"]
     log = log.bind(conversation_id=conversation_id, agent_slug=agent_slug)
