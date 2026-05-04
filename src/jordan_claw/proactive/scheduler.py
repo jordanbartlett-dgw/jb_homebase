@@ -17,6 +17,7 @@ from jordan_claw.proactive.executors import (
     execute_calendar_reminder,
     execute_daily_scan,
     execute_morning_briefing,
+    execute_weekly_feedback_request,
     execute_weekly_review,
 )
 from jordan_claw.proactive.models import ProactiveSchedule
@@ -28,6 +29,7 @@ EXECUTOR_MAP = {
     "morning_briefing": execute_morning_briefing,
     "weekly_review": execute_weekly_review,
     "daily_scan": execute_daily_scan,
+    "weekly_feedback_request": execute_weekly_feedback_request,
 }
 
 CHECK_INTERVAL_SECONDS = 60

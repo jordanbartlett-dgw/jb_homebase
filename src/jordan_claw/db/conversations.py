@@ -96,3 +96,29 @@ async def update_conversation_status(
     await (
         client.table("conversations").update({"status": status}).eq("id", conversation_id).execute()
     )
+
+
+async def most_recent_conversation_id(
+    client: AsyncClient,
+    *,
+    org_id: str,
+    channel: str,
+) -> str | None:
+    """Return the id of the most recent conversation for this org/channel.
+
+    Used by the /feedback command to attach a rating to whatever conversation
+    Jordan was most recently in. No status filter — archived conversations
+    still count as "the last thing he was talking about."
+    """
+    result = (
+        await client.table("conversations")
+        .select("id")
+        .eq("org_id", org_id)
+        .eq("channel", channel)
+        .order("updated_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        return None
+    return result.data[0]["id"]
