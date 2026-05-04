@@ -61,6 +61,13 @@ Include any relevant context you know about the attendees or topic.
 {memory}
 """
 
+WEEKLY_FEEDBACK_REQUEST_MESSAGE = (
+    "Weekly check-in: how did the agents do this week?\n\n"
+    "Reply with `/feedback weekly <1-5> [optional note]`.\n\n"
+    "The `weekly` keyword is what tags this rating as a weekly review. "
+    "Leave it off and it lands as ad-hoc feedback."
+)
+
 
 async def _run_agent_prompt(
     db: AsyncClient,
@@ -223,6 +230,16 @@ async def execute_daily_scan(
         return ""
 
     return "Calendar conflicts detected:\n" + "\n".join(conflicts)
+
+
+async def execute_weekly_feedback_request(
+    db: AsyncClient,
+    org_id: str,
+    config: dict,
+    settings: Settings,
+) -> str:
+    """Static prompt asking Jordan to rate the week. No agent run, no LLM call."""
+    return WEEKLY_FEEDBACK_REQUEST_MESSAGE
 
 
 async def execute_calendar_reminder(
