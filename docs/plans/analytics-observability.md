@@ -436,7 +436,7 @@ Add `evals` to `[tool.hatch.build.targets.wheel].packages` so the CLI works on R
 - Each case: `inputs={query: str}`, `expected_output={expected_slugs: list[str]}`.
 - Task fn: pure semantic search via the existing Obsidian search function; no agent, no model call inside scoring → zero LLM cost.
 - Scorer: set-membership in top-3, score = `|expected ∩ returned| / |expected|`.
-- Test corpus: same dev Supabase DB, dedicated `org_id = '00000000-0000-0000-0000-000000000eva'`. Cheaper than a separate Supabase project; isolated by org_id filter.
+- Test corpus: same dev Supabase DB, dedicated `org_id = 'eaa1eaa1-eaa1-eaa1-eaa1-eaa1eaa1eaa1'`. Cheaper than a separate Supabase project; isolated by org_id filter.
 - **RLS verification gate (blocks PR5 merge):** before PR5 lands, verify RLS policies on `obsidian_notes` and `obsidian_note_chunks` actually filter by `org_id`. Add `tests/test_evals_isolation.py` that asserts a query authenticated as a non-eva org returns zero eva rows. If RLS isn't enforced as expected (service-role key bypasses RLS, so this test must use the anon key path), switch to a separate Supabase project before merging PR5.
 - Seed script `evals/seed_corpus.py` reads from `evals/fixtures/obsidian_corpus/`, computes embeddings via OpenAI, idempotent on slug.
 
@@ -608,7 +608,7 @@ Migration 007 above.
 - `posthog_enabled: bool = True`
 - `frontend_analytics_token: str | None = None`
 - `eval_judge_model: str = "anthropic:claude-sonnet-4-5-20250929"`
-- `eval_test_org_id: str = "00000000-0000-0000-0000-000000000eva"`
+- `eval_test_org_id: str = "eaa1eaa1-eaa1-eaa1-eaa1-eaa1eaa1eaa1"`
 
 ---
 
@@ -654,7 +654,7 @@ End-to-end test path after all PRs land:
 
 1. **Pricing table** — hand-edit `src/jordan_claw/utils/pricing.py` with a date-stamp comment on each model entry. Source-controlled, ships with deploys. No DB, no env JSON.
 2. **Eval judge model** — `claude-sonnet-4-5-20250929` (default in `settings.eval_judge_model`). Judgment quality matters more than the ~$30/mo delta at single-user scale.
-3. **Obsidian eval corpus location** — same dev Supabase, synthetic `org_id = '00000000-0000-0000-0000-000000000eva'`. Blocked by RLS verification gate before PR5 merges (see Item 4).
+3. **Obsidian eval corpus location** — same dev Supabase, synthetic `org_id = 'eaa1eaa1-eaa1-eaa1-eaa1-eaa1eaa1eaa1'`. Blocked by RLS verification gate before PR5 merges (see Item 4).
 4. **`messages.cost_usd`** — keep populating it. Redundancy with `usage_events.cost_usd`; fire-and-forget `usage_events` writes can be lost; the dict-key cost on `save_message` is trivial. `usage_events` remains the analytics source of truth.
 5. **`channel` enum** — synthetic values (`telegram`, `proactive`, `memory_extract`, future `flutter`). One column. Documented in the migration 006 SQL comment.
 6. **Pydantic Evals package** — verify `pydantic-evals` vs. bundled-with-`pydantic-ai` on the PR5 branch before adding to `pyproject.toml`. If separate, pin to the same minor version as `pydantic-ai`.
