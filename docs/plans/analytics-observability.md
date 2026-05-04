@@ -8,9 +8,11 @@
 | PR2 | `usage_events` table + shared agent_runner | **Shipped** (commit `45febc6`) |
 | PR3 | PostHog client + emitter + frontend proxy | **Shipped** (commit `ec1ea71`) |
 | PR4 | `feedback` table + `/feedback` command + weekly review | **Shipped** (commit `3aa0ef5`) |
-| PR5 | Pydantic Evals + datasets + Railway cron | **Not started** |
+| PR5 | Pydantic Evals + datasets + Railway cron | **Shipped** (branch `feature/analytics-pr5-evals`) — local; Railway cron pending |
 
-Production dashboard ("Jordan Claw — Production", id `1543058`) has all 6 insights live and verified end-to-end. See `docs/observability.md` for the dashboard catalogue and verification log. The "PR5 starting checklist" in the project memory (`memory/project_analytics_observability_prs.md`) is the definitive next-session prompt.
+Production dashboard ("Jordan Claw — Production", id `1543058`) has all 6 insights live and verified end-to-end. See `docs/observability.md` for the dashboard catalogue and verification log. PR5 details and CLI usage are in `docs/evals.md`. Initial baselines: `obsidian_retrieval` 1.000 (20/20), `memory_recall` 0.975 (20/20).
+
+The eval test org id changed from the plan-spec `00000000-0000-0000-0000-000000000eva` (invalid — `v` is not a hex digit) to `eaa1eaa1-eaa1-eaa1-eaa1-eaa1eaa1eaa1` (valid hex, still grep-distinctive). `Settings.eval_test_org_id` is the source of truth.
 
 ---
 
