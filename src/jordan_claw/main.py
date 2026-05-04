@@ -59,6 +59,7 @@ async def lifespan(app: FastAPI):
         )
         logfire.instrument_fastapi(app)
         logfire.instrument_httpx()
+        logfire.instrument_pydantic_ai()
 
     configure_logging(settings.environment, settings.log_level)
     logger = structlog.get_logger()
