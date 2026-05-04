@@ -5,6 +5,7 @@ from aiogram import Bot
 from pydantic_ai import Agent
 from supabase._async.client import AsyncClient
 
+from jordan_claw.analytics.types import RunKind
 from jordan_claw.db.memory import (
     append_events,
     archive_fact,
@@ -13,6 +14,9 @@ from jordan_claw.db.memory import (
     upsert_facts,
 )
 from jordan_claw.memory.models import ExtractedEvent, ExtractionResult, MemoryFact
+from jordan_claw.utils.agent_runner import run_agent_instrumented
+
+EXTRACTOR_MODEL = "anthropic:claude-haiku-4-5-20251001"
 
 log = structlog.get_logger()
 
@@ -41,7 +45,7 @@ conversation.
 def create_extraction_agent() -> Agent[None, ExtractionResult]:
     """Create the memory extraction agent with structured output."""
     return Agent(
-        "anthropic:claude-haiku-4-5-20251001",
+        EXTRACTOR_MODEL,
         system_prompt=EXTRACTION_SYSTEM_PROMPT,
         output_type=ExtractionResult,
     )
@@ -125,7 +129,17 @@ async def extract_memory_background(
         existing_facts = await get_active_facts(db, org_id)
         agent = create_extraction_agent()
         prompt = build_extraction_prompt(user_message, assistant_response, existing_facts)
-        result = await agent.run(prompt)
+        result = await run_agent_instrumented(
+            agent=agent,
+            prompt=prompt,
+            deps=None,
+            db=db,
+            org_id=org_id,
+            agent_slug="memory-extractor",
+            model=EXTRACTOR_MODEL,
+            run_kind=RunKind.MEMORY_EXTRACT,
+            channel="memory_extract",
+        )
         extraction = result.output
 
         # Handle corrections: archive old facts, pin new ones

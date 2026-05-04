@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,6 +11,11 @@ from jordan_claw.memory.extractor import (
     extract_memory_background,
 )
 from jordan_claw.memory.models import ExtractedFact, ExtractionResult, MemoryFact
+
+
+def _wrapper_returning(output) -> AsyncMock:
+    """Build an AsyncMock for run_agent_instrumented that returns an object with .output."""
+    return AsyncMock(return_value=SimpleNamespace(output=output))
 
 
 def test_create_extraction_agent(monkeypatch):
@@ -57,8 +63,7 @@ def test_build_extraction_prompt_with_existing_facts():
 @pytest.mark.asyncio
 async def test_extract_memory_background_success():
     mock_db = MagicMock()
-    mock_result = MagicMock()
-    mock_result.output = ExtractionResult(
+    extraction = ExtractionResult(
         facts=[],
         events=[],
         has_corrections=False,
@@ -70,7 +75,14 @@ async def test_extract_memory_background_success():
             new_callable=AsyncMock,
             return_value=[],
         ),
-        patch("jordan_claw.memory.extractor.create_extraction_agent") as mock_create,
+        patch(
+            "jordan_claw.memory.extractor.create_extraction_agent",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "jordan_claw.memory.extractor.run_agent_instrumented",
+            new=_wrapper_returning(extraction),
+        ),
         patch(
             "jordan_claw.memory.extractor.upsert_facts",
             new_callable=AsyncMock,
@@ -84,10 +96,6 @@ async def test_extract_memory_background_success():
             new_callable=AsyncMock,
         ) as mock_stale,
     ):
-        mock_agent = AsyncMock()
-        mock_agent.run.return_value = mock_result
-        mock_create.return_value = mock_agent
-
         await extract_memory_background(
             db=mock_db,
             org_id="org-001",
@@ -104,8 +112,7 @@ async def test_extract_memory_background_success():
 async def test_extract_memory_background_handles_corrections():
     mock_db = MagicMock()
 
-    mock_result = MagicMock()
-    mock_result.output = ExtractionResult(
+    extraction = ExtractionResult(
         facts=[
             ExtractedFact(
                 content="Prefers Go",
@@ -137,7 +144,14 @@ async def test_extract_memory_background_handles_corrections():
             new_callable=AsyncMock,
             return_value=[existing_fact],
         ),
-        patch("jordan_claw.memory.extractor.create_extraction_agent") as mock_create,
+        patch(
+            "jordan_claw.memory.extractor.create_extraction_agent",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "jordan_claw.memory.extractor.run_agent_instrumented",
+            new=_wrapper_returning(extraction),
+        ),
         patch(
             "jordan_claw.memory.extractor.archive_fact",
             new_callable=AsyncMock,
@@ -154,11 +168,11 @@ async def test_extract_memory_background_handles_corrections():
             "jordan_claw.memory.extractor.mark_context_stale",
             new_callable=AsyncMock,
         ),
+        patch(
+            "jordan_claw.memory.extractor.notify_memory_correction",
+            new=AsyncMock(),
+        ),
     ):
-        mock_agent = AsyncMock()
-        mock_agent.run.return_value = mock_result
-        mock_create.return_value = mock_agent
-
         await extract_memory_background(
             db=mock_db,
             org_id="org-001",
@@ -224,15 +238,19 @@ async def test_extract_memory_with_correction_sends_proactive_message():
         has_corrections=True,
     )
 
-    mock_result = MagicMock()
-    mock_result.output = extraction
-
     with (
         patch(
             "jordan_claw.memory.extractor.get_active_facts",
             new=AsyncMock(return_value=existing_facts),
         ),
-        patch("jordan_claw.memory.extractor.create_extraction_agent") as mock_create,
+        patch(
+            "jordan_claw.memory.extractor.create_extraction_agent",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "jordan_claw.memory.extractor.run_agent_instrumented",
+            new=_wrapper_returning(extraction),
+        ),
         patch("jordan_claw.memory.extractor.archive_fact", new=AsyncMock()),
         patch("jordan_claw.memory.extractor.upsert_facts", new=AsyncMock()),
         patch("jordan_claw.memory.extractor.append_events", new=AsyncMock()),
@@ -242,10 +260,6 @@ async def test_extract_memory_with_correction_sends_proactive_message():
             new=AsyncMock(),
         ) as mock_notify,
     ):
-        mock_agent = AsyncMock()
-        mock_agent.run = AsyncMock(return_value=mock_result)
-        mock_create.return_value = mock_agent
-
         await extract_memory_background(mock_db, "org-1", "I prefer coffee", "Noted!")
 
     mock_notify.assert_called_once_with(

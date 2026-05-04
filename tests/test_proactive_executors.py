@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
 
 CHICAGO = ZoneInfo("America/Chicago")
+
+
+def _wrapper_returning(output: str) -> AsyncMock:
+    return AsyncMock(return_value=SimpleNamespace(output=output))
 
 
 def _mock_settings() -> MagicMock:
@@ -25,10 +30,6 @@ async def test_morning_briefing_returns_message():
     from jordan_claw.proactive.executors import execute_morning_briefing
 
     mock_db = AsyncMock()
-    mock_agent = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.output = "Good morning! Here's your briefing."
-    mock_agent.run = AsyncMock(return_value=mock_result)
 
     with (
         patch(
@@ -41,7 +42,11 @@ async def test_morning_briefing_returns_message():
         ),
         patch(
             "jordan_claw.proactive.executors.build_agent",
-            new=AsyncMock(return_value=(mock_agent, "anthropic:claude-haiku-4-5-20251001")),
+            new=AsyncMock(return_value=(MagicMock(), "anthropic:claude-haiku-4-5-20251001")),
+        ),
+        patch(
+            "jordan_claw.proactive.executors.run_agent_instrumented",
+            new=_wrapper_returning("Good morning! Here's your briefing."),
         ),
     ):
         result = await execute_morning_briefing(
@@ -56,10 +61,6 @@ async def test_weekly_review_returns_message():
     from jordan_claw.proactive.executors import execute_weekly_review
 
     mock_db = AsyncMock()
-    mock_agent = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.output = "This week you had 12 meetings."
-    mock_agent.run = AsyncMock(return_value=mock_result)
 
     with (
         patch(
@@ -83,7 +84,11 @@ async def test_weekly_review_returns_message():
         ),
         patch(
             "jordan_claw.proactive.executors.build_agent",
-            new=AsyncMock(return_value=(mock_agent, "anthropic:claude-haiku-4-5-20251001")),
+            new=AsyncMock(return_value=(MagicMock(), "anthropic:claude-haiku-4-5-20251001")),
+        ),
+        patch(
+            "jordan_claw.proactive.executors.run_agent_instrumented",
+            new=_wrapper_returning("This week you had 12 meetings."),
         ),
     ):
         result = await execute_weekly_review(
@@ -148,10 +153,7 @@ async def test_calendar_reminder_returns_brief():
     from jordan_claw.proactive.executors import execute_calendar_reminder
 
     mock_db = AsyncMock()
-    mock_agent = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.output = "Meeting with Sarah in 30 min. She's the DGW marketing lead."
-    mock_agent.run = AsyncMock(return_value=mock_result)
+    brief = "Meeting with Sarah in 30 min. She's the DGW marketing lead."
 
     with (
         patch(
@@ -160,7 +162,11 @@ async def test_calendar_reminder_returns_brief():
         ),
         patch(
             "jordan_claw.proactive.executors.build_agent",
-            new=AsyncMock(return_value=(mock_agent, "anthropic:claude-haiku-4-5-20251001")),
+            new=AsyncMock(return_value=(MagicMock(), "anthropic:claude-haiku-4-5-20251001")),
+        ),
+        patch(
+            "jordan_claw.proactive.executors.run_agent_instrumented",
+            new=_wrapper_returning(brief),
         ),
     ):
         result = await execute_calendar_reminder(
