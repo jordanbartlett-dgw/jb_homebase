@@ -1,0 +1,144 @@
+name: obsidian_retrieval
+cases:
+  - name: uv_package_manager_query
+    inputs:
+      query: "What package manager should I use for Python deps?"
+    expected_output:
+      expected_slugs:
+        - python-package-manager-uv
+
+  - name: ruff_linting_query
+    inputs:
+      query: "How do I lint and format Python code?"
+    expected_output:
+      expected_slugs:
+        - python-linting-ruff
+
+  - name: pydantic_models_query
+    inputs:
+      query: "Best practices for data validation in Python"
+    expected_output:
+      expected_slugs:
+        - python-pydantic-models
+
+  - name: fastapi_patterns_query
+    inputs:
+      query: "How are FastAPI routes structured here?"
+    expected_output:
+      expected_slugs:
+        - python-fastapi-patterns
+
+  - name: async_query
+    inputs:
+      query: "Async background task patterns"
+    expected_output:
+      expected_slugs:
+        - python-async-patterns
+
+  - name: railway_deploy_query
+    inputs:
+      query: "Where does Jordan Claw deploy in production?"
+    expected_output:
+      expected_slugs:
+        - deploy-railway-config
+
+  - name: supabase_migration_query
+    inputs:
+      query: "How do I run a Supabase database migration?"
+    expected_output:
+      expected_slugs:
+        - deploy-supabase-migrations
+
+  - name: coolify_hosting_query
+    inputs:
+      query: "What's running on Coolify Hetzner?"
+    expected_output:
+      expected_slugs:
+        - deploy-coolify-hetzner
+
+  - name: vercel_frontend_query
+    inputs:
+      query: "Where do the Next.js apps deploy?"
+    expected_output:
+      expected_slugs:
+        - deploy-vercel-frontend
+
+  - name: claw_overview_query
+    inputs:
+      query: "What is Jordan Claw and how does it work?"
+    expected_output:
+      expected_slugs:
+        - agent-jordan-claw-overview
+
+  - name: toolset_filtering_query
+    inputs:
+      query: "How does per-agent tool filtering work in Pydantic AI?"
+    expected_output:
+      expected_slugs:
+        - agent-pydantic-ai-toolsets
+
+  - name: gateway_pattern_query
+    inputs:
+      query: "How does the multi-channel gateway route messages?"
+    expected_output:
+      expected_slugs:
+        - agent-multi-channel-gateway
+
+  - name: memory_architecture_query
+    inputs:
+      query: "How are agent memories stored and retrieved?"
+    expected_output:
+      expected_slugs:
+        - agent-memory-architecture
+
+  - name: dgw_overview_query
+    inputs:
+      query: "What does DGW do as a business?"
+    expected_output:
+      expected_slugs:
+        - dgw-promotional-products
+
+  - name: sage_integration_query
+    inputs:
+      query: "How is SAGE Connect integrated into DGW quoting?"
+    expected_output:
+      expected_slugs:
+        - dgw-sage-integration
+
+  - name: dgw_pricing_query
+    inputs:
+      query: "How is a DGW quote priced?"
+    expected_output:
+      expected_slugs:
+        - dgw-pricing-model
+
+  - name: foster_greatness_mission_query
+    inputs:
+      query: "What is the mission of Foster Greatness?"
+    expected_output:
+      expected_slugs:
+        - fg-mission-statement
+
+  - name: fg_fundraising_query
+    inputs:
+      query: "How does Foster Greatness raise money?"
+    expected_output:
+      expected_slugs:
+        - fg-fundraising-strategy
+
+  - name: writing_style_query
+    inputs:
+      query: "What is Jordan's preferred writing style?"
+    expected_output:
+      expected_slugs:
+        - brand-writing-style-guide
+
+  - name: logfire_observability_query
+    inputs:
+      query: "Where do agent traces go for debugging?"
+    expected_output:
+      expected_slugs:
+        - obs-logfire-tracing
+
+evaluators:
+  - TopKMembershipScorer

@@ -63,3 +63,8 @@ Built via the PostHog MCP server (install: `npx @posthog/wizard mcp add`). Defin
 - 2026-05-04: PR3 deployed to Railway, `POSTHOG_API_KEY` (project key) and `FRONTEND_ANALYTICS_TOKEN` set. Live `agent_run_completed` events confirmed in PostHog US. `posthog_client_initialized` log line present in Railway runtime logs with no upload errors following.
 - 2026-05-04: Dashboard 1543058 created via PostHog MCP. Insights 1-4 (`agent_run_completed` + `proactive_sent`) pinned. Tiles render correctly; the `proactive_sent` tile is empty until the next proactive run fires.
 - 2026-05-04: PR4 deployed to Railway, migration 007 applied. `/feedback 4 testing` and `/feedback weekly 5 great week` both produce rows in `feedback` (`prompt_source` correctly attributed) and `feedback_submitted` PostHog events with all 5 props. Cross-reference confirmed: `feedback.agent_slug` matches `most_recent_agent` from `usage_events` for the same channel. Insights 5 and 6 added to the dashboard.
+- 2026-05-04: PR5 evals scaffold + 2 datasets shipped. Initial baselines: `obsidian_retrieval` 1.000 (20/20), `memory_recall` 0.975 (20/20). RLS verification gate (`tests/test_evals_isolation.py`) green — anon-key returns zero rows from `obsidian_notes` and `obsidian_note_chunks`. `eval_run_completed` event verified in PostHog. Railway cron not yet provisioned (next step).
+
+## Evals
+
+Quality-regression layer on top of analytics. See `docs/evals.md` for the full surface — dataset catalogue, CLI usage, isolation model, Railway cron config.

@@ -1,0 +1,8 @@
+{
+  "dataset": "obsidian_retrieval",
+  "score": 1.0,
+  "ran_at": "2026-05-04T20:40:12.765096+00:00",
+  "git_sha": "158cfd1",
+  "cases_total": 20,
+  "cases_passed": 20
+}

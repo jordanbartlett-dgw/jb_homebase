@@ -1,0 +1,8 @@
+{
+  "dataset": "memory_recall",
+  "score": 0.975,
+  "ran_at": "2026-05-04T20:43:48.821595+00:00",
+  "git_sha": "158cfd1",
+  "cases_total": 20,
+  "cases_passed": 20
+}

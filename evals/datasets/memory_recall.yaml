@@ -1,0 +1,267 @@
+name: memory_recall
+cases:
+  - name: prefers_uv_over_pip
+    inputs:
+      memory_state:
+        facts:
+          - category: preference
+            content: "Jordan uses uv as Python package manager, never pip directly"
+          - category: workflow
+            content: "Jordan uses ruff for linting and formatting (replaces black, isort, flake8)"
+        events: []
+      question: "What package manager should I use to add a new Python dep?"
+    expected_output:
+      required_facts:
+        - "uv"
+
+  - name: ruff_over_black
+    inputs:
+      memory_state:
+        facts:
+          - category: workflow
+            content: "Jordan uses ruff for linting and formatting (replaces black, isort, flake8)"
+        events: []
+      question: "Should I run black on these files?"
+    expected_output:
+      required_facts:
+        - "ruff"
+
+  - name: n8n_removed
+    inputs:
+      memory_state:
+        facts:
+          - category: decision
+            content: "n8n has been removed from the stack — Pydantic AI handles agent orchestration"
+        events: []
+      question: "Can you set up an n8n workflow for the new automation?"
+    expected_output:
+      required_facts:
+        - "Pydantic AI"
+
+  - name: railway_not_coolify
+    inputs:
+      memory_state:
+        facts:
+          - category: decision
+            content: "Jordan Claw deploys to Railway (not Coolify, despite the global default)"
+        events: []
+      question: "Where does Jordan Claw run in production?"
+    expected_output:
+      required_facts:
+        - "Railway"
+
+  - name: pypdf_banned
+    inputs:
+      memory_state:
+        facts:
+          - category: decision
+            content: "Do not use pypdf for any PDF work"
+        events: []
+      question: "What library should I use to parse this PDF?"
+    expected_output:
+      required_facts:
+        - "not"
+
+  - name: org_table_naming
+    inputs:
+      memory_state:
+        facts:
+          - category: entity
+            content: "The Supabase orgs table is actually named 'organizations', not 'orgs'"
+        events: []
+      question: "What's the table name for orgs in Supabase?"
+    expected_output:
+      required_facts:
+        - "organizations"
+
+  - name: tdd_workflow
+    inputs:
+      memory_state:
+        facts:
+          - category: workflow
+            content: "Plan-first workflow — write the plan before code; verify with Jordan before implementation"
+          - category: workflow
+            content: "Commit early and often, small atomic commits"
+        events: []
+      question: "I want to add a feature. What's the workflow?"
+    expected_output:
+      required_facts:
+        - "plan"
+
+  - name: dgw_acronym
+    inputs:
+      memory_state:
+        facts:
+          - category: entity
+            content: "DGW stands for Doing Good Works — promotional products social enterprise"
+        events: []
+      question: "What does DGW stand for?"
+    expected_output:
+      required_facts:
+        - "Doing Good Works"
+
+  - name: foster_greatness_purpose
+    inputs:
+      memory_state:
+        facts:
+          - category: entity
+            content: "Foster Greatness is the nonprofit platform for current and former foster youth"
+        events: []
+      question: "What is Foster Greatness?"
+    expected_output:
+      required_facts:
+        - "foster"
+        - "nonprofit"
+
+  - name: no_em_dashes
+    inputs:
+      memory_state:
+        facts:
+          - category: preference
+            content: "Jordan's writing style does not use em dashes — use periods or commas instead"
+        events: []
+      question: "When writing copy for Jordan, can I use em dashes for emphasis?"
+    expected_output:
+      required_facts:
+        - "no"
+
+  - name: conventional_commits
+    inputs:
+      memory_state:
+        facts:
+          - category: workflow
+            content: "Use conventional commits: feat:, fix:, docs:, chore:, refactor:"
+        events: []
+      question: "How should I format the commit message for a bug fix?"
+    expected_output:
+      required_facts:
+        - "fix:"
+
+  - name: claw_channels
+    inputs:
+      memory_state:
+        facts:
+          - category: entity
+            content: "Jordan Claw has a multi-channel gateway: Telegram, Slack, web"
+        events: []
+      question: "Which messaging channels does Jordan Claw support?"
+    expected_output:
+      required_facts:
+        - "Telegram"
+
+  - name: multi_fact_synthesis
+    inputs:
+      memory_state:
+        facts:
+          - category: preference
+            content: "Jordan uses uv as Python package manager"
+          - category: preference
+            content: "Always use type hints; Pydantic models for data validation"
+          - category: workflow
+            content: "Python 3.12+ runtime"
+        events: []
+      question: "Summarize Jordan's Python conventions in one sentence."
+    expected_output:
+      required_facts:
+        - "uv"
+        - "Pydantic"
+
+  - name: hardware_context
+    inputs:
+      memory_state:
+        facts:
+          - category: entity
+            content: "Jordan's machine is a MINISFORUM AI X1 Pro running Pop!_OS"
+        events: []
+      question: "What OS is Jordan running?"
+    expected_output:
+      required_facts:
+        - "Pop!_OS"
+
+  - name: db_supabase
+    inputs:
+      memory_state:
+        facts:
+          - category: entity
+            content: "The database for Jordan Claw is Supabase (Postgres + PostgREST)"
+        events: []
+      question: "What database does Jordan Claw use?"
+    expected_output:
+      required_facts:
+        - "Supabase"
+
+  - name: avoid_jargon
+    inputs:
+      memory_state:
+        facts:
+          - category: preference
+            content: "Avoid corporate jargon: leverage, synergy, circle back"
+        events: []
+      question: "Write a one-sentence intro for a partnership pitch."
+    expected_output:
+      required_facts:
+        - ""
+
+  - name: empty_memory_no_fabrication
+    inputs:
+      memory_state:
+        facts: []
+        events: []
+      question: "What is Jordan's preferred CRM?"
+    expected_output:
+      required_facts:
+        - "don't"
+
+  - name: recent_event_recall
+    inputs:
+      memory_state:
+        facts: []
+        events:
+          - summary: "Decided to ship PR5 (Pydantic Evals) as the final analytics PR"
+            created_at: "2026-05-04T10:00:00Z"
+      question: "What was the most recent decision about analytics work?"
+    expected_output:
+      required_facts:
+        - "PR5"
+
+  - name: workflow_relationship
+    inputs:
+      memory_state:
+        facts:
+          - category: relationship
+            content: "When Jordan says 'the Claw' he means the Jordan Claw agent platform"
+        events: []
+      question: "Jordan said 'add this to the Claw' — what is he referring to?"
+    expected_output:
+      required_facts:
+        - "Jordan Claw"
+
+  - name: do_not_pip_install
+    inputs:
+      memory_state:
+        facts:
+          - category: preference
+            content: "Jordan uses uv as Python package manager, never pip directly"
+          - category: preference
+            content: "Do not add dependencies without asking first"
+        events: []
+      question: "Can you go ahead and pip install requests for me?"
+    expected_output:
+      required_facts:
+        - "uv"
+        - "ask"
+
+evaluators:
+  - RequiredFactsScorer
+  - LLMJudge:
+      rubric: >
+        Did the response correctly use the provided memory context to answer the
+        question? A good response (a) grounds its answer in the recorded facts,
+        (b) does NOT contradict any fact, and (c) admits when the memory has no
+        information rather than fabricating. Score 1.0 only if all three hold.
+      include_input: true
+      model: anthropic:claude-sonnet-4-5-20250929
+      score:
+        evaluation_name: llm_judge
+        include_reason: true
+      assertion: false

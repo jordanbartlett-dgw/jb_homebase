@@ -1,0 +1,302 @@
+# Synthetic Obsidian corpus for eval-only org (00000000-0000-0000-0000-000000000eva).
+# Hand-authored — DO NOT seed real notes here. Slugs are stable across runs;
+# seed_corpus.py is idempotent (delete-then-insert) keyed on (org_id, vault_path).
+
+notes:
+  # ── Python tooling ─────────────────────────────────────────────────────
+  - slug: python-package-manager-uv
+    title: "Python package manager: uv"
+    note_type: atomic
+    tags: [python, tooling, dependencies]
+    body: |
+      Use uv for all Python dependency management. Never call pip directly.
+      uv handles venv creation, lockfile management, and workspace resolution.
+      Run uv sync to install, uv add to introduce a dep, uv run for scripts.
+      uv is dramatically faster than pip and produces deterministic lockfiles.
+
+  - slug: python-linting-ruff
+    title: "Python linting and formatting: ruff"
+    note_type: atomic
+    tags: [python, tooling, linting]
+    body: |
+      ruff replaces black, isort, and flake8 in a single Rust-based tool.
+      Configure target-version py312 and line-length 100. Rule selection in
+      pyproject [tool.ruff.lint]. ruff format handles the formatting pass;
+      ruff check applies lints. Run both together via ruff check --fix.
+
+  - slug: python-pydantic-models
+    title: "Pydantic models for data validation"
+    note_type: atomic
+    tags: [python, pydantic, validation]
+    body: |
+      All structured data crosses module boundaries as Pydantic BaseModel.
+      Use model_config = ConfigDict(...) — never the legacy class Config.
+      Discriminated unions for variant types. Field(...) for constraints.
+      Models are the contract between layers; never pass raw dicts.
+
+  - slug: python-fastapi-patterns
+    title: "FastAPI patterns and dependency injection"
+    note_type: atomic
+    tags: [python, fastapi, api]
+    body: |
+      Routes return Pydantic models, never dicts. Use Depends() for DB clients
+      and settings. Lifespan context manager handles startup/shutdown wiring.
+      Pair with structlog for request-scoped logging. Keep handlers thin —
+      delegate business logic to service-layer functions.
+
+  - slug: python-async-patterns
+    title: "Async patterns: asyncio and httpx"
+    note_type: atomic
+    tags: [python, async]
+    body: |
+      Prefer async/await for I/O. Use httpx.AsyncClient for outbound HTTP.
+      Wrap sync libraries via asyncio.to_thread. Background tasks survive
+      garbage collection by being held in a module-level set with a
+      done_callback to discard. Drain pending tasks during shutdown.
+
+  # ── Deployment & infra ────────────────────────────────────────────────
+  - slug: deploy-railway-config
+    title: "Deploying Jordan Claw to Railway"
+    note_type: atomic
+    tags: [deployment, railway, infra]
+    body: |
+      Jordan Claw runs on Railway. Configure via railway.json or Nixpacks.
+      Health check at /health. Environment variables include POSTHOG_API_KEY,
+      SUPABASE_SERVICE_KEY, ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN. Use
+      Railway crons for scheduled jobs that run minutes-long workloads.
+
+  - slug: deploy-supabase-migrations
+    title: "Supabase migration workflow"
+    note_type: atomic
+    tags: [deployment, supabase, postgres]
+    body: |
+      Migrations live in supabase/migrations/00X_name.sql. Apply via the
+      Supabase dashboard SQL editor or CLI. After DDL, run pg_notify('pgrst',
+      'reload schema') so PostgREST picks up the new shape. Always check
+      existing CHECK constraints before adding enum-like values.
+
+  - slug: deploy-coolify-hetzner
+    title: "Coolify on Hetzner for self-hosted services"
+    note_type: atomic
+    tags: [deployment, hetzner, coolify]
+    body: |
+      DGW and FG self-hosted services run on Coolify, deployed to Hetzner
+      dedicated boxes. Coolify handles Docker orchestration, SSL, and
+      auto-deploy from Git. Note: Jordan Claw is the exception — it lives
+      on Railway, not Coolify.
+
+  - slug: deploy-docker-compose
+    title: "Docker Compose for local dev"
+    note_type: atomic
+    tags: [deployment, docker]
+    body: |
+      docker-compose.yml composes the local stack: Postgres, Redis if needed,
+      and the FastAPI app. Use bind mounts for hot-reload. Production never
+      uses compose; production stacks are Railway or Coolify.
+
+  - slug: deploy-vercel-frontend
+    title: "Vercel for Next.js frontends"
+    note_type: atomic
+    tags: [deployment, vercel, nextjs]
+    body: |
+      jordanbartlett.co and other Next.js apps deploy to Vercel. App Router,
+      Edge runtime where it makes sense, ISR for marketing pages. Tailwind
+      for styling, strict TypeScript everywhere.
+
+  # ── Pydantic AI agents ────────────────────────────────────────────────
+  - slug: agent-jordan-claw-overview
+    title: "Jordan Claw: agent platform overview"
+    note_type: atomic
+    tags: [agents, claw, architecture]
+    body: |
+      Jordan Claw is a multi-channel personal agent platform. It connects
+      Telegram, Slack, and a future web client to a roster of Pydantic AI
+      agents. Each agent is configured per-org with its own system prompt,
+      model, and tool allowlist. Conversations persist in Supabase.
+
+  - slug: agent-pydantic-ai-toolsets
+    title: "Pydantic AI: toolsets and tool filtering"
+    note_type: atomic
+    tags: [agents, pydantic-ai]
+    body: |
+      Tools register on a FunctionToolset shared across agents. Per-agent
+      gating uses FilteredToolset with a filter function over ToolDefinition.
+      Tools accept RunContext[AgentDeps] for credentials. Tool errors raise
+      and the runner classifies them via a single error taxonomy.
+
+  - slug: agent-multi-channel-gateway
+    title: "Multi-channel gateway pattern"
+    note_type: atomic
+    tags: [agents, gateway, channels]
+    body: |
+      Channel adapters normalize payloads into IncomingMessage. The gateway
+      router resolves org and agent, loads memory and conversation history,
+      runs the agent via the instrumented wrapper, persists, and dispatches
+      the response back through the originating channel. New channels add
+      one adapter; the core stays unchanged.
+
+  - slug: agent-memory-architecture
+    title: "Agent memory architecture"
+    note_type: atomic
+    tags: [agents, memory, architecture]
+    body: |
+      Memory has two layers: facts (long-lived, categorized, confidence-scored)
+      and events (append-only timeline). A pre-rendered memory_context block
+      is injected at the top of the system prompt. Extraction is async and
+      fire-and-forget after each turn.
+
+  - slug: agent-proactive-scheduling
+    title: "Proactive scheduling: in-process scheduler"
+    note_type: atomic
+    tags: [agents, proactive, scheduling]
+    body: |
+      Cron-driven proactive tasks (morning briefing, weekly review, calendar
+      reminders) run on an in-process 60-second tick. Long-running workloads
+      that would block the tick — like nightly evals — get pushed to a
+      separate Railway cron deployment.
+
+  # ── DGW (Doing Good Works) ────────────────────────────────────────────
+  - slug: dgw-promotional-products
+    title: "DGW: promotional products social enterprise"
+    note_type: atomic
+    tags: [dgw, business, branded-merchandise]
+    body: |
+      DGW is the promotional products company. Branded merchandise — apparel,
+      drinkware, signage — for nonprofits and mission-aligned businesses.
+      Margin funds Foster Greatness and other social-impact work.
+
+  - slug: dgw-sage-integration
+    title: "DGW: SAGE Connect integration"
+    note_type: atomic
+    tags: [dgw, sage, integration]
+    body: |
+      SAGE Connect is the industry product database for promotional items.
+      DGW's quoting flow queries SAGE for supplier inventory and pricing,
+      then layers on DGW's margin and decoration costs. Integrated via MCP
+      so the Sales Engineer agent can quote in conversation.
+
+  - slug: dgw-pricing-model
+    title: "DGW pricing model"
+    note_type: atomic
+    tags: [dgw, pricing]
+    body: |
+      Quote price = supplier base + decoration + freight + DGW margin.
+      Tiered margin by order volume. Rush charges at a flat surcharge.
+      Custom decoration (embroidery, screen-print) is priced per unit, not
+      per design.
+
+  - slug: dgw-customer-segments
+    title: "DGW customer segments"
+    note_type: atomic
+    tags: [dgw, customers]
+    body: |
+      Three segments: nonprofits (largest count, lower order size), mission
+      businesses (B Corps and similar), and corporate giving programs (high
+      AOV, longer sales cycle). Sales Engineer agent profiles each lead
+      against these segments before quoting.
+
+  # ── Foster Greatness ──────────────────────────────────────────────────
+  - slug: fg-mission-statement
+    title: "Foster Greatness: mission"
+    note_type: atomic
+    tags: [foster-greatness, mission, nonprofit]
+    body: |
+      Foster Greatness is a nonprofit platform for current and former foster
+      youth. Goal: connect lived-experience leaders to one another and to
+      resources. Center foster youth voice — no savior framing.
+
+  - slug: fg-platform-features
+    title: "Foster Greatness platform features"
+    note_type: atomic
+    tags: [foster-greatness, product]
+    body: |
+      Member directory, peer-to-peer connection, resource library curated
+      by alumni, and event programming. Knowledge base lives in Notion;
+      member-facing surfaces are a Next.js app.
+
+  - slug: fg-fundraising-strategy
+    title: "Foster Greatness fundraising"
+    note_type: atomic
+    tags: [foster-greatness, fundraising]
+    body: |
+      Donor base mixes individual major gifts with corporate sponsorship
+      tied to DGW's branded merchandise margin. Annual gala plus a giving
+      day. CRM of record is HubSpot for donors and corporate accounts.
+
+  - slug: fg-foster-youth-context
+    title: "Context: foster youth in the US"
+    note_type: atomic
+    tags: [foster-greatness, context]
+    body: |
+      Roughly 400,000 children in US foster care at any time. Aging-out
+      youth face stark outcome gaps in housing, education, and employment.
+      Foster Greatness centers alumni leadership in addressing these gaps.
+
+  # ── Brand & writing ───────────────────────────────────────────────────
+  - slug: brand-jordanbartlett-co
+    title: "jordanbartlett.co: personal brand site"
+    note_type: atomic
+    tags: [brand, consultancy, website]
+    body: |
+      jordanbartlett.co is the consultancy front door. Lead generator for
+      DGW (branded merch), Foster Greatness (donors), and the Infrastructure
+      of Belonging newsletter. Built on Next.js and deployed to Vercel.
+
+  - slug: brand-newsletter-belonging
+    title: "Newsletter: Infrastructure of Belonging"
+    note_type: atomic
+    tags: [brand, newsletter, writing]
+    body: |
+      Infrastructure of Belonging is the weekly newsletter on systems that
+      create connection: foster care, social enterprise, AI infrastructure
+      for SMBs. Distributed via the personal brand site.
+
+  - slug: brand-writing-style-guide
+    title: "Writing style: operator-to-operator"
+    note_type: atomic
+    tags: [brand, writing, voice]
+    body: |
+      Direct, grounded, no fluff. Short declarative sentences. Concrete
+      before abstract. No em dashes — use periods or commas. No corporate
+      jargon: leverage, synergy, circle back. Say what you mean in fewest
+      words.
+
+  - slug: brand-dgw-vs-fg-positioning
+    title: "DGW vs FG positioning"
+    note_type: atomic
+    tags: [brand, positioning]
+    body: |
+      DGW is for-profit social enterprise — branded merchandise that funds
+      mission. FG is the nonprofit platform — peer connection and resources
+      for foster youth. They share a donor / customer overlap but are
+      operationally distinct entities.
+
+  # ── Observability ─────────────────────────────────────────────────────
+  - slug: obs-logfire-tracing
+    title: "Observability: Logfire as source of truth"
+    note_type: atomic
+    tags: [observability, logfire, tracing]
+    body: |
+      Logfire is the source of truth for traces. logfire.instrument_pydantic_ai()
+      auto-traces every agent run. instrument_fastapi and instrument_httpx
+      cover request and outbound HTTP. Custom spans use logfire.span(name, **attrs).
+
+  - slug: obs-posthog-analytics
+    title: "Observability: PostHog as roll-up"
+    note_type: atomic
+    tags: [observability, posthog, analytics]
+    body: |
+      PostHog is the product-analytics roll-up — aggregate trends across
+      agents over time. Backend events: agent_run_completed, proactive_sent,
+      agent_session_started, eval_run_completed, feedback_submitted. Never
+      dual-emit metrics from the agent hot path; PostHog reads usage_events.
+
+  - slug: obs-evals-pydantic
+    title: "Observability: Pydantic Evals for regressions"
+    note_type: atomic
+    tags: [observability, evals, regression]
+    body: |
+      Pydantic Evals catches quality regressions on the agents that matter
+      most. Datasets check into git. Baselines check into git. Nightly
+      Railway cron runs claw-eval and emits eval_run_completed with a
+      regression bool when current score drops more than 5pp.
