@@ -23,6 +23,7 @@ from pydantic_evals import Dataset
 
 from evals.registry import BASELINES_DIR, REGISTRY, REPORTS_DIR, EvalSpec
 from jordan_claw.analytics import emitter
+from jordan_claw.config import get_settings
 
 log = structlog.get_logger()
 
@@ -205,6 +206,14 @@ def run(dataset: str | None, run_all: bool, save_baseline: bool) -> None:
         raise click.UsageError("Provide a dataset name or --all.")
     if run_all and save_baseline:
         raise click.UsageError("--save-baseline only works with a single dataset.")
+
+    # Fail fast on missing env vars. Without this, get_settings() raises inside
+    # each task and pydantic-evals silently drops the case, producing a phantom
+    # 0/0 regression instead of a clear error.
+    try:
+        get_settings()
+    except Exception as e:
+        raise click.ClickException(f"Settings invalid — check env vars:\n{e}") from e
 
     targets: list[EvalSpec]
     if run_all:
