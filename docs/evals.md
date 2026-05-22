@@ -73,11 +73,30 @@ non-zero on quality drops.
 ## Railway cron
 
 Eval runs take minutes and are not safe to put on the in-process 60s scheduler.
-Run as a separate Railway cron service against the same image:
+Run as a separate Railway cron service against the same image.
+
+**Live as of 2026-05-22** — service `evals-cron` in `JB-HomeBase/production`:
 
 - Schedule: `0 3 * * *` (nightly 03:00 UTC)
 - Start command: `uv run claw-eval run --all`
-- Env: same as the FastAPI service (Anthropic + OpenAI + Supabase + PostHog keys)
+- Restart policy: `Never`
+- Healthcheck: disabled
+
+**Required env vars** (all referenced from the `jb_homebase` service via
+`${{ jb_homebase.VAR }}` so secrets are not duplicated):
+
+```
+ANTHROPIC_API_KEY, OPENAI_API_KEY, TAVILY_API_KEY,
+SUPABASE_URL, SUPABASE_SERVICE_KEY, SUPABASE_ANON_KEY,
+LOGFIRE_TOKEN, POSTHOG_API_KEY, DEFAULT_ORG_ID,
+TELEGRAM_BOT_TOKEN, FASTMAIL_USERNAME, FASTMAIL_APP_PASSWORD
+```
+
+The Telegram / Fastmail keys aren't *used* by the eval, but `get_settings()`
+requires them. The CLI calls `get_settings()` at startup and exits with a clear
+error if any are missing — without this guard, pydantic-evals silently drops
+every case whose task fn raises a settings `ValidationError`, producing a
+phantom regression (see commit `20d622f` for the fix).
 
 Cron exits non-zero on regression, surfacing as a failed run in Railway and a
 `regression: true` event in PostHog.

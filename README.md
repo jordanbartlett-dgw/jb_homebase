@@ -24,6 +24,7 @@ The agent also proactively reaches out via Telegram:
 - **Calendar reminders** 30 minutes before meetings with attendee context
 - **Memory corrections** notifies when a remembered fact is updated
 - **Daily scan** alerts on calendar conflicts (quiet, only messages if something found)
+- **Weekly feedback request** (Sundays 7pm Central) asks for a 1-5 rating on the week's interactions, persisted via `/feedback`
 
 Conversation history is token-budgeted (4000 tokens max) to prevent context pollution on long conversations. Tool docstrings include explicit routing signals so the LLM knows when to use internal tools (notes, memory, calendar) vs external tools (web search). Conversations auto-expire after 30 minutes of inactivity, so unrelated prior topics don't bleed into new sessions.
 
@@ -86,14 +87,31 @@ src/jordan_claw/
       messages.py        # Message CRUD
       obsidian.py        # Obsidian notes and chunks CRUD
       proactive.py       # Schedule and proactive message CRUD
+      usage_events.py    # Per-run analytics rows + most_recent_agent helper
+      feedback.py        # Feedback table CRUD
+    analytics/
+      types.py           # RunKind StrEnum, AgentRunResult dataclass
+      posthog_client.py  # PostHog client factory + shutdown
+      emitter.py         # Fire-and-forget event emit + drain_pending_emits
     utils/
       token_counting.py  # Extract token counts from agent results
-  tests/                 # 157 unit and integration tests
-  scripts/
-    obsidian_sync/       # CLI for vault ingest/export
-  supabase/migrations/   # 001-005 schema migrations
-  Dockerfile
-  pyproject.toml
+      pricing.py         # Claude price table + compute_cost
+      agent_runner.py    # Shared instrumented wrapper around agent.run()
+evals/                   # Top-level (not under tests/) — eval runs cost money
+  registry.py            # EvalSpec registry binding YAML to task fns and scorers
+  run_eval.py            # claw-eval CLI: run, --all, --save-baseline
+  datasets/              # memory_recall.yaml, obsidian_retrieval.yaml (20 cases each)
+  scorers/               # RequiredFactsScorer, TopKMembershipScorer + LLMJudge config
+  tasks/                 # memory_recall_task, obsidian_retrieval_task
+  fixtures/corpus.yaml   # 30-note synthetic eval corpus
+  baselines/             # Committed score baselines for regression detection
+tests/                   # 222 unit and integration tests
+scripts/
+  obsidian_sync/         # CLI for vault ingest/export
+supabase/migrations/     # 001-007 schema migrations
+docs/plans/              # Implementation plans (analytics-observability.md)
+Dockerfile
+pyproject.toml
 ```
 
 ## Setup
@@ -162,7 +180,7 @@ Port:   8000
 
 ## Database
 
-Ten tables in Supabase:
+Thirteen tables in Supabase:
 
 - **organizations** stores tenants (one today: Jordan Bartlett)
 - **agents** stores agent config (one today: claw-main), DB-driven tools and system prompts
@@ -174,16 +192,35 @@ Ten tables in Supabase:
 - **obsidian_notes** / **obsidian_note_chunks** vault notes with pgvector embeddings
 - **proactive_schedules** cron-driven task definitions for outbound messaging
 - **proactive_messages** audit log of every proactive message sent
+- **usage_events** one row per agent run — cost, tokens, latency, outcome (source of truth for cost / quality dashboards)
+- **feedback** rating + optional note per `/feedback` submission, attributed to the most recent agent
 
 RLS is enabled on all tables. Uses the service role key (server-side only).
 
+## Observability
+
+Every agent run goes through `src/jordan_claw/utils/agent_runner.py:run_agent_instrumented`, which produces four signals:
+
+1. **Logfire trace** — parent `agent run` span carrying `agent_slug`, `channel`, `run_kind`, `usage.cost_usd`, `usage.duration_ms`, `usage.tool_call_count`, `outcome.success`. Auto-instrumentation via `logfire.instrument_pydantic_ai()` populates the child `chat anthropic:*` spans.
+2. **`usage_events` row** — fire-and-forget INSERT for queryable analytics (`run_kind` ∈ `user_message` / `proactive` / `memory_extract` / `eval`).
+3. **PostHog `agent_run_completed` event** — feeds the production dashboard (id `1543058`) with cost, latency, runs-per-agent, and feedback rollups.
+4. **Token-budget guardrail** — runs that exceed 200K total tokens raise `TokenBudgetExceededError` and record a failure row instead of melting the bill.
+
+A separate Railway service (`evals-cron`) runs the Pydantic Evals suite nightly at 03:00 UTC against `memory_recall` and `obsidian_retrieval` datasets. Baselines are committed; >5pp drops exit non-zero and emit a regression event. See `docs/evals.md` for the harness and `docs/observability.md` for the run-time signal map. `POST /api/analytics/event` is mounted as a frontend proxy for future client-side emissions.
+
 ## What's Next
 
+- **Flutter app**: Replace Telegram as Jordan's primary channel (upcoming)
 - **Slack adapter**: Second channel
 - **Sub-agent delegation**: Specialized agents for specific tasks
 - **Multi-agent routing**: Route conversations to the right agent per org
 
 ## Docs
 
-- `docs/superpowers/specs/` has design specs
-- `docs/superpowers/plans/` has implementation plans
+- `docs/plans/analytics-observability.md` — 5-PR analytics + observability rollout (all shipped)
+- `docs/observability.md` — Logfire / `usage_events` / PostHog signal map
+- `docs/evals.md` — Pydantic Evals harness and dataset authoring guide
+- `docs/claw-main-prompt-reference.md` — agent prompt reference
+- `docs/jordan-claw-lessons-learned.md` — retrospective notes
+- `docs/superpowers/specs/` — older design specs
+- `docs/superpowers/plans/` — older implementation plans

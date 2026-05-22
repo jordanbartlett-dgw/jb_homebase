@@ -1,6 +1,6 @@
 # Jordan Claw — Analytics & Observability Plan
 
-## Status (2026-05-04)
+## Status (2026-05-22)
 
 | PR | Item | Status |
 |---|---|---|
@@ -8,9 +8,11 @@
 | PR2 | `usage_events` table + shared agent_runner | **Shipped** (commit `45febc6`) |
 | PR3 | PostHog client + emitter + frontend proxy | **Shipped** (commit `ec1ea71`) |
 | PR4 | `feedback` table + `/feedback` command + weekly review | **Shipped** (commit `3aa0ef5`) |
-| PR5 | Pydantic Evals + datasets + Railway cron | **Shipped** (branch `feature/analytics-pr5-evals`) — local; Railway cron pending |
+| PR5 | Pydantic Evals + datasets + Railway cron | **Shipped + live** (merge `0f66501`, cron `evals-cron` firing nightly at 03:00 UTC since 2026-05-22) |
 
-Production dashboard ("Jordan Claw — Production", id `1543058`) has all 6 insights live and verified end-to-end. See `docs/observability.md` for the dashboard catalogue and verification log. PR5 details and CLI usage are in `docs/evals.md`. Initial baselines: `obsidian_retrieval` 1.000 (20/20), `memory_recall` 0.975 (20/20).
+**All 5 PRs are now live in production.** Production dashboard ("Jordan Claw — Production", id `1543058`) has all 6 insights live and verified end-to-end. See `docs/observability.md` for the dashboard catalogue and verification log. PR5 details and CLI usage are in `docs/evals.md`. First green eval run 2026-05-22 18:06 UTC: `memory_recall` 0.9625 (20/20), `obsidian_retrieval` 1.000 (20/20). Initial baselines: `obsidian_retrieval` 1.000, `memory_recall` 0.975.
+
+**Post-merge fix (2026-05-22, commit `20d622f`):** `claw-eval run` now calls `get_settings()` at startup and raises `ClickException` if any required env var is missing. Without this, `get_settings()` raises inside each task fn and pydantic-evals silently drops the case, producing a phantom 0/0 or 2/0 regression. Discovered when `evals-cron` was initially provisioned without `OPENAI_API_KEY` / `TAVILY_API_KEY` / `TELEGRAM_BOT_TOKEN`. All 12 required env vars are now referenced from `jb_homebase` via Railway's `${{ jb_homebase.VAR }}` syntax.
 
 The eval test org id changed from the plan-spec `00000000-0000-0000-0000-000000000eva` (invalid — `v` is not a hex digit) to `eaa1eaa1-eaa1-eaa1-eaa1-eaa1eaa1eaa1` (valid hex, still grep-distinctive). `Settings.eval_test_org_id` is the source of truth.
 
