@@ -1078,7 +1078,7 @@ async def execute_daily_workout(
     content = await _run_agent_prompt(
         db, org_id, agent_slug, settings, prompt, schedule_name="daily_workout"
     )
-    if content.strip() == "NOTHING_TO_SEND":
+    if "NOTHING_TO_SEND" in content:
         return ""
     return content
 ```
