@@ -12,6 +12,7 @@ from jordan_claw.agents.factory import build_agent
 from jordan_claw.analytics.types import RunKind
 from jordan_claw.config import Settings
 from jordan_claw.db.memory import get_recent_events
+from jordan_claw.db.workout import get_active_plan, get_recent_workout_logs
 from jordan_claw.memory.reader import load_memory_context
 from jordan_claw.tools.calendar import get_calendar_events
 from jordan_claw.utils.agent_runner import run_agent_instrumented
@@ -265,6 +266,60 @@ async def execute_calendar_reminder(
         db, org_id, agent_slug, settings, prompt,
         schedule_name="calendar_reminder",
     )
+
+
+DAILY_WORKOUT_PROMPT = """\
+Compose today's workout message for Jordan. Find today's session in the plan.
+Include:
+1. Today's session with its targets
+2. One line tying it to the goal or to recent logs
+3. A nutrition note only if today's load warrants one
+
+Keep it short. If today is a rest day and there is nothing worth saying,
+reply with exactly NOTHING_TO_SEND.
+
+## Today
+{today}
+
+## Active Plan
+{plan}
+
+## Recent Logs
+{logs}
+"""
+
+
+async def execute_daily_workout(
+    db: AsyncClient,
+    org_id: str,
+    config: dict,
+    settings: Settings,
+) -> str:
+    """Compose the morning workout nudge from the active plan and recent logs."""
+    plan = await get_active_plan(db, org_id)
+    if plan is None:
+        return ""
+
+    tz_name = config.get("timezone", "America/Chicago")
+    today = datetime.now(ZoneInfo(tz_name))
+
+    logs = await get_recent_workout_logs(db, org_id, limit=7)
+    logs_text = "\n".join(
+        f"- [{log.logged_date}] {log.activity}: {log.notes or ''}" for log in logs
+    ) or "No logged workouts."
+
+    prompt = DAILY_WORKOUT_PROMPT.format(
+        today=today.strftime("%A %Y-%m-%d"),
+        plan=plan.model_dump_json(exclude={"org_id"}),
+        logs=logs_text,
+    )
+    agent_slug = config.get("agent_slug", "workout-coach")
+    content = await _run_agent_prompt(
+        db, org_id, agent_slug, settings, prompt, schedule_name="daily_workout"
+    )
+    if content.strip() == "NOTHING_TO_SEND":
+        return ""
+    return content
 
 
 def format_memory_flag(old_content: str, new_content: str) -> str:
