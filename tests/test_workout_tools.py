@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from jordan_claw.tools.calendar import CENTRAL_TZ
 from jordan_claw.tools.workout import (
     get_recent_workouts,
     get_workout_plan,
@@ -104,7 +106,10 @@ async def test_log_workout_defaults_to_today():
         "jordan_claw.tools.workout.insert_workout_log", return_value={"id": "l1"}
     ) as mock_insert:
         result = await log_workout(ctx, activity="run", notes="legs heavy")
-    assert mock_insert.call_args.kwargs["logged_date"]  # today's date, non-empty
+    assert (
+        mock_insert.call_args.kwargs["logged_date"]
+        == datetime.now(CENTRAL_TZ).strftime("%Y-%m-%d")
+    )
     assert "logged" in result.lower()
 
 
