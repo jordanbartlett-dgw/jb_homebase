@@ -644,7 +644,7 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'jordan_claw.tools.wor
 ```python
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal
 
 from pydantic_ai import RunContext
@@ -658,6 +658,7 @@ from jordan_claw.db.workout import (
     save_workout_plan,
     upsert_workout_profile,
 )
+from jordan_claw.tools.calendar import CENTRAL_TZ
 from jordan_claw.workout.models import PlanWeek
 
 
@@ -692,7 +693,10 @@ async def save_workout_profile(
     baseline: dict | None = None,
 ) -> str:
     """Save workout profile fields as Jordan answers evaluation questions.
-    Partial saves are fine; only pass the fields you just learned."""
+    Partial saves are fine; only pass the fields you just learned.
+    Keep keys consistent: goals (race, strength_targets, weight), training_days
+    (days, window), baseline (weekly_mileage, key_lifts), nutrition
+    (preferences, restrictions, targets), equipment (access)."""
     await upsert_workout_profile(
         ctx.deps.supabase_client,
         ctx.deps.org_id,
@@ -743,7 +747,7 @@ async def log_workout(
 ) -> str:
     """Record a completed workout when Jordan reports one. details holds numbers
     (distance_mi, duration_min, exercises). logged_date defaults to today."""
-    date_str = logged_date or datetime.now(UTC).strftime("%Y-%m-%d")
+    date_str = logged_date or datetime.now(CENTRAL_TZ).strftime("%Y-%m-%d")
     await insert_workout_log(
         ctx.deps.supabase_client,
         ctx.deps.org_id,
