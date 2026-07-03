@@ -798,9 +798,9 @@ BASE_TOOLSET.add_function(get_recent_workouts, name="get_recent_workouts")
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_workout_tools.py -v`
-Expected: 9 passed
+Expected: 8 passed
 
-Also run: `uv run pytest tests/test_agents.py tests/test_tool_registry.py -v`
+Also update the exhaustive tool-name whitelists in `tests/test_tool_registry.py` and `tests/test_agents.py` (registration tests assert exact set equality) to include the six new tool names, then run: `uv run pytest tests/test_agents.py tests/test_tool_registry.py -v`
 Expected: all pass (registration didn't break tool filtering)
 
 - [ ] **Step 5: Commit**
