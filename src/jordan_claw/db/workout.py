@@ -56,7 +56,11 @@ async def save_workout_plan(
     weeks: list[PlanWeek],
     rationale: str,
 ) -> dict:
-    """Archive any active plan, then insert the new one as active."""
+    """Archive any active plan, then insert the new one as active.
+
+    Not atomic: an insert failure after the archive leaves no active plan.
+    Accepted for single-user use; revisit with an RPC if that changes.
+    """
     await (
         client.table("workout_plans")
         .update({"status": "archived"})

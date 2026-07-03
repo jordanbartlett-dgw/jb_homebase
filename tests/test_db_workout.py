@@ -94,6 +94,8 @@ async def test_save_workout_plan_archives_then_inserts():
     query.update.assert_called_once_with({"status": "archived"})
     inserted = query.insert.call_args[0][0]
     assert inserted["weeks"][0]["days"][0]["session_type"] == "run"
+    calls = [c[0] for c in query.method_calls]
+    assert calls.index("update") < calls.index("insert")
 
 
 @pytest.mark.asyncio
