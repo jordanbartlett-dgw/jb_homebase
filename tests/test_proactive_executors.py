@@ -237,7 +237,10 @@ async def test_daily_workout_composes_via_agent():
 
 
 @pytest.mark.asyncio
-async def test_daily_workout_sentinel_suppresses_send():
+@pytest.mark.parametrize(
+    "reply", ["NOTHING_TO_SEND", "**NOTHING_TO_SEND**", "Rest day. NOTHING_TO_SEND."]
+)
+async def test_daily_workout_sentinel_suppresses_send(reply):
     from jordan_claw.proactive.executors import execute_daily_workout
 
     with (
@@ -245,7 +248,7 @@ async def test_daily_workout_sentinel_suppresses_send():
         patch("jordan_claw.proactive.executors.get_recent_workout_logs", return_value=[]),
         patch(
             "jordan_claw.proactive.executors._run_agent_prompt",
-            return_value="NOTHING_TO_SEND",
+            return_value=reply,
         ),
     ):
         result = await execute_daily_workout(
