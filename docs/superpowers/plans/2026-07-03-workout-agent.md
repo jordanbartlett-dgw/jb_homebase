@@ -288,6 +288,23 @@ async def test_upsert_workout_profile_only_sends_provided_fields():
 
 
 @pytest.mark.asyncio
+async def test_get_active_plan_none_when_missing():
+    db, _ = _mock_db(select_data=[])
+    assert await get_active_plan(db, ORG_ID) is None
+
+
+@pytest.mark.asyncio
+async def test_get_active_plan_returns_model():
+    db, query = _mock_db(select_data=[{
+        "id": "p1", "org_id": ORG_ID, "status": "active",
+        "starts_on": "2026-07-07", "weeks": [], "rationale": "Base",
+    }])
+    plan = await get_active_plan(db, ORG_ID)
+    assert plan.status == "active"
+    query.eq.assert_any_call("status", "active")
+
+
+@pytest.mark.asyncio
 async def test_save_workout_plan_archives_then_inserts():
     db, query = _mock_db(select_data=[{"id": "p2"}])
     weeks = [
@@ -461,7 +478,7 @@ async def get_recent_workout_logs(
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_db_workout.py -v`
-Expected: 6 passed
+Expected: 8 passed
 
 - [ ] **Step 5: Commit**
 
