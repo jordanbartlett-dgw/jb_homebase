@@ -6,7 +6,7 @@ from pydantic_ai.tools import RunContext, ToolDefinition
 from supabase._async.client import AsyncClient
 
 from jordan_claw.agents.deps import AgentDeps
-from jordan_claw.db.agents import get_agent_config
+from jordan_claw.db.agents import AgentConfig, get_agent_config
 from jordan_claw.tools import BASE_TOOLSET
 
 log = structlog.get_logger()
@@ -22,23 +22,19 @@ def _make_tool_filter(allowed_tools: list[str]):
     return filter_func
 
 
-async def build_agent(
-    db: AsyncClient,
-    org_id: str,
-    agent_slug: str,
+def create_agent(
+    config: AgentConfig,
     memory_context: str = "",
 ) -> tuple[Agent[AgentDeps], str]:
-    """Build a Pydantic AI agent from DB config using toolsets.
+    """Construct a Pydantic AI agent from an already-fetched config.
 
     Returns (agent, model_name) so callers can log/store the model
     without reaching into Pydantic AI internals.
     """
-    config = await get_agent_config(db, org_id, agent_slug)
-
     # Log any tools in config that don't exist in BASE_TOOLSET
     for name in config.tools:
         if name not in BASE_TOOLSET.tools:
-            log.warning("unknown_tool_skipped", tool_name=name, agent_slug=agent_slug)
+            log.warning("unknown_tool_skipped", tool_name=name, agent_slug=config.slug)
 
     filtered = BASE_TOOLSET.filtered(_make_tool_filter(config.tools))
 
@@ -54,6 +50,17 @@ async def build_agent(
         deps_type=AgentDeps,
     )
     return agent, config.model
+
+
+async def build_agent(
+    db: AsyncClient,
+    org_id: str,
+    agent_slug: str,
+    memory_context: str = "",
+) -> tuple[Agent[AgentDeps], str]:
+    """Build a Pydantic AI agent from DB config using toolsets."""
+    config = await get_agent_config(db, org_id, agent_slug)
+    return create_agent(config, memory_context=memory_context)
 
 
 CHARS_PER_TOKEN = 4

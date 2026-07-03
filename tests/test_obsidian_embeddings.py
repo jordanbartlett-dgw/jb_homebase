@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -70,8 +70,7 @@ async def test_generate_embeddings():
     mock_client = AsyncMock()
     mock_client.embeddings.create.return_value = mock_response
 
-    with patch("jordan_claw.obsidian.embeddings.AsyncOpenAI", return_value=mock_client):
-        embeddings = await generate_embeddings(["test text"], api_key="test-key")
+    embeddings = await generate_embeddings(["test text"], api_key="test-key", client=mock_client)
 
     assert len(embeddings) == 1
     assert len(embeddings[0]) == 512
@@ -93,9 +92,8 @@ async def test_generate_embeddings_multiple():
     mock_client = AsyncMock()
     mock_client.embeddings.create.return_value = mock_response
 
-    with patch("jordan_claw.obsidian.embeddings.AsyncOpenAI", return_value=mock_client):
-        embeddings = await generate_embeddings(
-            ["text one", "text two"], api_key="test-key"
-        )
+    embeddings = await generate_embeddings(
+        ["text one", "text two"], api_key="test-key", client=mock_client
+    )
 
     assert len(embeddings) == 2

@@ -34,6 +34,7 @@ async def upsert_facts(
 ) -> None:
     """Insert new facts or handle conflicts with existing ones."""
     existing_by_id = {f.id: f for f in existing}
+    new_rows: list[dict] = []
 
     for fact in facts:
         if fact.replaces_fact_id and fact.replaces_fact_id in existing_by_id:
@@ -85,21 +86,20 @@ async def upsert_facts(
                     new_content=fact.content,
                 )
         else:
-            # New fact, insert
-            await (
-                client.table("memory_facts")
-                .insert(
-                    {
-                        "org_id": org_id,
-                        "category": fact.category,
-                        "content": fact.content,
-                        "source": fact.source,
-                        "confidence": fact.confidence,
-                        "metadata": {},
-                    }
-                )
-                .execute()
+            # New fact: batch into a single insert below
+            new_rows.append(
+                {
+                    "org_id": org_id,
+                    "category": fact.category,
+                    "content": fact.content,
+                    "source": fact.source,
+                    "confidence": fact.confidence,
+                    "metadata": {},
+                }
             )
+
+    if new_rows:
+        await client.table("memory_facts").insert(new_rows).execute()
 
 
 async def append_events(

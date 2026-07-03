@@ -55,10 +55,10 @@ async def get_recent_messages(
     """Get the most recent messages for a conversation, ordered oldest first."""
     result = (
         await client.table("messages")
-        .select("role, content, created_at, token_count, model, metadata")
+        .select("role, content, created_at, token_count, model, metadata, channel_message_id")
         .eq("conversation_id", conversation_id)
-        .order("created_at", desc=False)
+        .order("created_at", desc=True)
         .limit(limit)
         .execute()
     )
-    return result.data
+    return list(reversed(result.data))

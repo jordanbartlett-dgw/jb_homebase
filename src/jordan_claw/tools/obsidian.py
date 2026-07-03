@@ -6,11 +6,15 @@ from datetime import UTC, datetime
 import yaml
 from pydantic_ai import RunContext
 
-from tavily import AsyncTavilyClient
-
 from jordan_claw.agents.deps import AgentDeps
-from jordan_claw.db.obsidian import get_note_by_title, insert_chunks, insert_note, search_notes_semantic
+from jordan_claw.db.obsidian import (
+    get_note_by_title,
+    insert_chunks,
+    insert_note,
+    search_notes_semantic,
+)
 from jordan_claw.obsidian.embeddings import chunk_text, generate_embeddings
+from jordan_claw.tools.web_search import get_tavily_client
 
 MAX_EXTRACT_CHARS = 15000  # ~3750 tokens, enough for agent to summarize
 
@@ -191,7 +195,7 @@ async def fetch_article(
     """Fetch and extract the main content from a URL.
     Use this when Jordan shares an article to save. Read the returned content,
     then use create_source_note with a title, author, summary, key takeaways, and tags."""
-    client = AsyncTavilyClient(api_key=ctx.deps.tavily_api_key)
+    client = get_tavily_client(ctx.deps.tavily_api_key)
     response = await client.extract(urls=[url])
 
     results = response.get("results", [])

@@ -7,8 +7,9 @@ from aiogram import Bot
 from supabase._async.client import AsyncClient
 
 from jordan_claw.agents.deps import AgentDeps
-from jordan_claw.agents.factory import build_agent, db_messages_to_history
+from jordan_claw.agents.factory import create_agent, db_messages_to_history
 from jordan_claw.analytics.types import RunKind
+from jordan_claw.db.agents import get_agent_config
 from jordan_claw.db.conversations import get_or_create_conversation, update_conversation_status
 from jordan_claw.db.messages import get_recent_messages, message_exists, save_message
 from jordan_claw.gateway.models import GatewayResponse, IncomingMessage
@@ -46,37 +47,48 @@ async def handle_message(
         log.info("duplicate_message_skipped", channel_message_id=msg.channel_message_id)
         return GatewayResponse(content="", conversation_id="")
 
-    # 2. Get or create conversation
-    conversation = await get_or_create_conversation(
-        db, msg.org_id, msg.channel, msg.channel_thread_id, agent_slug=agent_slug
+    # 2. Conversation, memory context, and agent config are independent
+    # reads — fetch them concurrently to cut round-trips before the LLM call.
+    conversation, memory_context, agent_config = await asyncio.gather(
+        get_or_create_conversation(
+            db, msg.org_id, msg.channel, msg.channel_thread_id, agent_slug=agent_slug
+        ),
+        load_memory_context(db, msg.org_id),
+        get_agent_config(db, msg.org_id, agent_slug),
+        return_exceptions=True,
     )
+    if isinstance(conversation, BaseException):
+        raise conversation
     conversation_id = conversation["id"]
     log = log.bind(conversation_id=conversation_id, agent_slug=agent_slug)
 
-    # 3. Save user message
-    await save_message(
-        db,
-        conversation_id=conversation_id,
-        role="user",
-        content=msg.content,
-        channel_message_id=msg.channel_message_id,
-    )
-
-    # 4. Load history
-    db_messages = await get_recent_messages(db, conversation_id, limit=history_limit)
-
-    # 5. Load memory context (fallback to empty if memory DB fails)
-    try:
-        memory_context = await load_memory_context(db, msg.org_id)
-    except Exception:
+    # Memory context falls back to empty if the memory DB fails
+    if isinstance(memory_context, BaseException):
         log.warning("memory_context_load_failed", org_id=msg.org_id)
         memory_context = ""
 
-    # 6. Build agent from DB config, run with deps via instrumented wrapper
+    # 3. Save user message and load prior history concurrently. The current
+    # message is filtered out of history below (the prompt already carries it),
+    # so the insert-vs-select race doesn't matter.
+    _, db_messages = await asyncio.gather(
+        save_message(
+            db,
+            conversation_id=conversation_id,
+            role="user",
+            content=msg.content,
+            channel_message_id=msg.channel_message_id,
+        ),
+        get_recent_messages(db, conversation_id, limit=history_limit),
+    )
+    db_messages = [
+        m for m in db_messages if m.get("channel_message_id") != msg.channel_message_id
+    ]
+
+    # 4. Build agent from DB config, run with deps via instrumented wrapper
     try:
-        agent, model_name = await build_agent(
-            db, msg.org_id, agent_slug, memory_context=memory_context
-        )
+        if isinstance(agent_config, BaseException):
+            raise agent_config
+        agent, model_name = create_agent(agent_config, memory_context=memory_context)
         deps = AgentDeps(
             org_id=msg.org_id,
             tavily_api_key=tavily_api_key,
@@ -116,7 +128,7 @@ async def handle_message(
         )
         return GatewayResponse(content=ERROR_RESPONSE, conversation_id=conversation_id)
 
-    # 7. Save assistant response
+    # 5. Save assistant response
     await save_message(
         db,
         conversation_id=conversation_id,
@@ -127,13 +139,13 @@ async def handle_message(
         cost_usd=float(result.cost_usd) if result.cost_usd is not None else None,
     )
 
-    # 8. Fire-and-forget memory extraction
+    # 6. Fire-and-forget memory extraction
     asyncio.create_task(
         extract_memory_background(db, msg.org_id, msg.content, response_text, bot=bot),
         name=f"memory-extract-{msg.org_id}",
     )
 
-    # 9. Return
+    # 7. Return
     return GatewayResponse(
         content=response_text,
         conversation_id=conversation_id,

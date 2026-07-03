@@ -12,6 +12,16 @@ HEADING_PATTERN = re.compile(r"^#{1,3}\s", re.MULTILINE)
 EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIMENSIONS = 512
 
+# Cached per key so the underlying httpx connection pool is reused across calls
+_embedding_clients: dict[str, AsyncOpenAI] = {}
+
+
+def _get_embedding_client(api_key: str) -> AsyncOpenAI:
+    client = _embedding_clients.get(api_key)
+    if client is None:
+        client = _embedding_clients[api_key] = AsyncOpenAI(api_key=api_key)
+    return client
+
 
 def _estimate_tokens(text: str) -> int:
     return len(text) // CHARS_PER_TOKEN
@@ -101,7 +111,7 @@ async def generate_embeddings(
     client: AsyncOpenAI | None = None,
 ) -> list[list[float]]:
     """Generate embeddings for a list of texts using OpenAI API."""
-    client = client or AsyncOpenAI(api_key=api_key)
+    client = client or _get_embedding_client(api_key)
     response = await client.embeddings.create(
         model=EMBEDDING_MODEL,
         input=texts,

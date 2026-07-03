@@ -16,11 +16,21 @@ log = structlog.get_logger()
 
 CENTRAL_TZ = ZoneInfo("America/Chicago")
 
+# Discovered calendar URL per username. Skips the principal + calendar-list
+# discovery round trips on repeat calls; the DAVClient itself is still built
+# per call so credentials never leak across orgs.
+_calendar_url_cache: dict[str, str] = {}
+
 
 def _connect_calendar(username: str, app_password: str) -> caldav.Calendar:
     """Connect to Fastmail CalDAV and return the default calendar."""
     url = f"https://caldav.fastmail.com/dav/calendars/user/{username}/"
     client = caldav.DAVClient(url=url, username=username, password=app_password)
+
+    cached_url = _calendar_url_cache.get(username)
+    if cached_url:
+        return client.calendar(url=cached_url)
+
     principal = client.principal()
     calendars = principal.calendars()
 
@@ -28,7 +38,9 @@ def _connect_calendar(username: str, app_password: str) -> caldav.Calendar:
         raise RuntimeError("No calendars found on Fastmail account.")
 
     # Fastmail puts the default calendar first; Jordan has only one calendar.
-    return calendars[0]
+    calendar = calendars[0]
+    _calendar_url_cache[username] = str(calendar.url)
+    return calendar
 
 
 def _format_dt(dt: datetime | dt_module.date) -> str:

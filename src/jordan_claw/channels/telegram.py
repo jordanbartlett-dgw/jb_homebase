@@ -56,11 +56,11 @@ async def handle_feedback_command(
         return
     rating, note, prompt_source = parsed
 
-    slug = await most_recent_agent(db, org_id=default_org_id, channel="telegram")
-    slug = slug or default_agent_slug
-    conv_id = await most_recent_conversation_id(
-        db, org_id=default_org_id, channel="telegram"
+    slug, conv_id = await asyncio.gather(
+        most_recent_agent(db, org_id=default_org_id, channel="telegram"),
+        most_recent_conversation_id(db, org_id=default_org_id, channel="telegram"),
     )
+    slug = slug or default_agent_slug
 
     await save_feedback(
         db,

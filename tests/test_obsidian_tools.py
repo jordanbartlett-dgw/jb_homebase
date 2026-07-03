@@ -198,7 +198,7 @@ async def test_create_source_note_renders_correct_markdown(mock_insert, mock_emb
 
 
 @pytest.mark.asyncio
-@patch("jordan_claw.tools.obsidian.AsyncTavilyClient")
+@patch("jordan_claw.tools.obsidian.get_tavily_client")
 async def test_fetch_article_returns_content(mock_tavily_cls):
     mock_client = AsyncMock()
     mock_client.extract.return_value = {
@@ -211,11 +211,11 @@ async def test_fetch_article_returns_content(mock_tavily_cls):
     result = await fetch_article(ctx, url="https://example.com/article")
     assert "https://example.com/article" in result
     assert "This is the article body text." in result
-    mock_tavily_cls.assert_called_once_with(api_key="test")
+    mock_tavily_cls.assert_called_once_with("test")
 
 
 @pytest.mark.asyncio
-@patch("jordan_claw.tools.obsidian.AsyncTavilyClient")
+@patch("jordan_claw.tools.obsidian.get_tavily_client")
 async def test_fetch_article_no_results(mock_tavily_cls):
     mock_client = AsyncMock()
     mock_client.extract.return_value = {"results": []}
@@ -226,7 +226,7 @@ async def test_fetch_article_no_results(mock_tavily_cls):
 
 
 @pytest.mark.asyncio
-@patch("jordan_claw.tools.obsidian.AsyncTavilyClient")
+@patch("jordan_claw.tools.obsidian.get_tavily_client")
 async def test_fetch_article_truncates_long_content(mock_tavily_cls):
     mock_client = AsyncMock()
     mock_client.extract.return_value = {

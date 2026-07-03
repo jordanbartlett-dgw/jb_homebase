@@ -4,8 +4,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from jordan_claw.db.agents import AgentConfig
 from jordan_claw.gateway.models import IncomingMessage
 from jordan_claw.gateway.router import ERROR_RESPONSE, handle_message
+
+
+def make_agent_config() -> AgentConfig:
+    return AgentConfig(
+        id="agent-001",
+        org_id="1408252a-fd36-4fd3-b527-3b2f495d7b9c",
+        name="Claw Main",
+        slug="claw-main",
+        system_prompt="You are helpful.",
+        model="claude-sonnet-4-20250514",
+        tools=[],
+        is_active=True,
+    )
 
 
 def make_incoming(
@@ -83,7 +97,11 @@ async def test_successful_message_flow(mock_db):
         ),
         patch("jordan_claw.gateway.router.load_memory_context", return_value=""),
         patch(
-            "jordan_claw.gateway.router.build_agent",
+            "jordan_claw.gateway.router.get_agent_config",
+            return_value=make_agent_config(),
+        ),
+        patch(
+            "jordan_claw.gateway.router.create_agent",
             return_value=(mock_agent, "claude-sonnet-4-20250514"),
         ),
         patch(
@@ -127,7 +145,7 @@ async def test_agent_error_returns_friendly_message(mock_db):
         patch("jordan_claw.gateway.router.get_recent_messages", return_value=[]),
         patch("jordan_claw.gateway.router.load_memory_context", return_value=""),
         patch(
-            "jordan_claw.gateway.router.build_agent",
+            "jordan_claw.gateway.router.get_agent_config",
             side_effect=Exception("LLM timeout"),
         ),
         patch(
@@ -178,7 +196,11 @@ async def test_memory_context_injected_into_agent(mock_db):
             return_value="## Memory Context\n- Prefers Python",
         ),
         patch(
-            "jordan_claw.gateway.router.build_agent",
+            "jordan_claw.gateway.router.get_agent_config",
+            return_value=make_agent_config(),
+        ),
+        patch(
+            "jordan_claw.gateway.router.create_agent",
             return_value=(mock_agent, "claude-sonnet-4-20250514"),
         ) as mock_build,
         patch(
@@ -195,6 +217,6 @@ async def test_memory_context_injected_into_agent(mock_db):
             fastmail_app_password="test-password",
         )
 
-    # Verify memory_context was passed to build_agent
+    # Verify memory_context was passed to create_agent
     build_call_kwargs = mock_build.call_args.kwargs
     assert build_call_kwargs.get("memory_context") == "## Memory Context\n- Prefers Python"
