@@ -31,7 +31,7 @@ async def send_proactive_message(
     if not content:
         return
 
-    chat_id = await get_telegram_chat_id(db, org_id)
+    chat_id = await get_telegram_chat_id(db, org_id, agent_slug)
     if chat_id is None:
         log.warning("proactive.no_chat_id", org_id=org_id, task_type=task_type)
         return

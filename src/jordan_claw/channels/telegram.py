@@ -132,7 +132,7 @@ def create_telegram_dispatcher(
 
         # Persist Telegram chat ID for proactive messaging (fire-and-forget)
         asyncio.create_task(
-            save_telegram_chat_id(db, default_org_id, message.chat.id),
+            save_telegram_chat_id(db, default_org_id, agent_slug, message.chat.id),
             name=f"save-chat-id-{message.chat.id}",
         )
 
