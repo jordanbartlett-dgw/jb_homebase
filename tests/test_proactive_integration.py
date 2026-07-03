@@ -97,7 +97,8 @@ async def test_full_scheduled_flow():
             new=AsyncMock(return_value=[]),
         ),
     ):
-        await dispatch_task(schedule, mock_db, mock_bot, mock_settings)
+        bots = {"claw-main": mock_bot}
+        await dispatch_task(schedule, mock_db, bots, mock_settings)
 
     # Verify Telegram message was sent
     mock_bot.send_message.assert_called_once_with(12345, "Good morning, Jordan!")

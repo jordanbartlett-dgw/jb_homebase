@@ -92,9 +92,11 @@ async def lifespan(app: FastAPI):
     # Start Telegram polling as background task
     polling_task = asyncio.create_task(start_polling(bot, dp))
 
+    bots: dict[str, Bot] = {settings.default_agent_slug: bot}
+
     # Start proactive messaging scheduler
     scheduler_task = asyncio.create_task(
-        scheduler_loop(db, bot, settings),
+        scheduler_loop(db, bots, settings),
         name="proactive-scheduler",
     )
     logger.info("proactive_scheduler_started")
