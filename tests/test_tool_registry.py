@@ -15,6 +15,12 @@ EXPECTED_TOOLS = [
     "read_note",
     "create_source_note",
     "fetch_article",
+    "get_workout_profile",
+    "save_workout_profile",
+    "get_workout_plan",
+    "save_workout_plan",
+    "log_workout",
+    "get_recent_workouts",
 ]
 
 
@@ -51,6 +57,12 @@ def test_deps_tools_have_ctx_param():
         "read_note",
         "create_source_note",
         "fetch_article",
+        "get_workout_profile",
+        "save_workout_profile",
+        "get_workout_plan",
+        "save_workout_plan",
+        "log_workout",
+        "get_recent_workouts",
     ]
     for name in deps_tools:
         sig = inspect.signature(BASE_TOOLSET.tools[name].function)
