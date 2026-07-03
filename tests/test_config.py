@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from jordan_claw.config import Settings
+from jordan_claw.config import Settings, get_settings
 
 
 def test_settings_includes_fastmail_fields():
@@ -44,3 +44,19 @@ def test_settings_has_openai_api_key(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai")
     settings = Settings()
     assert settings.openai_api_key == "test-openai"
+
+
+def test_workout_bot_disabled_by_default(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_KEY", "test-key")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "test-anon")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-bot")
+    monkeypatch.setenv("TAVILY_API_KEY", "test-tavily")
+    monkeypatch.setenv("FASTMAIL_USERNAME", "test@fastmail.com")
+    monkeypatch.setenv("FASTMAIL_APP_PASSWORD", "test-pw")
+    monkeypatch.setenv("DEFAULT_ORG_ID", "org-123")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai")
+    settings = get_settings()
+    assert settings.workout_telegram_bot_token == ""
+    assert settings.workout_agent_slug == "workout-coach"
