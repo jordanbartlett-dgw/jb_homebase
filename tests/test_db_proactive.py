@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -137,9 +137,24 @@ async def test_get_telegram_chat_id_not_set():
 async def test_save_telegram_chat_id_updates_agent_row():
     from jordan_claw.db.proactive import save_telegram_chat_id
 
-    db = _mock_db()
+    db = _mock_db([{"telegram_chat_id": 12345}])
     query = db.table.return_value
     await save_telegram_chat_id(db, "org-1", "workout-coach", 12345)
     db.table.assert_called_with("agents")
     query.update.assert_called_once_with({"telegram_chat_id": 12345})
     query.eq.assert_any_call("slug", "workout-coach")
+
+
+@pytest.mark.asyncio
+async def test_save_telegram_chat_id_warns_on_missing_agent():
+    from jordan_claw.db.proactive import save_telegram_chat_id
+
+    db = _mock_db(data=[])
+    with patch("jordan_claw.db.proactive.log") as mock_log:
+        await save_telegram_chat_id(db, "org-1", "ghost-agent", 12345)
+
+    mock_log.warning.assert_called_once_with(
+        "telegram_chat_id_save_missed",
+        org_id="org-1",
+        agent_slug="ghost-agent",
+    )

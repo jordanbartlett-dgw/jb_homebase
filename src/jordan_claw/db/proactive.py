@@ -106,10 +106,16 @@ async def save_telegram_chat_id(
     chat_id: int,
 ) -> None:
     """Persist the Telegram chat ID on the agent row."""
-    await (
-        client.table("agents")
+    result = (
+        await client.table("agents")
         .update({"telegram_chat_id": chat_id})
         .eq("org_id", org_id)
         .eq("slug", agent_slug)
         .execute()
     )
+    if not result.data:
+        log.warning(
+            "telegram_chat_id_save_missed",
+            org_id=org_id,
+            agent_slug=agent_slug,
+        )
