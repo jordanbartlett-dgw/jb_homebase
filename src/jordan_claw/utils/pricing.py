@@ -11,7 +11,11 @@ log = structlog.get_logger()
 PRICING: dict[str, dict[str, Decimal]] = {
     "claude-sonnet-4-5-20250929": {"input": Decimal("3.00"), "output": Decimal("15.00")},
     "claude-haiku-4-5-20251001":  {"input": Decimal("1.00"), "output": Decimal("5.00")},
+    # Retired 2026-06-15; kept so historical usage_events rows still price
     "claude-sonnet-4-20250514":   {"input": Decimal("3.00"), "output": Decimal("15.00")},
+    # Sticker rates; intro pricing ($2/$10) runs through 2026-08-31, so this
+    # overcounts slightly until then
+    "claude-sonnet-5":            {"input": Decimal("3.00"), "output": Decimal("15.00")},
 }
 
 _PER_MILLION = Decimal("1000000")
