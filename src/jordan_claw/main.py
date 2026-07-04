@@ -3,18 +3,20 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import secrets
 from contextlib import asynccontextmanager
 
 import logfire
 import structlog
 from aiogram import Bot
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 
 from jordan_claw.analytics import emitter
 from jordan_claw.analytics.posthog_client import shutdown_posthog
 from jordan_claw.channels.telegram import create_telegram_dispatcher, start_polling
 from jordan_claw.config import get_settings
 from jordan_claw.db.client import close_supabase_client, get_supabase_client
+from jordan_claw.events.pipeline import process_event
 from jordan_claw.gateway.analytics_proxy import build_analytics_router
 from jordan_claw.proactive.scheduler import scheduler_loop
 
@@ -122,6 +124,11 @@ async def lifespan(app: FastAPI):
     )
     logger.info("proactive_scheduler_started")
 
+    # Expose shared state for request handlers (webhook route)
+    app.state.settings = settings
+    app.state.db = db
+    app.state.bots = bots
+
     # Mount analytics proxy after settings are loaded so org_id/token are available
     app.include_router(
         build_analytics_router(
@@ -153,7 +160,45 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Jordan Claw", lifespan=lifespan)
 
+# Keep strong references to fire-and-forget event tasks (same pattern as
+# agent_runner._fire_save) so they aren't garbage-collected mid-run.
+_pending_event_tasks: set[asyncio.Task] = set()
+
+
+async def drain_pending_event_tasks() -> None:
+    """Wait for in-flight webhook event tasks. Used by tests for deterministic asserts."""
+    if _pending_event_tasks:
+        await asyncio.gather(*list(_pending_event_tasks), return_exceptions=True)
+
 
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
+@app.post("/webhooks/{source}", status_code=202)
+async def receive_webhook(source: str, request: Request):
+    settings = request.app.state.settings
+    if not settings.claw_webhook_secret:
+        # Unconfigured secret means the surface is disabled, never open.
+        raise HTTPException(status_code=503, detail="webhook surface disabled")
+
+    provided = request.headers.get("X-Claw-Secret", "")
+    # bytes comparison: the str form of compare_digest raises on non-ASCII input
+    if not secrets.compare_digest(provided.encode(), settings.claw_webhook_secret.encode()):
+        raise HTTPException(status_code=401)
+
+    payload = await request.json()
+    task = asyncio.create_task(
+        process_event(
+            request.app.state.db,
+            source=source,
+            payload=payload,
+            settings=settings,
+            bots=request.app.state.bots,
+        ),
+        name=f"event-{source}",
+    )
+    _pending_event_tasks.add(task)
+    task.add_done_callback(_pending_event_tasks.discard)
+    return {"accepted": True}
