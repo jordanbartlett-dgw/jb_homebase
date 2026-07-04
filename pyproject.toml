@@ -6,7 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
-    "pydantic-ai-slim[anthropic]>=1.100.0,<2",
+    "pydantic-ai-slim[anthropic]>=2.0.0,<3",
     "pydantic-settings>=2.5.0",
     "supabase>=2.11.0",
     "aiogram>=3.13.0",
@@ -21,7 +21,7 @@ dependencies = [
     "pyyaml>=6.0",
     "logfire[fastapi,httpx]>=3.0.0",
     "posthog>=3.5.0",
-    "pydantic-evals>=1.100.0,<2",
+    "pydantic-evals>=2.0.0,<3",
 ]
 
 [project.optional-dependencies]
