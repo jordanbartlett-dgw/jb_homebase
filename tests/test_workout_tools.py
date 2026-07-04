@@ -124,11 +124,12 @@ async def test_get_recent_workouts_formats_logs():
     assert "felt good" in result
 
 
-def test_tools_registered_on_base_toolset():
-    from jordan_claw.tools import BASE_TOOLSET
+def test_tools_registered_in_workout_capability():
+    from jordan_claw.agents.capabilities import CAPABILITY_REGISTRY
 
+    workout_tools = CAPABILITY_REGISTRY["workout"].toolset.tools
     for name in (
         "get_workout_profile", "save_workout_profile", "get_workout_plan",
         "save_workout_plan", "log_workout", "get_recent_workouts",
     ):
-        assert name in BASE_TOOLSET.tools
+        assert name in workout_tools

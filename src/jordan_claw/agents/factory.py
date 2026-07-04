@@ -1,26 +1,12 @@
 from __future__ import annotations
 
-import structlog
 from pydantic_ai import Agent, ModelRequest, ModelResponse, TextPart, ToolReturnPart, UserPromptPart
 from pydantic_ai.capabilities import ProcessHistory
-from pydantic_ai.tools import RunContext, ToolDefinition
 from supabase._async.client import AsyncClient
 
+from jordan_claw.agents.capabilities import resolve_capabilities
 from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.db.agents import AgentConfig, get_agent_config
-from jordan_claw.tools import BASE_TOOLSET
-
-log = structlog.get_logger()
-
-
-def _make_tool_filter(allowed_tools: list[str]):
-    """Return a filter function for FilteredToolset that allows only named tools."""
-    allowed = set(allowed_tools)
-
-    def filter_func(ctx: RunContext[AgentDeps], tool_def: ToolDefinition) -> bool:
-        return tool_def.name in allowed
-
-    return filter_func
 
 
 def create_agent(
@@ -32,13 +18,6 @@ def create_agent(
     Returns (agent, model_name) so callers can log/store the model
     without reaching into Pydantic AI internals.
     """
-    # Log any tools in config that don't exist in BASE_TOOLSET
-    for name in config.tools:
-        if name not in BASE_TOOLSET.tools:
-            log.warning("unknown_tool_skipped", tool_name=name, agent_slug=config.slug)
-
-    filtered = BASE_TOOLSET.filtered(_make_tool_filter(config.tools))
-
     system_prompt = config.system_prompt
     if memory_context:
         system_prompt = memory_context + "\n\n" + system_prompt
@@ -46,12 +25,11 @@ def create_agent(
     agent = Agent(
         config.model,
         instructions=system_prompt,
-        toolsets=[filtered],
-        capabilities=[ProcessHistory(trim_history_processor)],
+        capabilities=[
+            *resolve_capabilities(config.capabilities),
+            ProcessHistory(trim_history_processor),
+        ],
         deps_type=AgentDeps,
-        # v2 default flipped to 'graceful' (function tools called alongside a
-        # final output now execute). Pin v1 behavior; revisit in PR2 with evals.
-        end_strategy="early",
     )
     return agent, config.model
 

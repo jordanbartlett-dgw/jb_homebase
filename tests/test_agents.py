@@ -74,6 +74,7 @@ async def test_get_agent_config_returns_typed_config():
                 "system_prompt": "You are helpful.",
                 "model": "claude-sonnet-4-20250514",
                 "tools": ["current_datetime", "search_web"],
+                "capabilities": ["core", "web"],
                 "is_active": True,
             }
         ]
@@ -94,6 +95,7 @@ async def test_get_agent_config_returns_typed_config():
     assert isinstance(config, AgentConfig)
     assert config.slug == "test-agent"
     assert config.tools == ["current_datetime", "search_web"]
+    assert config.capabilities == ["core", "web"]
     assert config.system_prompt == "You are helpful."
 
 
@@ -124,7 +126,8 @@ async def test_build_agent_uses_db_config():
         slug="test-agent",
         system_prompt="Be helpful.",
         model="test",
-        tools=["current_datetime", "search_web"],
+        tools=["current_datetime", "search_web"],  # legacy column: must have NO effect
+        capabilities=["core", "web"],
         is_active=True,
     )
 
@@ -145,7 +148,8 @@ async def test_build_agent_uses_db_config():
     await agent.run("hi", deps=deps, model=test_model)
 
     sent_tools = {t.name for t in test_model.last_model_request_parameters.function_tools}
-    assert sent_tools == {"current_datetime", "search_web"}  # check_calendar etc. filtered out
+    # fetch_article proves capabilities drive the toolset, not the legacy tools list.
+    assert sent_tools == {"current_datetime", "search_web", "fetch_article"}
 
 
 def test_history_budget_truncates_oldest_messages():
@@ -195,7 +199,7 @@ def test_history_no_budget_returns_all():
 
 
 @pytest.mark.asyncio
-async def test_build_agent_skips_unknown_tools():
+async def test_build_agent_skips_unknown_capabilities():
     fake_config = AgentConfig(
         id="agent-001",
         org_id="org-001",
@@ -203,7 +207,8 @@ async def test_build_agent_skips_unknown_tools():
         slug="test-agent",
         system_prompt="Be helpful.",
         model="test",
-        tools=["current_datetime", "nonexistent_tool"],
+        tools=["current_datetime", "nonexistent_tool"],  # legacy column: must have NO effect
+        capabilities=["core", "nonexistent"],
         is_active=True,
     )
 
@@ -224,36 +229,9 @@ async def test_build_agent_skips_unknown_tools():
     await agent.run("hi", deps=deps, model=test_model)
 
     sent_tools = {t.name for t in test_model.last_model_request_parameters.function_tools}
-    # nonexistent_tool is not in BASE_TOOLSET, so only current_datetime reaches the model.
-    # The factory logs a warning for unknown tool names.
+    # "nonexistent" is not in CAPABILITY_REGISTRY, so only core's tool reaches the model.
+    # resolve_capabilities logs a warning for unknown capability ids.
     assert sent_tools == {"current_datetime"}
-
-
-def test_base_toolset_has_all_registered_tools():
-    """BASE_TOOLSET should contain all 16 tools."""
-    from jordan_claw.tools import BASE_TOOLSET
-
-    expected_tools = {
-        "current_datetime",
-        "search_web",
-        "check_calendar",
-        "schedule_event",
-        "recall_memory",
-        "forget_memory",
-        "search_notes",
-        "read_note",
-        "create_source_note",
-        "fetch_article",
-        "get_workout_profile",
-        "save_workout_profile",
-        "get_workout_plan",
-        "save_workout_plan",
-        "log_workout",
-        "get_recent_workouts",
-    }
-    # FunctionToolset exposes tool names via .tools (a dict keyed by name)
-    registered = set(BASE_TOOLSET.tools.keys())
-    assert registered == expected_tools
 
 
 def test_history_budget_no_orphan_response_at_start():
@@ -352,6 +330,7 @@ async def test_trim_history_runs_inside_agent_run():
         system_prompt="Be helpful.",
         model="test",
         tools=[],
+        capabilities=[],
         is_active=True,
     )
     agent, _ = create_agent(fake_config)
