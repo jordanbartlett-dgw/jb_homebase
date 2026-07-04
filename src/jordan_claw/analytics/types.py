@@ -6,12 +6,14 @@ from enum import StrEnum
 
 
 class RunKind(StrEnum):
-    """Mirrors the CHECK constraint on usage_events.run_kind (migration 006)."""
+    """Mirrors the CHECK constraint on usage_events.run_kind (migrations 006, 013)."""
 
     USER_MESSAGE = "user_message"
     PROACTIVE = "proactive"
     MEMORY_EXTRACT = "memory_extract"
     EVAL = "eval"
+    EVENT = "event"
+    VOICE = "voice"
 
 
 @dataclass(frozen=True, slots=True)

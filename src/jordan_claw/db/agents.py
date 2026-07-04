@@ -14,16 +14,15 @@ class AgentConfig(BaseModel):
     system_prompt: str
     model: str
     tools: list[str]
+    capabilities: list[str] = []
     is_active: bool
 
 
-async def get_agent_config(
-    client: AsyncClient, org_id: str, slug: str
-) -> AgentConfig:
+async def get_agent_config(client: AsyncClient, org_id: str, slug: str) -> AgentConfig:
     """Fetch a single active agent config by org_id and slug."""
     result = (
         await client.table("agents")
-        .select("id, org_id, name, slug, system_prompt, model, tools, is_active")
+        .select("id, org_id, name, slug, system_prompt, model, tools, capabilities, is_active")
         .eq("org_id", org_id)
         .eq("slug", slug)
         .eq("is_active", True)

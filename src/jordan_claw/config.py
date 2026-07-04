@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     frontend_analytics_token: str | None = None
     eval_judge_model: str = "anthropic:claude-sonnet-4-5-20250929"
     eval_test_org_id: str = "eaa1eaa1-eaa1-eaa1-eaa1-eaa1eaa1eaa1"
+    # Event/voice surfaces. Empty string means the feature is disabled:
+    # the webhook returns 503, the fastmail watcher skips. Defaults stay
+    # empty so services sharing Settings (evals-cron) boot without them.
+    claw_webhook_secret: str = ""
+    claw_app_token: str = ""
+    fastmail_api_token: str = ""
 
     model_config = ConfigDict(env_file=".env")
 
