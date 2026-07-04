@@ -78,6 +78,7 @@ async def handle_message(
             role="user",
             content=msg.content,
             channel_message_id=msg.channel_message_id,
+            metadata=msg.metadata,
         ),
         get_recent_messages(db, conversation_id, limit=history_limit),
     )
