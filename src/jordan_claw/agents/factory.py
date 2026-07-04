@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import structlog
 from pydantic_ai import Agent, ModelRequest, ModelResponse, TextPart, ToolReturnPart, UserPromptPart
+from pydantic_ai.capabilities import ProcessHistory
 from pydantic_ai.tools import RunContext, ToolDefinition
 from supabase._async.client import AsyncClient
 
@@ -46,8 +47,11 @@ def create_agent(
         config.model,
         instructions=system_prompt,
         toolsets=[filtered],
-        history_processors=[trim_history_processor],
+        capabilities=[ProcessHistory(trim_history_processor)],
         deps_type=AgentDeps,
+        # v2 default flipped to 'graceful' (function tools called alongside a
+        # final output now execute). Pin v1 behavior; revisit in PR2 with evals.
+        end_strategy="early",
     )
     return agent, config.model
 
