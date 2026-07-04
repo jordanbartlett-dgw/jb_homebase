@@ -5,10 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic_ai import ModelRequest, ModelResponse
 from pydantic_ai.messages import TextPart, UserPromptPart
+from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel
 
 from jordan_claw.agents.deps import AgentDeps
-from jordan_claw.agents.factory import build_agent, db_messages_to_history
+from jordan_claw.agents.factory import build_agent, create_agent, db_messages_to_history
 from jordan_claw.db.agents import AgentConfig, get_agent_config
 
 
@@ -334,3 +335,51 @@ def test_trim_history_processor_never_returns_empty():
     result = trim_history_processor(messages, max_tokens=4000)
 
     assert len(result) >= 1
+
+
+@pytest.mark.asyncio
+async def test_trim_history_runs_inside_agent_run():
+    """ProcessHistory must actually trim history during a run, not just exist.
+
+    Guards the v2 capabilities wiring in create_agent: a FunctionModel captures
+    what the model receives after a long history passes through the agent.
+    """
+    fake_config = AgentConfig(
+        id="agent-001",
+        org_id="org-001",
+        name="Test Agent",
+        slug="test-agent",
+        system_prompt="Be helpful.",
+        model="test",
+        tools=[],
+        is_active=True,
+    )
+    agent, _ = create_agent(fake_config)
+
+    received: list = []
+
+    def capture(messages, info):
+        received.extend(messages)
+        return ModelResponse(parts=[TextPart(content="ok")])
+
+    history = []
+    for i in range(6):
+        history.append(ModelRequest(parts=[UserPromptPart(content=f"u{i} " + "x" * 3000)]))
+        history.append(ModelResponse(parts=[TextPart(content=f"a{i} " + "x" * 3000)]))
+
+    deps = AgentDeps(
+        org_id="org-001",
+        tavily_api_key="test-key",
+        fastmail_username="test@example.com",
+        fastmail_app_password="test-pass",
+    )
+    await agent.run(
+        "new question",
+        deps=deps,
+        message_history=history,
+        model=FunctionModel(capture),
+    )
+
+    received_text = str(received)
+    assert "u5" in received_text  # newest exchange survives
+    assert "u0" not in received_text  # oldest trimmed by the 4000-token budget
