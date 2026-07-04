@@ -42,7 +42,7 @@ conversation.
 """
 
 
-def create_extraction_agent() -> Agent[None, ExtractionResult]:
+def create_extraction_agent() -> Agent[object, ExtractionResult]:
     """Create the memory extraction agent with structured output."""
     return Agent(
         EXTRACTOR_MODEL,

@@ -86,7 +86,7 @@ async def test_successful_message_flow(mock_db):
 
     mock_result = MagicMock()
     mock_result.output = "Hello! How can I help?"
-    mock_result.usage.return_value = mock_usage
+    mock_result.usage = mock_usage
 
     mock_agent = AsyncMock()
     mock_agent.run.return_value = mock_result
@@ -185,7 +185,7 @@ async def test_memory_context_injected_into_agent(mock_db):
 
     mock_result = MagicMock()
     mock_result.output = "I remember your preferences."
-    mock_result.usage.return_value = mock_usage
+    mock_result.usage = mock_usage
 
     mock_agent = AsyncMock()
     mock_agent.run.return_value = mock_result
