@@ -19,7 +19,7 @@ import 'routes.dart';
 /// Deep links from push notifications and magic-link taps land here. The
 /// FCM handler should call `router.go(message.data['deep_link'])`; the
 /// app_links handler reads `uri.path` and does the same. Wiring is in PR2.
-GoRouter buildAppRouter(Ref ref) {
+GoRouter buildAppRouter(WidgetRef ref) {
   return GoRouter(
     initialLocation: Routes.today,
     debugLogDiagnostics: false,
@@ -55,9 +55,9 @@ GoRouter buildAppRouter(Ref ref) {
       // Voice capture (modal route)
       GoRoute(
         path: Routes.voice,
-        pageBuilder: (context, state) => MaterialPage<void>(
+        pageBuilder: (context, state) => const MaterialPage<void>(
           fullscreenDialog: true,
-          child: const VoiceOverlay(),
+          child: VoiceOverlay(),
         ),
       ),
 
@@ -68,7 +68,11 @@ GoRouter buildAppRouter(Ref ref) {
           final roomId = state.pathParameters['roomId'];
           if (roomId == null) return Routes.today;
           // If someone lands directly on `/room/:id`, default to chat tab.
-          if (state.matchedLocation == '/room/$roomId') {
+          // Compare against the full target path, not matchedLocation:
+          // during parent-route evaluation matchedLocation is only the
+          // partially matched '/room/:id', which would hijack navigation
+          // to the context/history sub-routes back to chat.
+          if (state.uri.path == '/room/$roomId') {
             return Routes.roomChat(roomId);
           }
           return null;

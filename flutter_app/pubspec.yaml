@@ -28,7 +28,7 @@ dependencies:
 
   # Push
   firebase_core: ^4.0.0
-  firebase_messaging: ^17.0.0
+  firebase_messaging: ^16.0.0
   flutter_local_notifications: ^20.0.0
 
   # Auth
@@ -36,14 +36,21 @@ dependencies:
   flutter_secure_storage: ^10.0.0
   app_links: ^7.0.0
 
+dependency_overrides:
+  # device_info_plus >=12.4.0 (transitive via passkeys) references
+  # NSProcessInfo.isiOSAppOnVision, declared only in the iOS 26.1 SDK.
+  # Xcode 26.0 ships the 26.0 SDK, so those versions fail to compile.
+  # Remove this pin once Xcode >= 26.1 is installed.
+  device_info_plus: 12.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  flutter_lints: ^7.0.0
+  flutter_lints: ^6.0.0
   build_runner: ^2.4.0
   riverpod_generator: ^3.0.0
-  custom_lint: ^0.7.0
+  custom_lint: ^0.8.0
   riverpod_lint: ^3.0.0
 
 flutter:

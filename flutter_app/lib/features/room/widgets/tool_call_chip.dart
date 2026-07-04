@@ -7,8 +7,7 @@ import '../../../theme/spacing.dart';
 /// Tool-call chip that appears mid-response and resolves with a checkmark
 /// or error icon. No thinking traces — just the visible tool name + status.
 class ToolCallChip extends StatelessWidget {
-  const ToolCallChip({super.key, required this.message})
-      : assert(message.role == MessageRole.toolCall);
+  const ToolCallChip({super.key, required this.message});
 
   final Message message;
 
