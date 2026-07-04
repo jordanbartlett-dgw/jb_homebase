@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -103,32 +103,58 @@ async def test_was_sent_today_returns_false():
 
 
 @pytest.mark.asyncio
-async def test_get_telegram_chat_id():
+async def test_get_telegram_chat_id_by_slug():
     from jordan_claw.db.proactive import get_telegram_chat_id
 
-    db = _mock_db([{"telegram_chat_id": 12345}])
+    db = _mock_db([{"telegram_chat_id": 999}])
+    query = db.table.return_value
+    chat_id = await get_telegram_chat_id(db, "org-1", agent_slug="workout-coach")
+    assert chat_id == 999
+    db.table.assert_called_with("agents")
+    query.eq.assert_any_call("slug", "workout-coach")
+
+
+@pytest.mark.asyncio
+async def test_get_telegram_chat_id_falls_back_to_default_agent():
+    from jordan_claw.db.proactive import get_telegram_chat_id
+
+    db = _mock_db([{"telegram_chat_id": 111}])
+    query = db.table.return_value
     chat_id = await get_telegram_chat_id(db, "org-1")
-    assert chat_id == 12345
+    assert chat_id == 111
+    query.eq.assert_any_call("is_default", True)
 
 
 @pytest.mark.asyncio
 async def test_get_telegram_chat_id_not_set():
     from jordan_claw.db.proactive import get_telegram_chat_id
 
-    db = _mock_db([{"telegram_chat_id": None}])
-    chat_id = await get_telegram_chat_id(db, "org-1")
-    assert chat_id is None
+    db = _mock_db([])
+    assert await get_telegram_chat_id(db, "org-1") is None
 
 
 @pytest.mark.asyncio
-async def test_save_telegram_chat_id():
+async def test_save_telegram_chat_id_updates_agent_row():
     from jordan_claw.db.proactive import save_telegram_chat_id
 
-    db = MagicMock()
-    chain = MagicMock()
-    chain.execute = AsyncMock(return_value=MagicMock())
-    chain.eq.return_value = chain
-    db.table.return_value = MagicMock(update=MagicMock(return_value=chain))
+    db = _mock_db([{"telegram_chat_id": 12345}])
+    query = db.table.return_value
+    await save_telegram_chat_id(db, "org-1", "workout-coach", 12345)
+    db.table.assert_called_with("agents")
+    query.update.assert_called_once_with({"telegram_chat_id": 12345})
+    query.eq.assert_any_call("slug", "workout-coach")
 
-    await save_telegram_chat_id(db, "org-1", 12345)
-    db.table.assert_called_with("organizations")
+
+@pytest.mark.asyncio
+async def test_save_telegram_chat_id_warns_on_missing_agent():
+    from jordan_claw.db.proactive import save_telegram_chat_id
+
+    db = _mock_db(data=[])
+    with patch("jordan_claw.db.proactive.log") as mock_log:
+        await save_telegram_chat_id(db, "org-1", "ghost-agent", 12345)
+
+    mock_log.warning.assert_called_once_with(
+        "telegram_chat_id_save_missed",
+        org_id="org-1",
+        agent_slug="ghost-agent",
+    )

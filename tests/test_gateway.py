@@ -40,6 +40,13 @@ def mock_db():
     return AsyncMock()
 
 
+def test_telegram_channel_message_id_is_chat_scoped():
+    from jordan_claw.channels.telegram import telegram_channel_message_id
+
+    assert telegram_channel_message_id("111", "5") != telegram_channel_message_id("222", "5")
+    assert telegram_channel_message_id("111", "5") == "telegram:111:5"
+
+
 @pytest.mark.asyncio
 async def test_duplicate_message_returns_empty(mock_db):
     """Duplicate messages should be skipped."""

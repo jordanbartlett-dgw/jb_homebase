@@ -7,7 +7,20 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from jordan_claw.workout.models import PlanDay, PlanWeek, WorkoutPlan
+
 CHICAGO = ZoneInfo("America/Chicago")
+
+
+def _plan() -> WorkoutPlan:
+    return WorkoutPlan(
+        id="p1", org_id="org-001", status="active", starts_on="2026-07-07",
+        rationale="Base building",
+        weeks=[PlanWeek(week_number=1, focus="easy volume", days=[
+            PlanDay(day="monday", session_type="run", description="Easy 4mi",
+                    targets={"distance_mi": 4}),
+        ])],
+    )
 
 
 def _wrapper_returning(output: str) -> AsyncMock:
@@ -190,3 +203,55 @@ def test_format_memory_flag():
     )
     assert "tea" in result
     assert "coffee" in result
+
+
+@pytest.mark.asyncio
+async def test_daily_workout_quiet_without_plan():
+    from jordan_claw.proactive.executors import execute_daily_workout
+
+    with patch("jordan_claw.proactive.executors.get_active_plan", return_value=None):
+        result = await execute_daily_workout(
+            MagicMock(), "org-1", {"agent_slug": "workout-coach"}, MagicMock()
+        )
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_daily_workout_composes_via_agent():
+    from jordan_claw.proactive.executors import execute_daily_workout
+
+    with (
+        patch("jordan_claw.proactive.executors.get_active_plan", return_value=_plan()),
+        patch("jordan_claw.proactive.executors.get_recent_workout_logs", return_value=[]),
+        patch(
+            "jordan_claw.proactive.executors._run_agent_prompt",
+            return_value="Easy 4mi this morning.",
+        ) as mock_run,
+    ):
+        result = await execute_daily_workout(
+            MagicMock(), "org-1", {"agent_slug": "workout-coach"}, MagicMock()
+        )
+    assert result == "Easy 4mi this morning."
+    assert mock_run.call_args.kwargs["schedule_name"] == "daily_workout"
+    assert mock_run.call_args[0][2] == "workout-coach"  # agent_slug positional
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reply", ["NOTHING_TO_SEND", "**NOTHING_TO_SEND**", "Rest day. NOTHING_TO_SEND."]
+)
+async def test_daily_workout_sentinel_suppresses_send(reply):
+    from jordan_claw.proactive.executors import execute_daily_workout
+
+    with (
+        patch("jordan_claw.proactive.executors.get_active_plan", return_value=_plan()),
+        patch("jordan_claw.proactive.executors.get_recent_workout_logs", return_value=[]),
+        patch(
+            "jordan_claw.proactive.executors._run_agent_prompt",
+            return_value=reply,
+        ),
+    ):
+        result = await execute_daily_workout(
+            MagicMock(), "org-1", {"agent_slug": "workout-coach"}, MagicMock()
+        )
+    assert result == ""

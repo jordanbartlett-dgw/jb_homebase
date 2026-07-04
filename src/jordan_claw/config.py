@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     openai_api_key: str
     default_org_id: str
     default_agent_slug: str = "claw-main"
+    workout_telegram_bot_token: str = ""
+    workout_agent_slug: str = "workout-coach"
     log_level: str = "INFO"
     environment: str = "development"
     message_history_limit: int = 50

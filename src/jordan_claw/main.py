@@ -90,11 +90,34 @@ async def lifespan(app: FastAPI):
     )
 
     # Start Telegram polling as background task
-    polling_task = asyncio.create_task(start_polling(bot, dp))
+    polling_tasks = [asyncio.create_task(start_polling(bot, dp))]
+
+    # Scheduler invariant: bots must always contain default_agent_slug
+    bots: dict[str, Bot] = {settings.default_agent_slug: bot}
+
+    # Optional second bot: the workout coach
+    workout_bot: Bot | None = None
+    if settings.workout_telegram_bot_token:
+        workout_bot = Bot(token=settings.workout_telegram_bot_token)
+        workout_dp = create_telegram_dispatcher(
+            workout_bot,
+            db=db,
+            default_org_id=settings.default_org_id,
+            agent_slug=settings.workout_agent_slug,
+            tavily_api_key=settings.tavily_api_key,
+            fastmail_username=settings.fastmail_username,
+            fastmail_app_password=settings.fastmail_app_password,
+            openai_api_key=settings.openai_api_key,
+            history_limit=settings.message_history_limit,
+            environment=settings.environment,
+        )
+        bots[settings.workout_agent_slug] = workout_bot
+        polling_tasks.append(asyncio.create_task(start_polling(workout_bot, workout_dp)))
+        logger.info("workout_bot_started", agent_slug=settings.workout_agent_slug)
 
     # Start proactive messaging scheduler
     scheduler_task = asyncio.create_task(
-        scheduler_loop(db, bot, settings),
+        scheduler_loop(db, bots, settings),
         name="proactive-scheduler",
     )
     logger.info("proactive_scheduler_started")
@@ -112,15 +135,18 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    polling_task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await polling_task
+    for task in polling_tasks:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
     scheduler_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await scheduler_task
     await emitter.drain_pending_emits()
     shutdown_posthog()
     await bot.session.close()
+    if workout_bot is not None:
+        await workout_bot.session.close()
     await close_supabase_client()
     logger.info("application_stopped")
 

@@ -8,6 +8,14 @@ from jordan_claw.tools.memory import forget_memory, recall_memory
 from jordan_claw.tools.obsidian import create_source_note, fetch_article, read_note, search_notes
 from jordan_claw.tools.time import current_datetime
 from jordan_claw.tools.web_search import search_web
+from jordan_claw.tools.workout import (
+    get_recent_workouts,
+    get_workout_plan,
+    get_workout_profile_tool,
+    log_workout,
+    save_workout_plan_tool,
+    save_workout_profile,
+)
 
 BASE_TOOLSET: FunctionToolset[AgentDeps] = FunctionToolset()
 BASE_TOOLSET.add_function(current_datetime, name="current_datetime")
@@ -20,3 +28,9 @@ BASE_TOOLSET.add_function(search_notes, name="search_notes")
 BASE_TOOLSET.add_function(read_note, name="read_note")
 BASE_TOOLSET.add_function(create_source_note, name="create_source_note")
 BASE_TOOLSET.add_function(fetch_article, name="fetch_article")
+BASE_TOOLSET.add_function(get_workout_profile_tool, name="get_workout_profile")
+BASE_TOOLSET.add_function(save_workout_profile, name="save_workout_profile")
+BASE_TOOLSET.add_function(get_workout_plan, name="get_workout_plan")
+BASE_TOOLSET.add_function(save_workout_plan_tool, name="save_workout_plan")
+BASE_TOOLSET.add_function(log_workout, name="log_workout")
+BASE_TOOLSET.add_function(get_recent_workouts, name="get_recent_workouts")

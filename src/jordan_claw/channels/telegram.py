@@ -18,6 +18,12 @@ from jordan_claw.gateway.router import handle_message
 logger = structlog.get_logger()
 
 
+def telegram_channel_message_id(chat_id: str, message_id: str) -> str:
+    """Dedup key. Telegram message_ids are only unique per chat, so the
+    chat id must be part of the key or two bots' chats collide."""
+    return f"telegram:{chat_id}:{message_id}"
+
+
 def _parse_feedback_args(text: str) -> tuple[int, str | None, str] | None:
     """Parse '/feedback [weekly] <1-5> [note]'.
 
@@ -132,14 +138,14 @@ def create_telegram_dispatcher(
 
         # Persist Telegram chat ID for proactive messaging (fire-and-forget)
         asyncio.create_task(
-            save_telegram_chat_id(db, default_org_id, message.chat.id),
+            save_telegram_chat_id(db, default_org_id, agent_slug, message.chat.id),
             name=f"save-chat-id-{message.chat.id}",
         )
 
         incoming = IncomingMessage(
             channel="telegram",
             channel_thread_id=chat_id,
-            channel_message_id=f"telegram:{message_id}",
+            channel_message_id=telegram_channel_message_id(chat_id, message_id),
             content=message.text,
             org_id=default_org_id,
         )

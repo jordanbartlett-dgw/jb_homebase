@@ -16,6 +16,7 @@ from jordan_claw.proactive.executors import (
     _parse_event_times,
     execute_calendar_reminder,
     execute_daily_scan,
+    execute_daily_workout,
     execute_morning_briefing,
     execute_weekly_feedback_request,
     execute_weekly_review,
@@ -30,6 +31,7 @@ EXECUTOR_MAP = {
     "weekly_review": execute_weekly_review,
     "daily_scan": execute_daily_scan,
     "weekly_feedback_request": execute_weekly_feedback_request,
+    "daily_workout": execute_daily_workout,
 }
 
 CHECK_INTERVAL_SECONDS = 60
@@ -55,14 +57,17 @@ def should_run(schedule: ProactiveSchedule, now: datetime) -> bool:
 async def dispatch_task(
     schedule: ProactiveSchedule,
     db: AsyncClient,
-    bot: Bot,
+    bots: dict[str, Bot],
     settings: Settings,
 ) -> None:
-    """Execute a scheduled task and send the result."""
+    """Execute a scheduled task and send the result via the schedule's bot."""
     executor = EXECUTOR_MAP.get(schedule.task_type)
     if not executor:
         log.warning("proactive.unknown_task_type", task_type=schedule.task_type)
         return
+
+    agent_slug = schedule.config.get("agent_slug", settings.default_agent_slug)
+    bot = bots.get(agent_slug) or bots[settings.default_agent_slug]
 
     try:
         task_config = {**schedule.config, "timezone": schedule.timezone}
@@ -77,7 +82,7 @@ async def dispatch_task(
             trigger="scheduled",
             schedule_id=schedule.id,
             schedule_name=schedule.name,
-            agent_slug=schedule.config.get("agent_slug", settings.default_agent_slug),
+            agent_slug=agent_slug,
             timezone=schedule.timezone,
         )
 
@@ -163,7 +168,7 @@ async def schedule_calendar_reminders(
 
 async def scheduler_loop(
     db: AsyncClient,
-    bot: Bot,
+    bots: dict[str, Bot],
     settings: Settings,
 ) -> None:
     """Main scheduler loop. Runs every 60 seconds, checking for due schedules."""
@@ -177,7 +182,7 @@ async def scheduler_loop(
             for schedule in schedules:
                 if should_run(schedule, now):
                     asyncio.create_task(
-                        dispatch_task(schedule, db, bot, settings),
+                        dispatch_task(schedule, db, bots, settings),
                         name=f"proactive-{schedule.task_type}-{schedule.id}",
                     )
         except Exception:

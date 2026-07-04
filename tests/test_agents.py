@@ -229,7 +229,7 @@ async def test_build_agent_skips_unknown_tools():
 
 
 def test_base_toolset_has_all_registered_tools():
-    """BASE_TOOLSET should contain all 10 tools."""
+    """BASE_TOOLSET should contain all 16 tools."""
     from jordan_claw.tools import BASE_TOOLSET
 
     expected_tools = {
@@ -243,6 +243,12 @@ def test_base_toolset_has_all_registered_tools():
         "read_note",
         "create_source_note",
         "fetch_article",
+        "get_workout_profile",
+        "save_workout_profile",
+        "get_workout_plan",
+        "save_workout_plan",
+        "log_workout",
+        "get_recent_workouts",
     }
     # FunctionToolset exposes tool names via .tools (a dict keyed by name)
     registered = set(BASE_TOOLSET.tools.keys())
