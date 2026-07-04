@@ -58,8 +58,13 @@ class AssistantTyping extends _$AssistantTyping {
 /// Active conversation messages for the current room.
 @riverpod
 class ActiveConversation extends _$ActiveConversation {
+  Timer? _replyTimer;
+
   @override
-  List<Message> build() => MockData.activeMessages;
+  List<Message> build() {
+    ref.onDispose(() => _replyTimer?.cancel());
+    return MockData.activeMessages;
+  }
 
   void appendUserMessage(String body) {
     final message = Message(
@@ -74,7 +79,10 @@ class ActiveConversation extends _$ActiveConversation {
     // response. Until then, simulate a short think + canned ack so the
     // conversation loop feels real in the mock build.
     ref.read(assistantTypingProvider.notifier).set(true);
-    Timer(const Duration(milliseconds: 1400), () {
+    // Rapid sends collapse into one reply — cancel any pending timer so
+    // the typing indicator cannot drop early.
+    _replyTimer?.cancel();
+    _replyTimer = Timer(const Duration(milliseconds: 1400), () {
       if (!ref.mounted) return;
       ref.read(assistantTypingProvider.notifier).set(false);
       state = [

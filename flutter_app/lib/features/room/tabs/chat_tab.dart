@@ -91,6 +91,10 @@ class _ChatTabState extends ConsumerState<ChatTab> {
               final child = message.role == MessageRole.toolCall
                   ? ToolCallChip(message: message)
                   : ChatMessage(message: message);
+              // Only the newest message animates in. Older ones render
+              // plain — a lazy list remounts items on scroll, and a
+              // remounted Entrance would replay its fade-up.
+              if (index != messages.length - 1) return child;
               return Entrance(key: ValueKey(message.id), child: child);
             },
           ),
