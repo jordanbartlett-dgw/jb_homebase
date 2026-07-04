@@ -22,6 +22,12 @@ class AppColors {
   static const Color accent = Color(0xFF6B7A3F);
   static const Color onAccent = Color(0xFFFFFFFF);
 
+  /// Pressed/darkened accent for interactive feedback on filled controls.
+  static const Color accentPressed = Color(0xFF57652F);
+
+  /// Soft moss wash for icon plates, selected states, and highlights.
+  static const Color accentSoft = Color(0xFFE9ECDD);
+
   // Status (used sparingly)
   static const Color warning = Color(0xFFB8860B);
   static const Color error = Color(0xFFB04444);
@@ -30,4 +36,34 @@ class AppColors {
   // Borders / dividers
   static const Color border = Color(0xFFE3E0D8);
   static const Color shadow = Color(0x14000000);
+
+  /// Warm-tinted layered card shadow: a tight key shadow for edge
+  /// definition plus a wide ambient wash for lift. Warm hue (not pure
+  /// black) so cards sit naturally on the off-white background.
+  static const List<BoxShadow> cardShadow = [
+    BoxShadow(
+      color: Color(0x0A2A2418),
+      blurRadius: 3,
+      offset: Offset(0, 1),
+    ),
+    BoxShadow(
+      color: Color(0x122A2418),
+      blurRadius: 16,
+      offset: Offset(0, 6),
+    ),
+  ];
+
+  /// Stronger lift for floating elements (overlays, raised buttons).
+  static const List<BoxShadow> floatingShadow = [
+    BoxShadow(
+      color: Color(0x0F2A2418),
+      blurRadius: 4,
+      offset: Offset(0, 2),
+    ),
+    BoxShadow(
+      color: Color(0x1F2A2418),
+      blurRadius: 24,
+      offset: Offset(0, 10),
+    ),
+  ];
 }

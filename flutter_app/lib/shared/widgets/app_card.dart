@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../theme/colors.dart';
 import '../../theme/spacing.dart';
+import 'pressable.dart';
 
-/// Standard rounded card with subtle shadow. Used on Today and elsewhere.
+/// Standard rounded card. Layered warm shadow, hairline border for edge
+/// definition, press-scale feedback when tappable.
 class AppCard extends StatelessWidget {
   const AppCard({
     super.key,
@@ -18,23 +20,17 @@ class AppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
+    final card = DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
-        child: Ink(
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: const [
-              BoxShadow(color: AppColors.shadow, blurRadius: 12, offset: Offset(0, 2)),
-            ],
-          ),
-          child: Padding(padding: padding, child: child),
-        ),
+        border: Border.all(color: AppColors.border, width: 0.5),
+        boxShadow: AppColors.cardShadow,
       ),
+      child: Padding(padding: padding, child: child),
     );
+
+    if (onTap == null) return card;
+    return Pressable(onTap: onTap, pressedScale: 0.98, child: card);
   }
 }

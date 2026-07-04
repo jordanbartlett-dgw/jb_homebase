@@ -27,6 +27,17 @@ class AppTheme {
       colorScheme: colorScheme,
       scaffoldBackgroundColor: AppColors.background,
       textTheme: AppTypography.buildTextTheme(),
+      // iOS feel: Cupertino slide transitions, no Android ink ripple —
+      // press feedback comes from scale/tint (see Pressable) instead.
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+        },
+      ),
+      splashFactory: NoSplash.splashFactory,
+      splashColor: Colors.transparent,
+      highlightColor: const Color(0x0F2A2418),
       cardTheme: const CardThemeData(
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -57,7 +68,35 @@ class AppTheme {
           ),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ).copyWith(
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.pressed)) {
+              return AppColors.accentPressed;
+            }
+            return AppColors.accent;
+          }),
         ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.textPrimary,
+          side: const BorderSide(color: AppColors.border),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+      ),
+      drawerTheme: const DrawerThemeData(
+        backgroundColor: AppColors.background,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.horizontal(right: Radius.circular(20)),
+        ),
+      ),
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: AppColors.accent,
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(foregroundColor: AppColors.accent),

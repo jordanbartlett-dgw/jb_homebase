@@ -13,23 +13,28 @@ class AppTypography {
     const base = TextStyle(color: AppColors.textPrimary, height: 1.5);
 
     return const TextTheme(
+      // Large sizes get negative tracking — SF tightens optically at
+      // display sizes and this keeps headings from feeling airy.
       displaySmall: TextStyle(
         fontSize: 32,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
         color: AppColors.textPrimary,
-        height: 1.25,
+        height: 1.2,
+        letterSpacing: -0.6,
       ),
       headlineMedium: TextStyle(
         fontSize: 24,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
         color: AppColors.textPrimary,
-        height: 1.3,
+        height: 1.25,
+        letterSpacing: -0.4,
       ),
       titleLarge: TextStyle(
         fontSize: 20,
         fontWeight: FontWeight.w600,
         color: AppColors.textPrimary,
         height: 1.35,
+        letterSpacing: -0.3,
       ),
       titleMedium: TextStyle(
         fontSize: 16,
