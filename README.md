@@ -6,9 +6,9 @@ This is the core delivery engine for the [jordanbartlett.co](https://jordanbartl
 
 ## What It Does
 
-One deployed process. One agent today, many tomorrow. Messages come in from Telegram, hit a gateway that handles dedup, conversation tracking, and history, then run through a Pydantic AI agent backed by Claude Sonnet 4.
+One deployed process, two agents. Messages come in from Telegram (one bot per agent), hit a gateway that handles dedup, conversation tracking, and history, then run through a Pydantic AI agent backed by Claude Sonnet 5.
 
-The agent ("claw-main") has ten tools:
+The main agent ("claw-main") draws from sixteen registered tools:
 
 - **current_datetime** returns the current time in US Central
 - **search_web** searches the web via Tavily for external discovery (default when unsure)
@@ -16,6 +16,9 @@ The agent ("claw-main") has ten tools:
 - **recall_memory** / **forget_memory** queries and manages persistent memory facts
 - **search_notes** / **read_note** semantic search over Obsidian vault notes via pgvector (personal notes only)
 - **create_source_note** / **fetch_article** creates source notes from URLs or manual input
+- **get_workout_profile** / **save_workout_profile** / **get_workout_plan** / **save_workout_plan** / **log_workout** / **get_recent_workouts** back the workout-coach agent
+
+A second agent ("workout-coach") runs on its own Telegram bot (enabled via `WORKOUT_TELEGRAM_BOT_TOKEN`): structured intake of training/nutrition preferences, persisted training plans, chat workout logging, and a 6am daily-workout nudge.
 
 The agent also proactively reaches out via Telegram:
 
@@ -25,6 +28,7 @@ The agent also proactively reaches out via Telegram:
 - **Memory corrections** notifies when a remembered fact is updated
 - **Daily scan** alerts on calendar conflicts (quiet, only messages if something found)
 - **Weekly feedback request** (Sundays 7pm Central) asks for a 1-5 rating on the week's interactions, persisted via `/feedback`
+- **Daily workout** (6am Central) sends the day's session from the active training plan; silent on rest days
 
 Conversation history is token-budgeted (4000 tokens max) to prevent context pollution on long conversations. Tool docstrings include explicit routing signals so the LLM knows when to use internal tools (notes, memory, calendar) vs external tools (web search). Conversations auto-expire after 30 minutes of inactivity, so unrelated prior topics don't bleed into new sessions.
 
@@ -180,7 +184,7 @@ Port:   8000
 
 ## Database
 
-Thirteen tables in Supabase:
+Sixteen tables in Supabase:
 
 - **organizations** stores tenants (one today: Jordan Bartlett)
 - **agents** stores agent config (one today: claw-main), DB-driven tools and system prompts
@@ -194,6 +198,7 @@ Thirteen tables in Supabase:
 - **proactive_messages** audit log of every proactive message sent
 - **usage_events** one row per agent run — cost, tokens, latency, outcome (source of truth for cost / quality dashboards)
 - **feedback** rating + optional note per `/feedback` submission, attributed to the most recent agent
+- **workout_profiles** / **workout_plans** / **workout_logs** training preferences, one-active-per-org plans, and logged workouts for the workout coach
 
 RLS is enabled on all tables. Uses the service role key (server-side only).
 
