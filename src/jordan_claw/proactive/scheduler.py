@@ -11,6 +11,7 @@ from supabase._async.client import AsyncClient
 
 from jordan_claw.config import Settings
 from jordan_claw.db.proactive import get_enabled_schedules, update_last_run
+from jordan_claw.events.fastmail import poll_fastmail
 from jordan_claw.proactive.delivery import send_proactive_message
 from jordan_claw.proactive.executors import (
     _parse_event_times,
@@ -61,6 +62,25 @@ async def dispatch_task(
     settings: Settings,
 ) -> None:
     """Execute a scheduled task and send the result via the schedule's bot."""
+    # fastmail_watch delivers per-email through the event pipeline itself,
+    # so it doesn't fit the content-returning executor signature.
+    if schedule.task_type == "fastmail_watch":
+        try:
+            await poll_fastmail(db, settings, bots=bots)
+            await update_last_run(db, schedule.id)
+            log.info(
+                "proactive.task_complete",
+                task_type=schedule.task_type,
+                schedule_id=schedule.id,
+            )
+        except Exception:
+            log.exception(
+                "proactive.task_failed",
+                task_type=schedule.task_type,
+                schedule_id=schedule.id,
+            )
+        return
+
     executor = EXECUTOR_MAP.get(schedule.task_type)
     if not executor:
         log.warning("proactive.unknown_task_type", task_type=schedule.task_type)
@@ -92,7 +112,11 @@ async def dispatch_task(
         if schedule.task_type == "morning_briefing":
             reminder_config = {**schedule.config, "timezone": schedule.timezone}
             await schedule_calendar_reminders(
-                db, schedule.org_id, reminder_config, settings, bot,
+                db,
+                schedule.org_id,
+                reminder_config,
+                settings,
+                bot,
             )
 
         log.info(
@@ -123,8 +147,10 @@ async def schedule_calendar_reminders(
     today_str = now.strftime("%Y-%m-%d")
 
     events_text = await get_calendar_events(
-        settings.fastmail_username, settings.fastmail_app_password,
-        today_str, today_str,
+        settings.fastmail_username,
+        settings.fastmail_app_password,
+        today_str,
+        today_str,
     )
 
     if events_text == "No events scheduled.":
@@ -144,8 +170,12 @@ async def schedule_calendar_reminders(
         async def _fire_reminder(t: str = title, s: str = start.strftime("%H:%M")) -> None:
             try:
                 content = await execute_calendar_reminder(
-                    db, org_id, config, settings,
-                    event_title=t, event_time=s,
+                    db,
+                    org_id,
+                    config,
+                    settings,
+                    event_title=t,
+                    event_time=s,
                 )
                 await send_proactive_message(
                     bot=bot,
