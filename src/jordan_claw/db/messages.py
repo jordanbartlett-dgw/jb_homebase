@@ -15,6 +15,45 @@ async def message_exists(client: AsyncClient, channel_message_id: str) -> bool:
     return len(result.data) > 0
 
 
+async def get_message_by_channel_id(client: AsyncClient, channel_message_id: str) -> dict | None:
+    """Fetch the stored message row for a channel_message_id.
+
+    Same lookup as message_exists, but returns the row so a replayed request
+    can converge on the original run (conversation, transcript, routed agent).
+    """
+    result = (
+        await client.table("messages")
+        .select("id, conversation_id, role, content, created_at, metadata")
+        .eq("channel_message_id", channel_message_id)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+async def get_assistant_reply_after(
+    client: AsyncClient,
+    conversation_id: str,
+    after: str,
+) -> dict | None:
+    """First assistant message in a conversation created strictly after `after`.
+
+    Used by the voice replay path to find the reply the original run produced
+    for the user message persisted at `after` (ISO timestamp).
+    """
+    result = (
+        await client.table("messages")
+        .select("content, created_at")
+        .eq("conversation_id", conversation_id)
+        .eq("role", "assistant")
+        .gt("created_at", after)
+        .order("created_at", desc=False)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
 async def save_message(
     client: AsyncClient,
     conversation_id: str,

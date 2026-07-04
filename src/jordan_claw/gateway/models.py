@@ -11,6 +11,7 @@ class IncomingMessage(BaseModel):
     channel_message_id: str
     content: str
     org_id: str
+    metadata: dict | None = None
 
 
 class GatewayResponse(BaseModel):

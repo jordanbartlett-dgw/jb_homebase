@@ -16,13 +16,17 @@ from jordan_claw.analytics.posthog_client import shutdown_posthog
 from jordan_claw.channels.telegram import create_telegram_dispatcher, start_polling
 from jordan_claw.config import get_settings
 from jordan_claw.db.client import close_supabase_client, get_supabase_client
+from jordan_claw.db.messages import get_message_by_channel_id
 from jordan_claw.events.pipeline import process_event
 from jordan_claw.gateway.analytics_proxy import build_analytics_router
 from jordan_claw.gateway.classifier import classify
 from jordan_claw.gateway.voice import (
+    OriginalRunIncompleteError,
     TranscriptionError,
     VoiceResponse,
     handle_app_message,
+    idempotency_key,
+    replay_response,
     transcribe,
 )
 from jordan_claw.proactive.scheduler import scheduler_loop
@@ -221,9 +225,17 @@ async def voice_message(request: Request) -> VoiceResponse:
     python-multipart is not a dependency and adding one for a single-field
     upload isn't worth it.
 
+    Idempotency: this endpoint runs 30-60s and Railway's edge replays
+    requests that don't respond within ~20s, so processing is keyed by a
+    stable idempotency key. Clients (Flutter) should send one
+    X-Idempotency-Key per utterance; without the header the key falls back
+    to a hash of the audio bytes. A replayed request skips transcription and
+    the agent run, waits for the original run's reply, and returns it.
+
     Response: VoiceResponse — {"transcript", "agent_slug", "reply"}.
-    Transcription failure -> 502; classifier failure is invisible
-    (falls back to claw-main by design).
+    Transcription failure -> 502; replay whose original run never finished
+    -> 504; classifier failure is invisible (falls back to claw-main by
+    design).
     """
     settings = request.app.state.settings
     if not settings.claw_app_token:
@@ -237,22 +249,35 @@ async def voice_message(request: Request) -> VoiceResponse:
     ):
         raise HTTPException(status_code=401)
 
+    db = request.app.state.db
     audio = await request.body()
     filename = request.headers.get("X-Audio-Filename", "voice.m4a")
     content_type = request.headers.get("Content-Type", "application/octet-stream")
+    key = idempotency_key(audio, request.headers.get("X-Idempotency-Key"))
 
     try:
-        transcript = await transcribe(audio, filename, content_type, settings)
-    except TranscriptionError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        # Pre-transcription dedup: an edge replay of an in-flight request
+        # already persisted this key, so skip Whisper and the agent run and
+        # converge on the original run's reply.
+        original = await get_message_by_channel_id(db, key)
+        if original is not None:
+            return await replay_response(db, original, org_id=settings.default_org_id)
 
-    # Classifier failure is invisible by design: it falls back to claw-main.
-    agent_slug = await classify(request.app.state.db, transcript, settings.default_org_id)
-    response = await handle_app_message(
-        request.app.state.db,
-        org_id=settings.default_org_id,
-        agent_slug=agent_slug,
-        text=transcript,
-        settings=settings,
-    )
+        try:
+            transcript = await transcribe(audio, filename, content_type, settings)
+        except TranscriptionError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        # Classifier failure is invisible by design: it falls back to claw-main.
+        agent_slug = await classify(db, transcript, settings.default_org_id)
+        response = await handle_app_message(
+            db,
+            org_id=settings.default_org_id,
+            agent_slug=agent_slug,
+            text=transcript,
+            settings=settings,
+            channel_message_id=key,
+        )
+    except OriginalRunIncompleteError as exc:
+        raise HTTPException(status_code=504, detail="original request did not complete") from exc
     return VoiceResponse(transcript=transcript, agent_slug=agent_slug, reply=response.content)
