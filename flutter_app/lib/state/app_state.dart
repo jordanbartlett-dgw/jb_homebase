@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../features/room/models/conversation.dart';
@@ -44,6 +46,15 @@ class ActiveRoom extends _$ActiveRoom {
 @riverpod
 List<TodayCard> todayCards(Ref ref) => MockData.todayCards;
 
+/// True while the assistant is "responding". Drives the typing indicator.
+@riverpod
+class AssistantTyping extends _$AssistantTyping {
+  @override
+  bool build() => false;
+
+  void set(bool value) => state = value;
+}
+
 /// Active conversation messages for the current room.
 @riverpod
 class ActiveConversation extends _$ActiveConversation {
@@ -58,7 +69,25 @@ class ActiveConversation extends _$ActiveConversation {
       timestamp: DateTime.now(),
     );
     state = [...state, message];
-    // TODO(backend): post message to gateway and stream assistant response.
+
+    // TODO(backend): post message to gateway and stream the assistant
+    // response. Until then, simulate a short think + canned ack so the
+    // conversation loop feels real in the mock build.
+    ref.read(assistantTypingProvider.notifier).set(true);
+    Timer(const Duration(milliseconds: 1400), () {
+      if (!ref.mounted) return;
+      ref.read(assistantTypingProvider.notifier).set(false);
+      state = [
+        ...state,
+        Message(
+          id: 'msg-${DateTime.now().microsecondsSinceEpoch}',
+          role: MessageRole.assistant,
+          body: 'Got it. (Mock reply — live responses stream in from the '
+              'gateway in PR2.)',
+          timestamp: DateTime.now(),
+        ),
+      ];
+    });
   }
 }
 

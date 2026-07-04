@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../routing/routes.dart';
 import '../../shared/api/mock_data.dart';
 import '../../theme/colors.dart';
+import '../../theme/motion.dart';
 import '../../theme/spacing.dart';
 import '../drawer/app_drawer.dart';
 import 'widgets/room_header.dart';
@@ -112,7 +113,9 @@ class _TabButton extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: Motion.medium,
+        curve: Motion.ease,
         padding: const EdgeInsets.symmetric(vertical: Spacing.md),
         decoration: BoxDecoration(
           border: Border(
@@ -123,11 +126,13 @@ class _TabButton extends StatelessWidget {
           ),
         ),
         child: Center(
-          child: Text(
-            label,
-            style: textTheme.labelLarge?.copyWith(
+          child: AnimatedDefaultTextStyle(
+            duration: Motion.medium,
+            curve: Motion.ease,
+            style: textTheme.labelLarge!.copyWith(
               color: selected ? AppColors.accent : AppColors.textSecondary,
             ),
+            child: Text(label),
           ),
         ),
       ),

@@ -33,6 +33,7 @@ class ToolCallChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.surfaceVariant,
           borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.border, width: 0.5),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
