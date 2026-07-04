@@ -18,9 +18,7 @@ class AgentConfig(BaseModel):
     is_active: bool
 
 
-async def get_agent_config(
-    client: AsyncClient, org_id: str, slug: str
-) -> AgentConfig:
+async def get_agent_config(client: AsyncClient, org_id: str, slug: str) -> AgentConfig:
     """Fetch a single active agent config by org_id and slug."""
     result = (
         await client.table("agents")

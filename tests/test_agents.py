@@ -258,7 +258,9 @@ def test_trim_history_processor_strips_orphaned_tool_results():
     messages = [
         ModelRequest(parts=[UserPromptPart(content="A" * 4000)]),
         ModelResponse(parts=[ToolCallPart(tool_name="search_web", args="", tool_call_id="tc1")]),
-        ModelRequest(parts=[ToolReturnPart(tool_name="search_web", content="result", tool_call_id="tc1")]),
+        ModelRequest(
+            parts=[ToolReturnPart(tool_name="search_web", content="result", tool_call_id="tc1")]
+        ),
         ModelResponse(parts=[TextPart(content="B" * 4000)]),
         ModelRequest(parts=[UserPromptPart(content="C" * 400)]),
         ModelResponse(parts=[TextPart(content="D" * 400)]),
@@ -308,7 +310,9 @@ def test_trim_history_processor_never_returns_empty():
     # Simulate in-flight history: only tool call + tool return (no user prompt)
     messages = [
         ModelResponse(parts=[ToolCallPart(tool_name="search_notes", args="", tool_call_id="tc1")]),
-        ModelRequest(parts=[ToolReturnPart(tool_name="search_notes", content="x" * 2000, tool_call_id="tc1")]),
+        ModelRequest(
+            parts=[ToolReturnPart(tool_name="search_notes", content="x" * 2000, tool_call_id="tc1")]
+        ),
     ]
     result = trim_history_processor(messages, max_tokens=4000)
 
