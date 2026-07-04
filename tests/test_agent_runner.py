@@ -138,7 +138,7 @@ async def test_token_budget_exceeded_raises_and_records_failure():
     fake_usage = MagicMock(input_tokens=200_000, output_tokens=10_000, requests=1)
     fake_result = MagicMock()
     fake_result.output = "long output"
-    fake_result.usage = MagicMock(return_value=fake_usage)
+    fake_result.usage = fake_usage
     fake_result.all_messages = MagicMock(return_value=[])
     agent.run = AsyncMock(return_value=fake_result)
     db, query = _mock_db()
@@ -180,7 +180,7 @@ async def test_tool_call_count_extracted_from_messages():
     )
     fake_result = MagicMock()
     fake_result.output = "done"
-    fake_result.usage = MagicMock(return_value=fake_usage)
+    fake_result.usage = fake_usage
     fake_result.all_messages = MagicMock(return_value=[fake_msg])
     agent.run = AsyncMock(return_value=fake_result)
     db, _ = _mock_db()

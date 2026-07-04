@@ -17,7 +17,9 @@ class TopKMembershipScorer(
     """
 
     k: int = 3
-    evaluation_name: str = "top_k_membership"
+
+    def get_default_evaluation_name(self) -> str:
+        return "top_k_membership"
 
     def evaluate(
         self,

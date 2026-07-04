@@ -14,7 +14,8 @@ class RequiredFactsScorer(Evaluator[MemoryRecallInputs, str, dict]):
     Case-insensitive substring match. Fails closed (score 0) if expected_output is missing.
     """
 
-    evaluation_name: str = "required_facts"
+    def get_default_evaluation_name(self) -> str:
+        return "required_facts"
 
     def evaluate(
         self,
