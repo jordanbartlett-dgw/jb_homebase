@@ -14,9 +14,15 @@ installed on the Linux dev box, so:
 ## What this is
 
 - All three v1 surfaces (Today, Drawer, Room with Chat/Context/History tabs) wired with mock data.
-- Voice capture overlay + preview (UI only — no audio capture yet).
+- Voice capture overlay + preview (UI only — no audio capture yet). The
+  waveform and timer animate; real amplitude data lands in PR2.
 - Passkey + magic-link auth screens that tap-through to a signed-in state via Riverpod.
 - Granola-style theme: warm off-white `#F7F5F0`, accent `#6B7A3F` warm moss, 14pt card radius.
+- Motion system: `theme/motion.dart` tokens drive every animation. Press
+  feedback is scale + haptic (`Pressable`), not ink ripple; ripple is
+  disabled globally for an iOS feel. Lists cascade in via `Entrance`.
+- Chat simulates a typing indicator + canned assistant ack after each send
+  so the loop demos end-to-end; PR2 replaces it with gateway streaming.
 
 ## What is stubbed
 
@@ -81,9 +87,10 @@ lib/
   app.dart                   MaterialApp.router + theme
   theme/
     app_theme.dart           ThemeData assembly, M3 + overrides
-    colors.dart              palette tokens
-    typography.dart          M3 text theme with line-height bumps
+    colors.dart              palette tokens + layered shadow tokens
+    typography.dart          M3 text theme, tracking + line-height tuned
     spacing.dart             4 / 8 / 12 / 16 / 24 / 32 scale
+    motion.dart              duration + curve tokens for all animation
   routing/
     app_router.dart          GoRouter with auth redirect
     routes.dart              path constants
@@ -94,7 +101,9 @@ lib/
     auth/                    passkey + magic link
     drawer/                  Granola-style top-left drawer
   shared/
-    widgets/                 AppCard, MicButton, BottomActionBar
+    widgets/                 AppCard, MicButton, BottomActionBar,
+                             Pressable (press-scale + haptic),
+                             Entrance (staggered fade-up)
     models/                  Room, Message, SkillInfo
     api/
       api_client.dart        stub, no real calls

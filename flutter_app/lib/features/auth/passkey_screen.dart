@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../routing/routes.dart';
+import '../../shared/widgets/entrance.dart';
 import '../../state/app_state.dart';
 import '../../theme/colors.dart';
 import '../../theme/spacing.dart';
@@ -24,28 +25,68 @@ class PasskeyScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Spacer(flex: 2),
-              Text('Jordan Claw', style: textTheme.displaySmall),
-              const SizedBox(height: Spacing.sm),
-              Text(
-                'Sign in with the passkey on this device.',
-                style: textTheme.bodyMedium,
+              Entrance(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: AppColors.accent,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: AppColors.cardShadow,
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'JC',
+                          style: TextStyle(
+                            color: AppColors.onAccent,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 20,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: Spacing.xl),
+                    Text('Jordan Claw', style: textTheme.displaySmall),
+                    const SizedBox(height: Spacing.sm),
+                    Text(
+                      'Your agents, in your pocket.',
+                      style: textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
               ),
               const Spacer(),
-              FilledButton(
-                onPressed: () {
-                  // TODO(backend): trigger `passkeys` flow, exchange with gateway
-                  // for a session token, store via `flutter_secure_storage`.
-                  ref.read(authControllerProvider.notifier).signIn();
-                  context.go(Routes.today);
-                },
-                child: const Text('Sign in with passkey'),
-              ),
-              const SizedBox(height: Spacing.lg),
-              Center(
-                child: TextButton(
-                  onPressed: () => context.go(Routes.authMagicLink),
-                  style: TextButton.styleFrom(foregroundColor: AppColors.textMuted),
-                  child: const Text('Having trouble?'),
+              Entrance(
+                index: 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: () {
+                        // TODO(backend): trigger `passkeys` flow, exchange with
+                        // gateway for a session token, store via
+                        // `flutter_secure_storage`.
+                        ref.read(authControllerProvider.notifier).signIn();
+                        context.go(Routes.today);
+                      },
+                      icon: const Icon(Icons.fingerprint, size: 20),
+                      label: const Text('Sign in with passkey'),
+                    ),
+                    const SizedBox(height: Spacing.lg),
+                    Center(
+                      child: TextButton(
+                        onPressed: () => context.go(Routes.authMagicLink),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.textMuted,
+                        ),
+                        child: const Text('Having trouble?'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const Spacer(flex: 2),
