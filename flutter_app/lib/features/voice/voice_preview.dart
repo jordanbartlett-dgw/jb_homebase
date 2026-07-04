@@ -17,7 +17,7 @@ class VoicePreview extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
-    final activeRoom = ref.watch(activeRoomProvider);
+    final activeAgent = ref.watch(activeAgentProvider);
 
     const placeholderTranscript =
         'Just got off the call with the vendor. They want forty-eight hours on the lead '
@@ -79,12 +79,12 @@ class VoicePreview extends ConsumerWidget {
                   child: FilledButton(
                     onPressed: () {
                       // TODO(backend): multipart POST audio + transcript to
-                      // /api/rooms/:roomId/voice. For now, append a stub
-                      // user message and navigate into the room.
+                      // /api/agents/:agentId/voice. For now, append a stub
+                      // user message and jump into the chat.
                       ref
-                          .read(activeConversationProvider.notifier)
+                          .read(agentThreadProvider(activeAgent.id).notifier)
                           .appendUserMessage('[voice] $placeholderTranscript');
-                      context.go(Routes.roomChat(activeRoom.id));
+                      context.go(Routes.agents);
                     },
                     child: const Text('Send'),
                   ),

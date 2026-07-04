@@ -33,7 +33,7 @@ class _MagicLinkScreenState extends ConsumerState<MagicLinkScreen> {
 
   void _completeSignIn() {
     ref.read(authControllerProvider.notifier).signIn();
-    context.go(Routes.today);
+    context.go(Routes.home);
   }
 
   @override

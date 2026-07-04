@@ -71,7 +71,7 @@ class PasskeyScreen extends ConsumerWidget {
                         // gateway for a session token, store via
                         // `flutter_secure_storage`.
                         ref.read(authControllerProvider.notifier).signIn();
-                        context.go(Routes.today);
+                        context.go(Routes.home);
                       },
                       icon: const Icon(Icons.fingerprint, size: 20),
                       label: const Text('Sign in with passkey'),

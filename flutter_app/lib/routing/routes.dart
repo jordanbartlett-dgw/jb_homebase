@@ -5,13 +5,10 @@
 class Routes {
   const Routes._();
 
-  static const String today = '/';
-
-  // Room (path uses :roomId; in v1 only `claw-main` is active).
-  static String room(String roomId) => '/room/$roomId';
-  static String roomChat(String roomId) => '/room/$roomId/chat';
-  static String roomContext(String roomId) => '/room/$roomId/context';
-  static String roomHistory(String roomId) => '/room/$roomId/history';
+  // Shell branches
+  static const String home = '/home';
+  static const String agents = '/agents';
+  static const String insights = '/insights';
 
   // Auth
   static const String authPasskey = '/auth/passkey';

@@ -79,111 +79,69 @@ abstract class _$AuthController extends $Notifier<bool> {
   }
 }
 
-/// Rooms — list of all rooms visible in the drawer. Hardcoded for v1.
-
-@ProviderFor(rooms)
-const roomsProvider = RoomsProvider._();
-
-/// Rooms — list of all rooms visible in the drawer. Hardcoded for v1.
-
-final class RoomsProvider
-    extends $FunctionalProvider<List<Room>, List<Room>, List<Room>>
-    with $Provider<List<Room>> {
-  /// Rooms — list of all rooms visible in the drawer. Hardcoded for v1.
-  const RoomsProvider._()
-    : super(
-        from: null,
-        argument: null,
-        retry: null,
-        name: r'roomsProvider',
-        isAutoDispose: true,
-        dependencies: null,
-        $allTransitiveDependencies: null,
-      );
-
-  @override
-  String debugGetCreateSourceHash() => _$roomsHash();
-
-  @$internal
-  @override
-  $ProviderElement<List<Room>> $createElement($ProviderPointer pointer) =>
-      $ProviderElement(pointer);
-
-  @override
-  List<Room> create(Ref ref) {
-    return rooms(ref);
-  }
-
-  /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(List<Room> value) {
-    return $ProviderOverride(
-      origin: this,
-      providerOverride: $SyncValueProvider<List<Room>>(value),
-    );
-  }
-}
-
-String _$roomsHash() => r'3cd92fa3a2062ca353c6dc3a168287dd0f725950';
-
-/// Currently active room. Defaults to Claw Main.
+/// Currently selected agent in the chat surface. The dashboard dock and
+/// the in-chat agent picker both drive this.
 ///
-/// keepAlive: session state — must survive navigation between surfaces.
+/// keepAlive: session state — must survive navigation between tabs.
 
-@ProviderFor(ActiveRoom)
-const activeRoomProvider = ActiveRoomProvider._();
+@ProviderFor(ActiveAgent)
+const activeAgentProvider = ActiveAgentProvider._();
 
-/// Currently active room. Defaults to Claw Main.
+/// Currently selected agent in the chat surface. The dashboard dock and
+/// the in-chat agent picker both drive this.
 ///
-/// keepAlive: session state — must survive navigation between surfaces.
-final class ActiveRoomProvider extends $NotifierProvider<ActiveRoom, Room> {
-  /// Currently active room. Defaults to Claw Main.
+/// keepAlive: session state — must survive navigation between tabs.
+final class ActiveAgentProvider extends $NotifierProvider<ActiveAgent, Agent> {
+  /// Currently selected agent in the chat surface. The dashboard dock and
+  /// the in-chat agent picker both drive this.
   ///
-  /// keepAlive: session state — must survive navigation between surfaces.
-  const ActiveRoomProvider._()
+  /// keepAlive: session state — must survive navigation between tabs.
+  const ActiveAgentProvider._()
     : super(
         from: null,
         argument: null,
         retry: null,
-        name: r'activeRoomProvider',
+        name: r'activeAgentProvider',
         isAutoDispose: false,
         dependencies: null,
         $allTransitiveDependencies: null,
       );
 
   @override
-  String debugGetCreateSourceHash() => _$activeRoomHash();
+  String debugGetCreateSourceHash() => _$activeAgentHash();
 
   @$internal
   @override
-  ActiveRoom create() => ActiveRoom();
+  ActiveAgent create() => ActiveAgent();
 
   /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(Room value) {
+  Override overrideWithValue(Agent value) {
     return $ProviderOverride(
       origin: this,
-      providerOverride: $SyncValueProvider<Room>(value),
+      providerOverride: $SyncValueProvider<Agent>(value),
     );
   }
 }
 
-String _$activeRoomHash() => r'7ca704958c3de791f509eff0381783762b52f635';
+String _$activeAgentHash() => r'2b8ce0bd248e29f5703dde40f0cfb5b48ffc5ede';
 
-/// Currently active room. Defaults to Claw Main.
+/// Currently selected agent in the chat surface. The dashboard dock and
+/// the in-chat agent picker both drive this.
 ///
-/// keepAlive: session state — must survive navigation between surfaces.
+/// keepAlive: session state — must survive navigation between tabs.
 
-abstract class _$ActiveRoom extends $Notifier<Room> {
-  Room build();
+abstract class _$ActiveAgent extends $Notifier<Agent> {
+  Agent build();
   @$mustCallSuper
   @override
   void runBuild() {
     final created = build();
-    final ref = this.ref as $Ref<Room, Room>;
+    final ref = this.ref as $Ref<Agent, Agent>;
     final element =
         ref.element
             as $ClassProviderElement<
-              AnyNotifier<Room, Room>,
-              Room,
+              AnyNotifier<Agent, Agent>,
+              Agent,
               Object?,
               Object?
             >;
@@ -191,85 +149,44 @@ abstract class _$ActiveRoom extends $Notifier<Room> {
   }
 }
 
-/// Today cards. Replace with `/api/today/cards` in PR2.
-
-@ProviderFor(todayCards)
-const todayCardsProvider = TodayCardsProvider._();
-
-/// Today cards. Replace with `/api/today/cards` in PR2.
-
-final class TodayCardsProvider
-    extends
-        $FunctionalProvider<List<TodayCard>, List<TodayCard>, List<TodayCard>>
-    with $Provider<List<TodayCard>> {
-  /// Today cards. Replace with `/api/today/cards` in PR2.
-  const TodayCardsProvider._()
-    : super(
-        from: null,
-        argument: null,
-        retry: null,
-        name: r'todayCardsProvider',
-        isAutoDispose: true,
-        dependencies: null,
-        $allTransitiveDependencies: null,
-      );
-
-  @override
-  String debugGetCreateSourceHash() => _$todayCardsHash();
-
-  @$internal
-  @override
-  $ProviderElement<List<TodayCard>> $createElement($ProviderPointer pointer) =>
-      $ProviderElement(pointer);
-
-  @override
-  List<TodayCard> create(Ref ref) {
-    return todayCards(ref);
-  }
-
-  /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(List<TodayCard> value) {
-    return $ProviderOverride(
-      origin: this,
-      providerOverride: $SyncValueProvider<List<TodayCard>>(value),
-    );
-  }
-}
-
-String _$todayCardsHash() => r'b556d16d1f2b363afefd93eb39d7a2d3aa0c6305';
-
-/// True while the assistant is "responding". Drives the typing indicator.
+/// True while an agent is "responding". Drives its typing indicator.
 ///
-/// keepAlive: paired with [ActiveConversation]'s pending reply timer.
+/// keepAlive: paired with [AgentThread]'s pending reply timer.
 
-@ProviderFor(AssistantTyping)
-const assistantTypingProvider = AssistantTypingProvider._();
+@ProviderFor(AgentTyping)
+const agentTypingProvider = AgentTypingFamily._();
 
-/// True while the assistant is "responding". Drives the typing indicator.
+/// True while an agent is "responding". Drives its typing indicator.
 ///
-/// keepAlive: paired with [ActiveConversation]'s pending reply timer.
-final class AssistantTypingProvider
-    extends $NotifierProvider<AssistantTyping, bool> {
-  /// True while the assistant is "responding". Drives the typing indicator.
+/// keepAlive: paired with [AgentThread]'s pending reply timer.
+final class AgentTypingProvider extends $NotifierProvider<AgentTyping, bool> {
+  /// True while an agent is "responding". Drives its typing indicator.
   ///
-  /// keepAlive: paired with [ActiveConversation]'s pending reply timer.
-  const AssistantTypingProvider._()
-    : super(
-        from: null,
-        argument: null,
-        retry: null,
-        name: r'assistantTypingProvider',
-        isAutoDispose: false,
-        dependencies: null,
-        $allTransitiveDependencies: null,
-      );
+  /// keepAlive: paired with [AgentThread]'s pending reply timer.
+  const AgentTypingProvider._({
+    required AgentTypingFamily super.from,
+    required String super.argument,
+  }) : super(
+         retry: null,
+         name: r'agentTypingProvider',
+         isAutoDispose: false,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
 
   @override
-  String debugGetCreateSourceHash() => _$assistantTypingHash();
+  String debugGetCreateSourceHash() => _$agentTypingHash();
+
+  @override
+  String toString() {
+    return r'agentTypingProvider'
+        ''
+        '($argument)';
+  }
 
   @$internal
   @override
-  AssistantTyping create() => AssistantTyping();
+  AgentTyping create() => AgentTyping();
 
   /// {@macro riverpod.override_with_value}
   Override overrideWithValue(bool value) {
@@ -278,20 +195,59 @@ final class AssistantTypingProvider
       providerOverride: $SyncValueProvider<bool>(value),
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AgentTypingProvider && other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
 }
 
-String _$assistantTypingHash() => r'6398b2278e8a993d7f28dec1097ab2441acac5af';
+String _$agentTypingHash() => r'df48f2771568fa67490641c87fb77e93cd4f3d7a';
 
-/// True while the assistant is "responding". Drives the typing indicator.
+/// True while an agent is "responding". Drives its typing indicator.
 ///
-/// keepAlive: paired with [ActiveConversation]'s pending reply timer.
+/// keepAlive: paired with [AgentThread]'s pending reply timer.
 
-abstract class _$AssistantTyping extends $Notifier<bool> {
-  bool build();
+final class AgentTypingFamily extends $Family
+    with $ClassFamilyOverride<AgentTyping, bool, bool, bool, String> {
+  const AgentTypingFamily._()
+    : super(
+        retry: null,
+        name: r'agentTypingProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: false,
+      );
+
+  /// True while an agent is "responding". Drives its typing indicator.
+  ///
+  /// keepAlive: paired with [AgentThread]'s pending reply timer.
+
+  AgentTypingProvider call(String agentId) =>
+      AgentTypingProvider._(argument: agentId, from: this);
+
+  @override
+  String toString() => r'agentTypingProvider';
+}
+
+/// True while an agent is "responding". Drives its typing indicator.
+///
+/// keepAlive: paired with [AgentThread]'s pending reply timer.
+
+abstract class _$AgentTyping extends $Notifier<bool> {
+  late final _$args = ref.$arg as String;
+  String get agentId => _$args;
+
+  bool build(String agentId);
   @$mustCallSuper
   @override
   void runBuild() {
-    final created = build();
+    final created = build(_$args);
     final ref = this.ref as $Ref<bool, bool>;
     final element =
         ref.element
@@ -305,44 +261,42 @@ abstract class _$AssistantTyping extends $Notifier<bool> {
   }
 }
 
-/// Active conversation messages for the current room.
-///
-/// keepAlive: switching to the Context or History tab unmounts the chat
-/// tab; autoDispose would wipe the conversation (and drop any pending
-/// mock reply) on every tab switch.
+/// Chat thread per agent. Threads live for the whole session so switching
+/// agents (or tabs) never wipes a conversation.
 
-@ProviderFor(ActiveConversation)
-const activeConversationProvider = ActiveConversationProvider._();
+@ProviderFor(AgentThread)
+const agentThreadProvider = AgentThreadFamily._();
 
-/// Active conversation messages for the current room.
-///
-/// keepAlive: switching to the Context or History tab unmounts the chat
-/// tab; autoDispose would wipe the conversation (and drop any pending
-/// mock reply) on every tab switch.
-final class ActiveConversationProvider
-    extends $NotifierProvider<ActiveConversation, List<Message>> {
-  /// Active conversation messages for the current room.
-  ///
-  /// keepAlive: switching to the Context or History tab unmounts the chat
-  /// tab; autoDispose would wipe the conversation (and drop any pending
-  /// mock reply) on every tab switch.
-  const ActiveConversationProvider._()
-    : super(
-        from: null,
-        argument: null,
-        retry: null,
-        name: r'activeConversationProvider',
-        isAutoDispose: false,
-        dependencies: null,
-        $allTransitiveDependencies: null,
-      );
+/// Chat thread per agent. Threads live for the whole session so switching
+/// agents (or tabs) never wipes a conversation.
+final class AgentThreadProvider
+    extends $NotifierProvider<AgentThread, List<Message>> {
+  /// Chat thread per agent. Threads live for the whole session so switching
+  /// agents (or tabs) never wipes a conversation.
+  const AgentThreadProvider._({
+    required AgentThreadFamily super.from,
+    required String super.argument,
+  }) : super(
+         retry: null,
+         name: r'agentThreadProvider',
+         isAutoDispose: false,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
 
   @override
-  String debugGetCreateSourceHash() => _$activeConversationHash();
+  String debugGetCreateSourceHash() => _$agentThreadHash();
+
+  @override
+  String toString() {
+    return r'agentThreadProvider'
+        ''
+        '($argument)';
+  }
 
   @$internal
   @override
-  ActiveConversation create() => ActiveConversation();
+  AgentThread create() => AgentThread();
 
   /// {@macro riverpod.override_with_value}
   Override overrideWithValue(List<Message> value) {
@@ -351,23 +305,63 @@ final class ActiveConversationProvider
       providerOverride: $SyncValueProvider<List<Message>>(value),
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AgentThreadProvider && other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
 }
 
-String _$activeConversationHash() =>
-    r'de5ec261b6e1eb7acbc5cedda90a4acac71c4c51';
+String _$agentThreadHash() => r'38ddddfff53e5cb8859fd419521d5226c99f0ab1';
 
-/// Active conversation messages for the current room.
-///
-/// keepAlive: switching to the Context or History tab unmounts the chat
-/// tab; autoDispose would wipe the conversation (and drop any pending
-/// mock reply) on every tab switch.
+/// Chat thread per agent. Threads live for the whole session so switching
+/// agents (or tabs) never wipes a conversation.
 
-abstract class _$ActiveConversation extends $Notifier<List<Message>> {
-  List<Message> build();
+final class AgentThreadFamily extends $Family
+    with
+        $ClassFamilyOverride<
+          AgentThread,
+          List<Message>,
+          List<Message>,
+          List<Message>,
+          String
+        > {
+  const AgentThreadFamily._()
+    : super(
+        retry: null,
+        name: r'agentThreadProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: false,
+      );
+
+  /// Chat thread per agent. Threads live for the whole session so switching
+  /// agents (or tabs) never wipes a conversation.
+
+  AgentThreadProvider call(String agentId) =>
+      AgentThreadProvider._(argument: agentId, from: this);
+
+  @override
+  String toString() => r'agentThreadProvider';
+}
+
+/// Chat thread per agent. Threads live for the whole session so switching
+/// agents (or tabs) never wipes a conversation.
+
+abstract class _$AgentThread extends $Notifier<List<Message>> {
+  late final _$args = ref.$arg as String;
+  String get agentId => _$args;
+
+  List<Message> build(String agentId);
   @$mustCallSuper
   @override
   void runBuild() {
-    final created = build();
+    final created = build(_$args);
     final ref = this.ref as $Ref<List<Message>, List<Message>>;
     final element =
         ref.element
@@ -380,102 +374,3 @@ abstract class _$ActiveConversation extends $Notifier<List<Message>> {
     element.handleValue(ref, created);
   }
 }
-
-/// Skills loaded into the active room. Read-only in v1.
-
-@ProviderFor(roomSkills)
-const roomSkillsProvider = RoomSkillsProvider._();
-
-/// Skills loaded into the active room. Read-only in v1.
-
-final class RoomSkillsProvider
-    extends
-        $FunctionalProvider<List<SkillInfo>, List<SkillInfo>, List<SkillInfo>>
-    with $Provider<List<SkillInfo>> {
-  /// Skills loaded into the active room. Read-only in v1.
-  const RoomSkillsProvider._()
-    : super(
-        from: null,
-        argument: null,
-        retry: null,
-        name: r'roomSkillsProvider',
-        isAutoDispose: true,
-        dependencies: null,
-        $allTransitiveDependencies: null,
-      );
-
-  @override
-  String debugGetCreateSourceHash() => _$roomSkillsHash();
-
-  @$internal
-  @override
-  $ProviderElement<List<SkillInfo>> $createElement($ProviderPointer pointer) =>
-      $ProviderElement(pointer);
-
-  @override
-  List<SkillInfo> create(Ref ref) {
-    return roomSkills(ref);
-  }
-
-  /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(List<SkillInfo> value) {
-    return $ProviderOverride(
-      origin: this,
-      providerOverride: $SyncValueProvider<List<SkillInfo>>(value),
-    );
-  }
-}
-
-String _$roomSkillsHash() => r'0df1547c51c2a15e37420db50f9f84f1ed25b10a';
-
-/// History — past conversations for the active room, grouped date-wise in the UI.
-
-@ProviderFor(roomHistory)
-const roomHistoryProvider = RoomHistoryProvider._();
-
-/// History — past conversations for the active room, grouped date-wise in the UI.
-
-final class RoomHistoryProvider
-    extends
-        $FunctionalProvider<
-          List<Conversation>,
-          List<Conversation>,
-          List<Conversation>
-        >
-    with $Provider<List<Conversation>> {
-  /// History — past conversations for the active room, grouped date-wise in the UI.
-  const RoomHistoryProvider._()
-    : super(
-        from: null,
-        argument: null,
-        retry: null,
-        name: r'roomHistoryProvider',
-        isAutoDispose: true,
-        dependencies: null,
-        $allTransitiveDependencies: null,
-      );
-
-  @override
-  String debugGetCreateSourceHash() => _$roomHistoryHash();
-
-  @$internal
-  @override
-  $ProviderElement<List<Conversation>> $createElement(
-    $ProviderPointer pointer,
-  ) => $ProviderElement(pointer);
-
-  @override
-  List<Conversation> create(Ref ref) {
-    return roomHistory(ref);
-  }
-
-  /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(List<Conversation> value) {
-    return $ProviderOverride(
-      origin: this,
-      providerOverride: $SyncValueProvider<List<Conversation>>(value),
-    );
-  }
-}
-
-String _$roomHistoryHash() => r'209bdfb63378cc4d6fa2ae3c3458069abf0a18e6';

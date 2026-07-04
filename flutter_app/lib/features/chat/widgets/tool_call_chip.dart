@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../shared/models/message.dart';
 import '../../../theme/colors.dart';
-import '../../../theme/spacing.dart';
 
 /// Tool-call chip that appears mid-response and resolves with a checkmark
 /// or error icon. No thinking traces — just the visible tool name + status.
@@ -13,46 +12,43 @@ class ToolCallChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
     final status = message.toolStatus ?? ToolCallStatus.inProgress;
 
     final (icon, color) = switch (status) {
-      ToolCallStatus.inProgress => (Icons.sync, AppColors.textMuted),
+      ToolCallStatus.inProgress => (Icons.sync, theme.colorScheme.outline),
       ToolCallStatus.success => (Icons.check_circle, AppColors.success),
-      ToolCallStatus.failure => (Icons.error_outline, AppColors.error),
+      ToolCallStatus.failure => (Icons.error_outline, theme.colorScheme.error),
     };
 
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: Spacing.md,
-          vertical: Spacing.sm,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: AppColors.surfaceVariant,
+          color: theme.colorScheme.surfaceContainerHighest
+              .withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.border, width: 0.5),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (status == ToolCallStatus.inProgress)
-              const SizedBox(
+              SizedBox(
                 width: 14,
                 height: 14,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: AppColors.textMuted,
+                  color: theme.colorScheme.outline,
                 ),
               )
             else
               Icon(icon, size: 14, color: color),
-            const SizedBox(width: Spacing.sm),
+            const SizedBox(width: 8),
             Flexible(
               child: Text(
                 message.toolDetail ?? message.toolName ?? 'Running tool',
-                style: textTheme.bodySmall,
+                style: theme.textTheme.bodySmall,
                 overflow: TextOverflow.ellipsis,
               ),
             ),

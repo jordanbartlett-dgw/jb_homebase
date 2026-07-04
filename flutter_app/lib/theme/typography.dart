@@ -1,78 +1,80 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-import 'colors.dart';
-
-/// M3 type scale with generous line-height and weight bumps for hierarchy.
+/// JB Homebase type system.
 ///
-/// Uses the system font (SF on iOS). Line height is 1.5 for body copy to
-/// match the Granola-influenced reading rhythm.
+/// Display = Playfair Display, used with restraint: the greeting and card
+/// headlines. Everything functional = Inter. `titleSmall` is the eyebrow
+/// style — uppercase it at the call site.
 class AppTypography {
   const AppTypography._();
 
-  static TextTheme buildTextTheme() {
-    const base = TextStyle(color: AppColors.textPrimary, height: 1.5);
-
-    return const TextTheme(
-      // Large sizes get negative tracking — SF tightens optically at
-      // display sizes and this keeps headings from feeling airy.
-      displaySmall: TextStyle(
-        fontSize: 32,
-        fontWeight: FontWeight.w700,
-        color: AppColors.textPrimary,
+  static TextTheme buildTextTheme({
+    required Color ink,
+    required Color muted,
+  }) {
+    return TextTheme(
+      displayLarge: GoogleFonts.playfairDisplay(
+        fontSize: 40,
+        fontWeight: FontWeight.w600,
+        color: ink,
+        height: 1.1,
+      ),
+      displayMedium: GoogleFonts.playfairDisplay(
+        fontSize: 30,
+        fontWeight: FontWeight.w600,
+        color: ink,
+        height: 1.15,
+      ),
+      displaySmall: GoogleFonts.playfairDisplay(
+        fontSize: 26,
+        fontWeight: FontWeight.w600,
+        color: ink,
         height: 1.2,
-        letterSpacing: -0.6,
       ),
-      headlineMedium: TextStyle(
+      headlineMedium: GoogleFonts.playfairDisplay(
         fontSize: 24,
-        fontWeight: FontWeight.w700,
-        color: AppColors.textPrimary,
-        height: 1.25,
-        letterSpacing: -0.4,
-      ),
-      titleLarge: TextStyle(
-        fontSize: 20,
         fontWeight: FontWeight.w600,
-        color: AppColors.textPrimary,
+        color: ink,
+        height: 1.2,
+      ),
+      headlineSmall: GoogleFonts.playfairDisplay(
+        fontSize: 22,
+        fontWeight: FontWeight.w600,
+        color: ink,
+      ),
+      titleLarge: GoogleFonts.inter(
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
+        color: ink,
         height: 1.35,
-        letterSpacing: -0.3,
       ),
-      titleMedium: TextStyle(
+      titleMedium: GoogleFonts.inter(
         fontSize: 16,
         fontWeight: FontWeight.w600,
-        color: AppColors.textPrimary,
-        height: 1.4,
+        color: ink,
       ),
-      bodyLarge: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w400,
-        color: AppColors.textPrimary,
-        height: 1.5,
+      // Eyebrow labels — uppercase in usage.
+      titleSmall: GoogleFonts.inter(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: muted,
+        letterSpacing: 1.2,
       ),
-      bodyMedium: TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w400,
-        color: AppColors.textSecondary,
-        height: 1.5,
-      ),
-      bodySmall: TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w400,
-        color: AppColors.textMuted,
-        height: 1.4,
-      ),
-      labelLarge: TextStyle(
+      bodyLarge: GoogleFonts.inter(fontSize: 16, color: ink, height: 1.5),
+      bodyMedium: GoogleFonts.inter(fontSize: 14, color: ink, height: 1.5),
+      bodySmall: GoogleFonts.inter(fontSize: 12, color: muted),
+      labelLarge: GoogleFonts.inter(
         fontSize: 14,
         fontWeight: FontWeight.w600,
-        color: AppColors.textPrimary,
-        height: 1.4,
+        color: ink,
       ),
-      labelSmall: TextStyle(
+      labelSmall: GoogleFonts.inter(
         fontSize: 11,
-        fontWeight: FontWeight.w500,
-        color: AppColors.textMuted,
-        height: 1.4,
-        letterSpacing: 0.4,
+        fontWeight: FontWeight.w600,
+        color: muted,
+        letterSpacing: 0.6,
       ),
-    ).apply(bodyColor: base.color);
+    );
   }
 }

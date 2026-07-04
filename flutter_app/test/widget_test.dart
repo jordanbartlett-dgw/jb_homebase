@@ -7,7 +7,7 @@ import 'package:jb_homebase_app/app.dart';
 void main() {
   testWidgets('App boots without crashing', (tester) async {
     await tester.pumpWidget(
-      const ProviderScope(child: JordanClawApp()),
+      const ProviderScope(child: JBHomebaseApp()),
     );
     // Initial frame should land on the passkey screen because auth is false.
     // pumpAndSettle advances fake time so the staggered Entrance timers fire.

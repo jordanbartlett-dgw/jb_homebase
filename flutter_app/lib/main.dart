@@ -7,6 +7,6 @@ void main() {
   // TODO(backend): initialize Firebase, request push permission, register
   // FCM token with the gateway. Wired in PR2 / push notifications work.
   runApp(
-    const ProviderScope(child: JordanClawApp()),
+    const ProviderScope(child: JBHomebaseApp()),
   );
 }

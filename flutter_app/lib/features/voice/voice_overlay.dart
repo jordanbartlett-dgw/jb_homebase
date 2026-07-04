@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../shared/widgets/pressable.dart';
+import '../../shared/widgets/bouncy_button.dart';
 import '../../theme/colors.dart';
 import '../../theme/spacing.dart';
 import 'voice_preview.dart';
@@ -269,7 +269,7 @@ class _CircleButton extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Pressable(
+        BouncyButton(
           onTap: onTap,
           pressedScale: 0.92,
           child: Container(

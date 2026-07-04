@@ -21,6 +21,10 @@ dependencies:
   # HTTP
   http: ^1.3.0
 
+  # Design system fonts (Playfair Display + Inter) and date formatting
+  google_fonts: ^6.2.1
+  intl: ^0.20.0
+
   # Voice
   record: ^6.0.0
   audio_waveforms: ^2.0.0

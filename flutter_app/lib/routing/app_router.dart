@@ -4,12 +4,11 @@ import 'package:go_router/go_router.dart';
 
 import '../features/auth/magic_link_screen.dart';
 import '../features/auth/passkey_screen.dart';
-import '../features/room/room_screen.dart';
-import '../features/room/tabs/chat_tab.dart';
-import '../features/room/tabs/context_tab.dart';
-import '../features/room/tabs/history_tab.dart';
-import '../features/today/today_screen.dart';
+import '../features/chat/chat_screen.dart';
+import '../features/home/dashboard_screen.dart';
+import '../features/insights/insights_screen.dart';
 import '../features/voice/voice_overlay.dart';
+import '../shell/homebase_shell.dart';
 import '../state/app_state.dart';
 import 'routes.dart';
 
@@ -21,7 +20,7 @@ import 'routes.dart';
 /// app_links handler reads `uri.path` and does the same. Wiring is in PR2.
 GoRouter buildAppRouter(WidgetRef ref) {
   return GoRouter(
-    initialLocation: Routes.today,
+    initialLocation: Routes.home,
     debugLogDiagnostics: false,
     redirect: (context, state) {
       final isAuthed = ref.read(authControllerProvider);
@@ -31,7 +30,7 @@ GoRouter buildAppRouter(WidgetRef ref) {
         return Routes.authPasskey;
       }
       if (isAuthed && goingToAuth) {
-        return Routes.today;
+        return Routes.home;
       }
       return null;
     },
@@ -46,13 +45,7 @@ GoRouter buildAppRouter(WidgetRef ref) {
         builder: (context, state) => const MagicLinkScreen(),
       ),
 
-      // Today
-      GoRoute(
-        path: Routes.today,
-        builder: (context, state) => const TodayScreen(),
-      ),
-
-      // Voice capture (modal route)
+      // Voice capture (modal, floats above the shell)
       GoRoute(
         path: Routes.voice,
         pageBuilder: (context, state) => const MaterialPage<void>(
@@ -61,47 +54,34 @@ GoRouter buildAppRouter(WidgetRef ref) {
         ),
       ),
 
-      // Room (with nested tabs)
-      GoRoute(
-        path: '/room/:roomId',
-        redirect: (context, state) {
-          final roomId = state.pathParameters['roomId'];
-          if (roomId == null) return Routes.today;
-          // If someone lands directly on `/room/:id`, default to chat tab.
-          // Compare against the full target path, not matchedLocation:
-          // during parent-route evaluation matchedLocation is only the
-          // partially matched '/room/:id', which would hijack navigation
-          // to the context/history sub-routes back to chat.
-          if (state.uri.path == '/room/$roomId') {
-            return Routes.roomChat(roomId);
-          }
-          return null;
-        },
-        builder: (context, state) {
-          final roomId = state.pathParameters['roomId']!;
-          return RoomScreen(roomId: roomId, child: const ChatTab());
-        },
-        routes: [
-          GoRoute(
-            path: 'chat',
-            builder: (context, state) {
-              final roomId = state.pathParameters['roomId']!;
-              return RoomScreen(roomId: roomId, child: const ChatTab());
-            },
+      // Tab shell — each branch keeps its own state and nav stack.
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) =>
+            HomebaseShell(navigationShell: navigationShell),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.home,
+                builder: (context, state) => const DashboardScreen(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: 'context',
-            builder: (context, state) {
-              final roomId = state.pathParameters['roomId']!;
-              return RoomScreen(roomId: roomId, child: const ContextTab());
-            },
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.agents,
+                builder: (context, state) => const ChatScreen(),
+              ),
+            ],
           ),
-          GoRoute(
-            path: 'history',
-            builder: (context, state) {
-              final roomId = state.pathParameters['roomId']!;
-              return RoomScreen(roomId: roomId, child: const HistoryTab());
-            },
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.insights,
+                builder: (context, state) => const InsightsScreen(),
+              ),
+            ],
           ),
         ],
       ),
