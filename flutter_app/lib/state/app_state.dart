@@ -14,7 +14,10 @@ import '../shared/models/skill_info.dart';
 part 'app_state.g.dart';
 
 /// Auth state — true once the user has tapped through passkey or magic link.
-@riverpod
+///
+/// keepAlive: the router only ever `ref.read`s this, so the default
+/// autoDispose would drop the signed-in state the moment it was set.
+@Riverpod(keepAlive: true)
 class AuthController extends _$AuthController {
   @override
   bool build() => false;
@@ -29,7 +32,9 @@ class AuthController extends _$AuthController {
 List<Room> rooms(Ref ref) => MockData.rooms;
 
 /// Currently active room. Defaults to Claw Main.
-@riverpod
+///
+/// keepAlive: session state — must survive navigation between surfaces.
+@Riverpod(keepAlive: true)
 class ActiveRoom extends _$ActiveRoom {
   @override
   Room build() => MockData.activeRoom;
@@ -47,7 +52,9 @@ class ActiveRoom extends _$ActiveRoom {
 List<TodayCard> todayCards(Ref ref) => MockData.todayCards;
 
 /// True while the assistant is "responding". Drives the typing indicator.
-@riverpod
+///
+/// keepAlive: paired with [ActiveConversation]'s pending reply timer.
+@Riverpod(keepAlive: true)
 class AssistantTyping extends _$AssistantTyping {
   @override
   bool build() => false;
@@ -56,7 +63,11 @@ class AssistantTyping extends _$AssistantTyping {
 }
 
 /// Active conversation messages for the current room.
-@riverpod
+///
+/// keepAlive: switching to the Context or History tab unmounts the chat
+/// tab; autoDispose would wipe the conversation (and drop any pending
+/// mock reply) on every tab switch.
+@Riverpod(keepAlive: true)
 class ActiveConversation extends _$ActiveConversation {
   Timer? _replyTimer;
 

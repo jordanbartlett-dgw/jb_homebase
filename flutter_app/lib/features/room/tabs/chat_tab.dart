@@ -34,7 +34,10 @@ class _ChatTabState extends ConsumerState<ChatTab> {
   void _scrollToBottom() {
     // After the frame so the new item has a laid-out extent.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
+      if (!mounted || !_scrollController.hasClients) return;
+      // A mid-navigation frame can attach the position before layout runs;
+      // maxScrollExtent null-crashes until dimensions exist.
+      if (!_scrollController.position.hasContentDimensions) return;
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
         duration: Motion.medium,

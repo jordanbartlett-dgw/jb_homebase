@@ -10,7 +10,9 @@ void main() {
       const ProviderScope(child: JordanClawApp()),
     );
     // Initial frame should land on the passkey screen because auth is false.
-    await tester.pump();
+    // pumpAndSettle advances fake time so the staggered Entrance timers fire.
+    await tester.pumpAndSettle();
     expect(find.byType(MaterialApp), findsOneWidget);
+    expect(find.text('Sign in with passkey'), findsOneWidget);
   });
 }
