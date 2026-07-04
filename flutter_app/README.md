@@ -1,148 +1,101 @@
-# Jordan Claw — Flutter app (iOS)
+# JB Homebase — Flutter app (iOS)
 
-Thin client over the FastAPI gateway. Replaces Telegram as the primary channel.
-v1 is iOS-only. Android is deferred.
+Thin client over the FastAPI gateway. Replaces Telegram as the primary
+channel. v1 is iOS-only. Android is deferred.
 
-This directory is a hand-written Dart scaffold. The Flutter SDK is not
-installed on the Linux dev box, so:
+Design direction lives in `../docs/flutter-design/` (JB Homebase prototype)
+and the PRD in `../docs/plans/flutter-app-prd.md`. Architecture decisions in
+`../docs/plans/flutter-architecture.md` (note: the IA there predates the
+JB Homebase design pivot — this README is current).
 
-- No `flutter create` was run.
-- No `ios/`, `android/`, `macos/`, `linux/`, `windows/`, or `web/` directories exist.
-- No `*.g.dart` files exist. Riverpod codegen runs on the Mac.
-- iOS platform setup (signing, entitlements, AASA, APNs, mic Info.plist) happens on the Mac.
+## Status
 
-## What this is
+- iOS platform scaffold generated; builds and runs on the simulator.
+- All data is mock (`lib/shared/api/mock_data.dart`); `api_client.dart` is a
+  no-op shell. Real HTTP, streaming, auth, voice capture, and push land in
+  PR2 — search the repo for `TODO(backend)` for the exact integration points.
+- `dart analyze --fatal-infos` clean; widget + flow tests pass
+  (`flutter test`).
 
-- All three v1 surfaces (Today, Drawer, Room with Chat/Context/History tabs) wired with mock data.
-- Voice capture overlay + preview (UI only — no audio capture yet). The
-  waveform and timer animate; real amplitude data lands in PR2.
-- Passkey + magic-link auth screens that tap-through to a signed-in state via Riverpod.
-- Granola-style theme: warm off-white `#F7F5F0`, accent `#6B7A3F` warm moss, 14pt card radius.
-- Motion system: `theme/motion.dart` tokens drive every animation. Press
-  feedback is scale + haptic (`Pressable`), not ink ripple; ripple is
-  disabled globally for an iOS feel. Lists cascade in via `Entrance`.
-- Chat simulates a typing indicator + canned assistant ack after each send
-  so the loop demos end-to-end; PR2 replaces it with gateway streaming.
+## The app
 
-## What is stubbed
+Passkey sign-in (tap-through mock) → three-tab shell with a floating pill
+nav (NavigationRail on ≥ 840dp):
 
-- All data is hardcoded in `lib/shared/api/mock_data.dart`.
-- `lib/shared/api/api_client.dart` is a no-op shell. Real HTTP and streaming wire in PR2.
-- No real audio capture, no real Whisper upload, no real auth, no real push notifications.
-- TODOs in code mark each backend integration point.
+- **Home** — eyebrow date, Playfair greeting, Daily Digest gradient card
+  (the one loud moment), horizontal agent dock, week stripe + sparkline.
+- **Agents** — agent picker chips (Claw Main, Workout Coach), asymmetric
+  chat bubbles, per-agent tinted typing indicator, tool-call chips,
+  composer with mic (voice overlay) + send. Threads are per-agent Riverpod
+  families and survive tab switches.
+- **Insights** — week stripe + animated sparkline cards; grows into the
+  PostHog-fed analytics view.
 
-## Mac-finish steps
+Voice: mic in the chat composer → recording overlay (animated waveform) →
+transcript preview → Send appends to the active agent's thread.
 
-These run once on a Mac with Flutter installed.
+## Design system
 
-1. Install Flutter SDK (recommended: `fvm install 3.44.0 && fvm use 3.44.0`).
-2. `cd flutter_app/`
-3. Generate the iOS platform scaffold without touching `lib/`:
-   ```bash
-   flutter create . --platforms=ios --org=app.jbhomebase --project-name=jb_homebase_app
-   ```
-   This creates `ios/` and seeds platform files. The existing `lib/` is preserved.
-4. `flutter pub get`
-5. Run Riverpod codegen so `*.g.dart` files exist:
-   ```bash
-   dart run build_runner build --delete-conflicting-outputs
-   ```
-6. Open `ios/Runner.xcworkspace` in Xcode. In **Signing & Capabilities**:
-   - Set bundle identifier to `com.jbhomebase.app`.
-   - Set the development team.
-   - Add capability **Push Notifications**.
-   - Add capability **Background Modes** with **Background fetch** and **Remote notifications** enabled.
-   - Add capability **Associated Domains** with `applinks:auth.jbhomebase.app`.
-7. Edit `ios/Runner/Info.plist`. Add:
-   ```xml
-   <key>NSMicrophoneUsageDescription</key>
-   <string>Jordan Claw records voice dumps and transcribes them server-side.</string>
-   <key>FlutterDeepLinkingEnabled</key>
-   <false/>
-   ```
-8. Run on the simulator:
-   ```bash
-   flutter run -d "iPhone 15"
-   ```
-   Push notifications require a real device. APNs does not work on the simulator.
+- Palette: warm cream `#F6F1E7` bg, deep slate `#1B222B` ink, sage
+  `#64805F`/`#9CB39A` as the single accent. Dark mode follows the system.
+- Type: Playfair Display for display moments, Inter for everything
+  functional (google_fonts).
+- 24pt card radius, soft diffuse shadows (`AppTheme.softShadow`).
+- Tactility: `BouncyButton` (scale + haptic, no ripple), `FadeSlideIn`
+  staggered entrances. Tokens in `lib/theme/`.
 
-## Where to navigate the running app
+## Running it
 
-- Launch → Passkey screen → tap **Sign in with passkey** → Today.
-- On Today: three cards (morning briefing, weekly review, low-rating alert).
-- Bottom action bar: mic button (left), **Chat with Claw Main** CTA (center), pencil (right).
-- Open the drawer (top-left icon) → tap **Claw Main**. Training and Jessie show **Coming soon**.
-- Inside Claw Main: header + Chat / Context / History tabs.
-  - Chat: mock conversation with an in-progress tool-call chip.
-  - Context: 12 skills as chips; tap any chip to reveal its description.
-  - History: 5 mock conversations grouped by Today / Yesterday / This week / Earlier.
-- Tap the mic button anywhere → voice overlay → **Stop** → voice preview → **Send** returns to chat.
-- Drawer → **Sign out** → back to passkey. Use **Having trouble?** to test the magic-link screen.
+```bash
+cd flutter_app
+flutter pub get
+dart run build_runner build   # riverpod codegen (app_state.g.dart)
+flutter run -d "iPhone 17"
+```
+
+Xcode 26.0 note: `device_info_plus` is pinned to 12.3.0 in
+`pubspec.yaml` `dependency_overrides` — newer versions need the iOS 26.1
+SDK. Drop the pin after upgrading Xcode.
 
 ## File map
 
 ```
 lib/
-  main.dart                  app entry, ProviderScope
-  app.dart                   MaterialApp.router + theme
-  theme/
-    app_theme.dart           ThemeData assembly, M3 + overrides
-    colors.dart              palette tokens + layered shadow tokens
-    typography.dart          M3 text theme, tracking + line-height tuned
-    spacing.dart             4 / 8 / 12 / 16 / 24 / 32 scale
-    motion.dart              duration + curve tokens for all animation
+  main.dart                    app entry, ProviderScope
+  app.dart                     MaterialApp.router, light/dark theme
+  theme/                       colors, typography, app_theme, spacing, motion
   routing/
-    app_router.dart          GoRouter with auth redirect
-    routes.dart              path constants
+    app_router.dart            GoRouter: auth redirect + StatefulShellRoute
+    routes.dart                /home /agents /insights /voice /auth/*
+  shell/homebase_shell.dart    floating pill nav / NavigationRail
   features/
-    today/                   Today screen + cards + model
-    room/                    Room shell + Chat/Context/History tabs
-    voice/                   capture overlay + preview
-    auth/                    passkey + magic link
-    drawer/                  Granola-style top-left drawer
+    home/                      dashboard (digest, agent dock, previews)
+    chat/                      chat screen + typing indicator, tool chips
+    insights/                  insights screen
+    auth/                      passkey + magic link
+    voice/                     capture overlay + preview
   shared/
-    widgets/                 AppCard, MicButton, BottomActionBar,
-                             Pressable (press-scale + haptic),
-                             Entrance (staggered fade-up)
-    models/                  Room, Message, SkillInfo
-    api/
-      api_client.dart        stub, no real calls
-      mock_data.dart         all hardcoded data lives here
-  state/
-    app_state.dart           Riverpod providers (codegen)
+    models/                    Agent, Message
+    widgets/                   BouncyButton, FadeSlideIn, WeekStripe,
+                               SparklineCard, Entrance
+    api/                       api_client (stub), mock_data
+  state/app_state.dart         Riverpod: auth, active agent, threads, typing
 test/
-  widget_test.dart           smoke test placeholder
-pubspec.yaml
-analysis_options.yaml
+  widget_test.dart             boot smoke test
+  flow_test.dart               sign-in → dashboard → chat → insights
 ```
 
-## Notes on Riverpod codegen
+## iOS setup still pending (before TestFlight)
 
-`lib/state/app_state.dart` uses `part 'app_state.g.dart';`. That file is
-generated by `build_runner` and does not exist on Linux. Until you run
-`dart run build_runner build` on the Mac, the file shows as missing —
-that is expected and unblocks once codegen lands.
+In Xcode (Runner → Signing & Capabilities): development team, Push
+Notifications, Background Modes (fetch + remote notifications), Associated
+Domains (`applinks:auth.jbhomebase.app`). APNs needs a real device and the
+`.p8` key uploaded to Firebase. App icon + splash are placeholders.
 
-## TODOs left in code for backend wiring
+## Locked decisions
 
-Search the repo for `TODO(backend)`. The list:
-
-- `api_client.dart`: today cards fetch, active conversation fetch, message send (streaming), voice multipart upload.
-- `app_state.dart`: `appendUserMessage` should post to gateway and stream the assistant response.
-- `main.dart`: Firebase init, push permission request, FCM token registration.
-- `today_screen.dart`: pull-to-refresh is a `debugPrint` stub; card tap-to-expand is not implemented.
-- `drawer/app_drawer.dart`: settings screen not built.
-- `voice_overlay.dart`: real `record` capture; `audio_waveforms` live amplitude rendering.
-- `voice_preview.dart`: multipart POST audio + transcript to `/api/rooms/:roomId/voice`.
-- `passkey_screen.dart`: trigger Corbado `passkeys` flow, exchange with gateway, store token in `flutter_secure_storage`.
-- `magic_link_screen.dart`: POST `/api/auth/magic-link`; consume `app_links` universal link on tap.
-- `history_tab.dart`: continue-thread action should seed a new conversation server-side.
-
-## Locked decisions for this scaffold
-
-- Accent color: `#6B7A3F`
-- Bundle ID: `com.jbhomebase.app`
-- Auth host: `auth.jbhomebase.app`
-- Display name: Jordan Claw
-- Platforms: iOS only for v1
-- Voice format: M4A (record default)
+- Bundle ID: `com.jbhomebase.app` · Display name: JB Homebase
+- Accent: sage (`#64805F` light / `#9CB39A` dark)
+- iOS only for v1 · Voice format: M4A
+- Passkey primary, magic link recovery; if `passkeys` breaks on iOS,
+  ship magic-link-only for cutover
