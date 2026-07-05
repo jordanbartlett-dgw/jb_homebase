@@ -1,0 +1,61 @@
+name: jb_homebase_app
+description: Jordan Claw — personal agent OS, iOS client.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.12.0 <4.0.0"
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^3.0.0
+  riverpod_annotation: ^3.0.0
+
+  # Routing
+  go_router: ^15.0.0
+
+  # HTTP
+  http: ^1.3.0
+
+  # Design system fonts (Playfair Display + Inter) and date formatting
+  google_fonts: ^6.2.1
+  intl: ^0.20.0
+
+  # Voice
+  record: ^6.0.0
+  audio_waveforms: ^2.0.0
+  permission_handler: ^12.0.0
+
+  # Push
+  firebase_core: ^4.0.0
+  firebase_messaging: ^16.0.0
+  flutter_local_notifications: ^20.0.0
+
+  # Auth
+  passkeys: ^2.0.0
+  flutter_secure_storage: ^10.0.0
+  app_links: ^7.0.0
+
+dependency_overrides:
+  # device_info_plus >=12.4.0 (transitive via passkeys) references
+  # NSProcessInfo.isiOSAppOnVision, declared only in the iOS 26.1 SDK.
+  # Xcode 26.0 ships the 26.0 SDK, so those versions fail to compile.
+  # Remove this pin once Xcode >= 26.1 is installed.
+  device_info_plus: 12.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.0
+  riverpod_generator: ^3.0.0
+  custom_lint: ^0.8.0
+  riverpod_lint: ^3.0.0
+
+flutter:
+  uses-material-design: true
