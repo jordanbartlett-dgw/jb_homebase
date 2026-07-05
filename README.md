@@ -6,9 +6,9 @@ This is the core delivery engine for the [jordanbartlett.co](https://jordanbartl
 
 ## What It Does
 
-One deployed process, two agents. Messages come in from Telegram (one bot per agent), hit a gateway that handles dedup, conversation tracking, and history, then run through a Pydantic AI agent backed by Claude Sonnet 5.
+One deployed process, two agents. Messages arrive from Telegram (one bot per agent), inbound webhooks, a Fastmail email watcher, or the `/voice` endpoint, hit a gateway that handles dedup, conversation tracking, and history, then run through a Pydantic AI (v2) agent backed by Claude Sonnet 5.
 
-The main agent ("claw-main") draws from sixteen registered tools:
+Tools are grouped into six capability bundles (`core`, `web`, `calendar`, `memory`, `obsidian`, `workout` in `agents/capabilities.py`); each agent's DB config selects which bundles it gets. The sixteen tools:
 
 - **current_datetime** returns the current time in US Central
 - **search_web** searches the web via Tavily for external discovery (default when unsure)
@@ -29,6 +29,12 @@ The agent also proactively reaches out via Telegram:
 - **Daily scan** alerts on calendar conflicts (quiet, only messages if something found)
 - **Weekly feedback request** (Sundays 7pm Central) asks for a 1-5 rating on the week's interactions, persisted via `/feedback`
 - **Daily workout** (6am Central) sends the day's session from the active training plan; silent on rest days
+
+Beyond schedules, events can trigger agents:
+
+- **`POST /webhooks/{source}`** (shared-secret auth) matches DB-configured `event_triggers` rows, runs the target agent, and delivers via Telegram; agents reply `NOTHING_TO_SEND` to stay silent on noise
+- **Fastmail watcher** polls JMAP every 5 minutes and feeds new email through the same trigger pipeline (seeded: `inbound_email_review` triages inbound mail)
+- **`POST /voice`** (bearer auth) accepts raw audio, transcribes via Whisper, routes to the best-matching agent with a Haiku classifier built from the capability catalog, and returns transcript + reply. Replays are idempotent: send one `X-Idempotency-Key` per utterance (falls back to a body hash) and duplicates converge to the original reply.
 
 Conversation history is token-budgeted (4000 tokens max) to prevent context pollution on long conversations. Tool docstrings include explicit routing signals so the LLM knows when to use internal tools (notes, memory, calendar) vs external tools (web search). Conversations auto-expire after 30 minutes of inactivity, so unrelated prior topics don't bleed into new sessions.
 
