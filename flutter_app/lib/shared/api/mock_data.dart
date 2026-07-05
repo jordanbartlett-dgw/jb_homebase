@@ -23,7 +23,7 @@ class MockData {
   // ---------------------------------------------------------------------------
 
   static List<Message> threadFor(String agentId) => switch (agentId) {
-        'workout' => [
+        'workout-coach' => [
             Message(
               id: 'workout-1',
               role: MessageRole.assistant,
