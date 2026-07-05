@@ -98,7 +98,7 @@ def idempotency_key(audio: bytes, header: str | None) -> str:
     return f"{VOICE_CHANNEL}-{hashlib.sha256(audio).hexdigest()[:32]}"
 
 
-async def _await_original_reply(db: AsyncClient, *, conversation_id: str, after: str) -> str:
+async def await_original_reply(db: AsyncClient, *, conversation_id: str, after: str) -> str:
     """Poll for the assistant reply the original run produces after `after`.
 
     Raises OriginalRunIncompleteError if none appears within POLL_TIMEOUT_S.
@@ -132,7 +132,7 @@ async def replay_response(db: AsyncClient, original: dict, *, org_id: str) -> Vo
         conversation_id=original["conversation_id"],
         agent_slug=agent_slug,
     )
-    reply = await _await_original_reply(
+    reply = await await_original_reply(
         db,
         conversation_id=original["conversation_id"],
         after=original["created_at"],
@@ -148,6 +148,9 @@ async def handle_app_message(
     text: str,
     settings: Settings,
     channel_message_id: str,
+    channel: str = VOICE_CHANNEL,
+    channel_thread_id: str | None = None,
+    run_kind: RunKind = RunKind.VOICE,
 ) -> GatewayResponse:
     """Run an app-originated utterance through the standard gateway flow.
 
@@ -156,11 +159,12 @@ async def handle_app_message(
     HTTP only — no bot delivery. channel_message_id is the stable idempotency
     key from the route, so gateway dedup fires on edge replays; agent_slug is
     persisted in the message metadata so a replay can recover the original
-    route without re-classifying.
+    route without re-classifying. Defaults are the /voice shape; /app/messages
+    passes channel="app" with one thread per agent.
     """
     msg = IncomingMessage(
-        channel=VOICE_CHANNEL,
-        channel_thread_id=VOICE_CHANNEL,
+        channel=channel,
+        channel_thread_id=channel_thread_id or channel,
         channel_message_id=channel_message_id,
         content=text,
         org_id=org_id,
@@ -176,7 +180,7 @@ async def handle_app_message(
         openai_api_key=settings.openai_api_key,
         history_limit=settings.message_history_limit,
         environment=settings.environment,
-        run_kind=RunKind.VOICE,
+        run_kind=run_kind,
         bot=None,
     )
     if result.conversation_id:
@@ -190,7 +194,7 @@ async def handle_app_message(
     original = await get_message_by_channel_id(db, channel_message_id)
     if original is None:
         raise OriginalRunIncompleteError(channel_message_id)
-    reply = await _await_original_reply(
+    reply = await await_original_reply(
         db,
         conversation_id=original["conversation_id"],
         after=original["created_at"],

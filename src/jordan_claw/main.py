@@ -15,12 +15,22 @@ from fastapi.responses import JSONResponse
 
 from jordan_claw.analytics import emitter
 from jordan_claw.analytics.posthog_client import shutdown_posthog
+from jordan_claw.analytics.types import RunKind
 from jordan_claw.channels.telegram import create_telegram_dispatcher, start_polling
 from jordan_claw.config import get_settings
 from jordan_claw.db.client import close_supabase_client, get_supabase_client
 from jordan_claw.db.messages import get_message_by_channel_id
 from jordan_claw.events.pipeline import process_event
 from jordan_claw.gateway.analytics_proxy import build_analytics_router
+from jordan_claw.gateway.app_chat import (
+    APP_CHANNEL,
+    AppMessageRequest,
+    AppMessageResponse,
+    replay_app_response,
+)
+from jordan_claw.gateway.app_chat import (
+    channel_message_id as app_channel_message_id,
+)
 from jordan_claw.gateway.classifier import classify
 from jordan_claw.gateway.voice import (
     OriginalRunIncompleteError,
@@ -234,6 +244,62 @@ async def receive_webhook(source: str, request: Request):
     return {"accepted": True}
 
 
+def _require_app_token(request: Request, *, surface: str) -> None:
+    """Bearer auth against CLAW_APP_TOKEN for app-facing surfaces (/voice, /app/messages)."""
+    settings = request.app.state.settings
+    if not settings.claw_app_token:
+        # Unconfigured token means the surface is disabled, never open.
+        raise HTTPException(status_code=503, detail=f"{surface} surface disabled")
+
+    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+    # bytes comparison: the str form of compare_digest raises on non-ASCII input
+    if scheme.lower() != "bearer" or not secrets.compare_digest(
+        token.encode(), settings.claw_app_token.encode()
+    ):
+        raise HTTPException(status_code=401)
+
+
+@app.post("/app/messages", response_model=AppMessageResponse)
+async def app_text_message(body: AppMessageRequest, request: Request) -> AppMessageResponse:
+    """Text chat from the JB Homebase app: explicit agent, replay-safe, blocking reply.
+
+    The app's agent picker makes the slug explicit, so there is no classifier
+    hop. One gateway conversation per agent (channel="app", thread=slug)
+    matches the app's thread-per-agent UI. The client sends one UUID
+    idempotency_key per message; Railway edge replays converge on the
+    original run's reply exactly like /voice.
+    """
+    _require_app_token(request, surface="app messages")
+    settings = request.app.state.settings
+    db = request.app.state.db
+    key = app_channel_message_id(body.agent_slug, body.idempotency_key)
+
+    try:
+        original = await get_message_by_channel_id(db, key)
+        if original is not None:
+            return await replay_app_response(db, original, fallback_slug=body.agent_slug)
+
+        response = await handle_app_message(
+            db,
+            org_id=settings.default_org_id,
+            agent_slug=body.agent_slug,
+            text=body.text,
+            settings=settings,
+            channel_message_id=key,
+            channel=APP_CHANNEL,
+            channel_thread_id=body.agent_slug,
+            run_kind=RunKind.USER_MESSAGE,
+        )
+    except OriginalRunIncompleteError as exc:
+        raise HTTPException(status_code=504, detail="original request did not complete") from exc
+
+    return AppMessageResponse(
+        agent_slug=body.agent_slug,
+        reply=response.content,
+        conversation_id=response.conversation_id,
+    )
+
+
 @app.post("/voice", response_model=VoiceResponse)
 async def voice_message(request: Request) -> VoiceResponse:
     """Voice ingestion: whisper transcript -> classifier route -> gateway reply.
@@ -256,18 +322,8 @@ async def voice_message(request: Request) -> VoiceResponse:
     -> 504; classifier failure is invisible (falls back to claw-main by
     design).
     """
+    _require_app_token(request, surface="voice")
     settings = request.app.state.settings
-    if not settings.claw_app_token:
-        # Unconfigured token means the surface is disabled, never open.
-        raise HTTPException(status_code=503, detail="voice surface disabled")
-
-    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
-    # bytes comparison: the str form of compare_digest raises on non-ASCII input
-    if scheme.lower() != "bearer" or not secrets.compare_digest(
-        token.encode(), settings.claw_app_token.encode()
-    ):
-        raise HTTPException(status_code=401)
-
     db = request.app.state.db
     audio = await request.body()
     filename = request.headers.get("X-Audio-Filename", "voice.m4a")
