@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from jordan_claw.obsidian.parser import extract_wiki_links, parse_note_file
 
-
 SAMPLE_SOURCE_NOTE = """\
 ---
 type: source

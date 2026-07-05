@@ -96,11 +96,13 @@ def chunk_text(text: str) -> list[dict]:
             prev_tail = chunks[i - 1][-overlap_chars:]
             chunk = prev_tail + "\n\n" + chunk
 
-        result.append({
-            "content": chunk,
-            "chunk_index": i,
-            "token_count": _estimate_tokens(chunk),
-        })
+        result.append(
+            {
+                "content": chunk,
+                "chunk_index": i,
+                "token_count": _estimate_tokens(chunk),
+            }
+        )
 
     return result
 

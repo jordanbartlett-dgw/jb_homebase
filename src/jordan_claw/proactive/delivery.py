@@ -38,9 +38,7 @@ async def send_proactive_message(
 
     # Dedup: only check for scheduled messages (those with a schedule_id)
     if schedule_id and await was_sent_today(db, schedule_id, timezone):
-        log.info(
-            "proactive.dedup_skipped", schedule_id=schedule_id, task_type=task_type
-        )
+        log.info("proactive.dedup_skipped", schedule_id=schedule_id, task_type=task_type)
         return
 
     try:

@@ -46,7 +46,9 @@ def _sanitize_frontmatter(fm: dict) -> dict:
         if isinstance(value, (date, datetime)):
             sanitized[key] = value.isoformat()
         elif isinstance(value, list):
-            sanitized[key] = [v.isoformat() if isinstance(v, (date, datetime)) else v for v in value]
+            sanitized[key] = [
+                v.isoformat() if isinstance(v, (date, datetime)) else v for v in value
+            ]
         else:
             sanitized[key] = value
     return sanitized

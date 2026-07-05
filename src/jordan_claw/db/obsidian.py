@@ -28,19 +28,21 @@ async def insert_note(
     """Insert a new obsidian note."""
     result = await (
         client.table("obsidian_notes")
-        .insert({
-            "org_id": org_id,
-            "vault_path": vault_path,
-            "title": title,
-            "note_type": note_type,
-            "content": content,
-            "frontmatter": frontmatter,
-            "tags": tags,
-            "wiki_links": wiki_links,
-            "content_hash": content_hash,
-            "source_origin": source_origin,
-            "sync_status": sync_status,
-        })
+        .insert(
+            {
+                "org_id": org_id,
+                "vault_path": vault_path,
+                "title": title,
+                "note_type": note_type,
+                "content": content,
+                "frontmatter": frontmatter,
+                "tags": tags,
+                "wiki_links": wiki_links,
+                "content_hash": content_hash,
+                "source_origin": source_origin,
+                "sync_status": sync_status,
+            }
+        )
         .execute()
     )
     return result.data[0] if result.data else {}
@@ -59,14 +61,16 @@ async def update_note(
     """Update an existing obsidian note."""
     await (
         client.table("obsidian_notes")
-        .update({
-            "content": content,
-            "frontmatter": frontmatter,
-            "tags": tags,
-            "wiki_links": wiki_links,
-            "content_hash": content_hash,
-            "updated_at": datetime.now(UTC).isoformat(),
-        })
+        .update(
+            {
+                "content": content,
+                "frontmatter": frontmatter,
+                "tags": tags,
+                "wiki_links": wiki_links,
+                "content_hash": content_hash,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+        )
         .eq("id", note_id)
         .execute()
     )
@@ -119,10 +123,12 @@ async def archive_note(client: AsyncClient, note_id: str) -> None:
     """Soft-delete a note by marking it archived."""
     await (
         client.table("obsidian_notes")
-        .update({
-            "is_archived": True,
-            "updated_at": datetime.now(UTC).isoformat(),
-        })
+        .update(
+            {
+                "is_archived": True,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+        )
         .eq("id", note_id)
         .execute()
     )
@@ -135,12 +141,7 @@ async def insert_chunks(client: AsyncClient, chunks: list[dict]) -> None:
 
 async def delete_chunks_for_note(client: AsyncClient, note_id: str) -> None:
     """Delete all chunks for a note (before re-embedding)."""
-    await (
-        client.table("obsidian_note_chunks")
-        .delete()
-        .eq("note_id", note_id)
-        .execute()
-    )
+    await client.table("obsidian_note_chunks").delete().eq("note_id", note_id).execute()
 
 
 async def get_pending_exports(
@@ -166,11 +167,13 @@ async def mark_note_synced(
     """Mark a note as synced after export to vault."""
     await (
         client.table("obsidian_notes")
-        .update({
-            "sync_status": "synced",
-            "content_hash": content_hash,
-            "updated_at": datetime.now(UTC).isoformat(),
-        })
+        .update(
+            {
+                "sync_status": "synced",
+                "content_hash": content_hash,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+        )
         .eq("id", note_id)
         .execute()
     )

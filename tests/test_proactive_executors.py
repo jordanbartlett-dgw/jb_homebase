@@ -14,12 +14,25 @@ CHICAGO = ZoneInfo("America/Chicago")
 
 def _plan() -> WorkoutPlan:
     return WorkoutPlan(
-        id="p1", org_id="org-001", status="active", starts_on="2026-07-07",
+        id="p1",
+        org_id="org-001",
+        status="active",
+        starts_on="2026-07-07",
         rationale="Base building",
-        weeks=[PlanWeek(week_number=1, focus="easy volume", days=[
-            PlanDay(day="monday", session_type="run", description="Easy 4mi",
-                    targets={"distance_mi": 4}),
-        ])],
+        weeks=[
+            PlanWeek(
+                week_number=1,
+                focus="easy volume",
+                days=[
+                    PlanDay(
+                        day="monday",
+                        session_type="run",
+                        description="Easy 4mi",
+                        targets={"distance_mi": 4},
+                    ),
+                ],
+            )
+        ],
     )
 
 
@@ -119,9 +132,7 @@ async def test_daily_scan_no_conflicts_returns_empty():
         "jordan_claw.proactive.executors.get_calendar_events",
         new=AsyncMock(return_value="- Standup: 09:00 - 09:30\n- Lunch: 12:00 - 13:00"),
     ):
-        result = await execute_daily_scan(
-            AsyncMock(), "org-1", {}, _mock_settings()
-        )
+        result = await execute_daily_scan(AsyncMock(), "org-1", {}, _mock_settings())
 
     assert result == ""
 
@@ -154,9 +165,7 @@ async def test_daily_scan_detects_conflicts():
             ],
         ),
     ):
-        result = await execute_daily_scan(
-            AsyncMock(), "org-1", {}, _mock_settings()
-        )
+        result = await execute_daily_scan(AsyncMock(), "org-1", {}, _mock_settings())
 
     assert "conflict" in result.lower() or "overlap" in result.lower()
 

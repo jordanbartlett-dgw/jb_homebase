@@ -44,11 +44,7 @@ def test_chunk_overlap():
     """Adjacent chunks should have ~10% overlap."""
     chunks = chunk_text(LONG_TEXT)
     if len(chunks) >= 2:
-        # The end of chunk 0 should overlap with start of chunk 1
-        c0_end = chunks[0]["content"][-100:]
-        c1_start = chunks[1]["content"][:200]
-        # Some overlap text should appear in both chunks
-        # (exact overlap depends on split points, just verify chunks aren't disjoint)
+        # Exact overlap depends on split points, just verify chunks aren't disjoint
         assert len(chunks[0]["content"]) > 0
         assert len(chunks[1]["content"]) > 0
 

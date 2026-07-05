@@ -13,7 +13,6 @@ from jordan_claw.db.obsidian import (
     search_notes_semantic,
     update_note,
 )
-from jordan_claw.obsidian.models import ObsidianNote
 
 
 def _mock_db(data: list | None = None) -> MagicMock:
@@ -119,7 +118,13 @@ async def test_get_note_by_title_not_found():
 async def test_insert_chunks():
     db = _mock_db()
     chunks = [
-        {"note_id": "note-1", "chunk_index": 0, "content": "text", "embedding": [0.1] * 512, "token_count": 10},
+        {
+            "note_id": "note-1",
+            "chunk_index": 0,
+            "content": "text",
+            "embedding": [0.1] * 512,
+            "token_count": 10,
+        },
     ]
     await insert_chunks(db, chunks)
     db.table.assert_called_with("obsidian_note_chunks")
@@ -166,20 +171,20 @@ async def test_search_notes_semantic():
     db = MagicMock()
     rpc_builder = MagicMock()
     rpc_builder.execute = AsyncMock(
-        return_value=MagicMock(data=[
-            {
-                "note_id": "note-1",
-                "title": "Test",
-                "note_type": "atomic-note",
-                "tags": ["test"],
-                "chunk_content": "matching text",
-                "similarity": 0.85,
-            }
-        ])
+        return_value=MagicMock(
+            data=[
+                {
+                    "note_id": "note-1",
+                    "title": "Test",
+                    "note_type": "atomic-note",
+                    "tags": ["test"],
+                    "chunk_content": "matching text",
+                    "similarity": 0.85,
+                }
+            ]
+        )
     )
     db.rpc.return_value = rpc_builder
-    results = await search_notes_semantic(
-        db, org_id="org-1", embedding=[0.1] * 512
-    )
+    results = await search_notes_semantic(db, org_id="org-1", embedding=[0.1] * 512)
     assert len(results) == 1
     assert results[0]["similarity"] == 0.85

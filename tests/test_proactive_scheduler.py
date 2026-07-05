@@ -123,9 +123,7 @@ async def test_dispatch_picks_bot_by_agent_slug():
 
     claw_bot, workout_bot = AsyncMock(), AsyncMock()
     bots = {"claw-main": claw_bot, "workout-coach": workout_bot}
-    schedule = _make_schedule(
-        task_type="daily_workout", config={"agent_slug": "workout-coach"}
-    )
+    schedule = _make_schedule(task_type="daily_workout", config={"agent_slug": "workout-coach"})
     settings = MagicMock(default_agent_slug="claw-main")
 
     with (
@@ -133,9 +131,7 @@ async def test_dispatch_picks_bot_by_agent_slug():
             "jordan_claw.proactive.scheduler.EXECUTOR_MAP",
             {"daily_workout": AsyncMock(return_value="go run")},
         ),
-        patch(
-            "jordan_claw.proactive.scheduler.send_proactive_message"
-        ) as mock_send,
+        patch("jordan_claw.proactive.scheduler.send_proactive_message") as mock_send,
         patch("jordan_claw.proactive.scheduler.update_last_run"),
     ):
         await dispatch_task(schedule, MagicMock(), bots, settings)
@@ -149,9 +145,7 @@ async def test_dispatch_falls_back_to_default_bot():
 
     claw_bot = AsyncMock()
     bots = {"claw-main": claw_bot}
-    schedule = _make_schedule(
-        task_type="daily_workout", config={"agent_slug": "workout-coach"}
-    )
+    schedule = _make_schedule(task_type="daily_workout", config={"agent_slug": "workout-coach"})
     settings = MagicMock(default_agent_slug="claw-main")
 
     with (
@@ -159,9 +153,7 @@ async def test_dispatch_falls_back_to_default_bot():
             "jordan_claw.proactive.scheduler.EXECUTOR_MAP",
             {"daily_workout": AsyncMock(return_value="go run")},
         ),
-        patch(
-            "jordan_claw.proactive.scheduler.send_proactive_message"
-        ) as mock_send,
+        patch("jordan_claw.proactive.scheduler.send_proactive_message") as mock_send,
         patch("jordan_claw.proactive.scheduler.update_last_run"),
     ):
         await dispatch_task(schedule, MagicMock(), bots, settings)
@@ -186,7 +178,9 @@ async def test_schedule_calendar_reminders_sets_timers():
     future_start = now + timedelta(hours=2)
     future_end = future_start + timedelta(hours=1)
 
-    events_text = f"- Big meeting: {future_start.strftime('%H:%M')} - {future_end.strftime('%H:%M')}"
+    events_text = (
+        f"- Big meeting: {future_start.strftime('%H:%M')} - {future_end.strftime('%H:%M')}"
+    )
 
     with (
         patch(
@@ -199,7 +193,11 @@ async def test_schedule_calendar_reminders_sets_timers():
         ),
     ):
         timers = await schedule_calendar_reminders(
-            mock_db, "org-1", {"agent_slug": "claw-main"}, mock_settings, mock_bot,
+            mock_db,
+            "org-1",
+            {"agent_slug": "claw-main"},
+            mock_settings,
+            mock_bot,
         )
 
     assert len(timers) == 1

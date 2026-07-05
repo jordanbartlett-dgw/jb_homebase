@@ -78,10 +78,10 @@ def trim_history_processor(
     # Never strip to empty — pydantic-ai requires non-empty processed history.
     while len(kept) > 1:
         first = kept[0]
-        if isinstance(first, ModelResponse):
-            kept.pop(0)
-        elif isinstance(first, ModelRequest) and any(
-            isinstance(p, ToolReturnPart) for p in first.parts
+        if (
+            isinstance(first, ModelResponse)
+            or isinstance(first, ModelRequest)
+            and any(isinstance(p, ToolReturnPart) for p in first.parts)
         ):
             kept.pop(0)
         else:

@@ -67,9 +67,7 @@ async def read_note(
     """Read the full content of an Obsidian note by title.
     Only use after search_notes returns a relevant result.
     Returns the complete note body, tags, and linked notes."""
-    notes = await get_note_by_title(
-        ctx.deps.supabase_client, ctx.deps.org_id, title
-    )
+    notes = await get_note_by_title(ctx.deps.supabase_client, ctx.deps.org_id, title)
 
     if not notes:
         return f"No notes found matching '{title}'."
@@ -107,14 +105,16 @@ def _render_source_note_markdown(
     ]
     for i, takeaway in enumerate(key_takeaways, 1):
         lines.append(f"{i}. {takeaway}")
-    lines.extend([
-        "",
-        "## Related Topics",
-        "",
-        "",
-        "## Notes",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Related Topics",
+            "",
+            "",
+            "## Notes",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 

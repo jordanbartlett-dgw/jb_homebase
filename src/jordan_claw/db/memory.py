@@ -164,12 +164,7 @@ async def upsert_memory_context(
 
 async def mark_context_stale(client: AsyncClient, org_id: str) -> None:
     """Mark all context blocks for an org as stale."""
-    await (
-        client.table("memory_context")
-        .update({"is_stale": True})
-        .eq("org_id", org_id)
-        .execute()
-    )
+    await client.table("memory_context").update({"is_stale": True}).eq("org_id", org_id).execute()
 
 
 async def search_facts(

@@ -7,19 +7,20 @@ from supabase._async.client import AsyncClient
 from jordan_claw.workout.models import PlanWeek, WorkoutLog, WorkoutPlan, WorkoutProfile
 
 PROFILE_FIELDS = (
-    "goals", "experience", "training_days", "equipment",
-    "injuries", "nutrition", "baseline",
+    "goals",
+    "experience",
+    "training_days",
+    "equipment",
+    "injuries",
+    "nutrition",
+    "baseline",
 )
 
 
 async def get_workout_profile(client: AsyncClient, org_id: str) -> WorkoutProfile | None:
     """Load the workout profile for an org, or None if intake never ran."""
     result = (
-        await client.table("workout_profiles")
-        .select("*")
-        .eq("org_id", org_id)
-        .limit(1)
-        .execute()
+        await client.table("workout_profiles").select("*").eq("org_id", org_id).limit(1).execute()
     )
     if not result.data:
         return None

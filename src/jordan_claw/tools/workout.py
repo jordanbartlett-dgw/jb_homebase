@@ -118,9 +118,7 @@ async def log_workout(
 async def get_recent_workouts(ctx: RunContext[AgentDeps], limit: int = 7) -> str:
     """Read recently logged workouts. Use before revising a plan so changes
     reflect what actually happened, not what was scheduled."""
-    logs = await get_recent_workout_logs(
-        ctx.deps.supabase_client, ctx.deps.org_id, limit=limit
-    )
+    logs = await get_recent_workout_logs(ctx.deps.supabase_client, ctx.deps.org_id, limit=limit)
     if not logs:
         return "No workouts logged yet."
     lines = []

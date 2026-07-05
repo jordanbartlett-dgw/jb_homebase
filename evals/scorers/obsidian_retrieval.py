@@ -8,9 +8,7 @@ from evals.types import ObsidianRetrievalInputs, RetrievalOutput
 
 
 @dataclass
-class TopKMembershipScorer(
-    Evaluator[ObsidianRetrievalInputs, RetrievalOutput, dict]
-):
+class TopKMembershipScorer(Evaluator[ObsidianRetrievalInputs, RetrievalOutput, dict]):
     """Score = |expected ∩ top_k(returned)| / |expected|.
 
     Default k=3. Slug match is exact, case-insensitive.
