@@ -73,7 +73,6 @@ async def test_get_agent_config_returns_typed_config():
                 "slug": "test-agent",
                 "system_prompt": "You are helpful.",
                 "model": "claude-sonnet-4-20250514",
-                "tools": ["current_datetime", "search_web"],
                 "capabilities": ["core", "web"],
                 "is_active": True,
             }
@@ -94,7 +93,6 @@ async def test_get_agent_config_returns_typed_config():
 
     assert isinstance(config, AgentConfig)
     assert config.slug == "test-agent"
-    assert config.tools == ["current_datetime", "search_web"]
     assert config.capabilities == ["core", "web"]
     assert config.system_prompt == "You are helpful."
 
@@ -126,7 +124,6 @@ async def test_build_agent_uses_db_config():
         slug="test-agent",
         system_prompt="Be helpful.",
         model="test",
-        tools=["current_datetime", "search_web"],  # legacy column: must have NO effect
         capabilities=["core", "web"],
         is_active=True,
     )
@@ -207,7 +204,6 @@ async def test_build_agent_skips_unknown_capabilities():
         slug="test-agent",
         system_prompt="Be helpful.",
         model="test",
-        tools=["current_datetime", "nonexistent_tool"],  # legacy column: must have NO effect
         capabilities=["core", "nonexistent"],
         is_active=True,
     )
@@ -333,7 +329,6 @@ async def test_trim_history_runs_inside_agent_run():
         slug="test-agent",
         system_prompt="Be helpful.",
         model="test",
-        tools=[],
         capabilities=[],
         is_active=True,
     )
