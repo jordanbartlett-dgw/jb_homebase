@@ -1,0 +1,90 @@
+from __future__ import annotations
+
+from typing import Literal
+
+import structlog
+from anthropic import AsyncAnthropic, NotFoundError
+from pydantic import BaseModel
+from supabase._async.client import AsyncClient
+
+log = structlog.get_logger()
+
+# Definitive verdicts only; transient API failures are never cached so they
+# retry on the next health check. Model ids are immutable once valid/invalid,
+# so process-lifetime caching is safe.
+_model_cache: dict[str, bool] = {}
+
+
+class AgentHealth(BaseModel):
+    slug: str
+    model: str
+    bot_running: bool
+    model_ok: bool | None  # None = could not be validated (non-anthropic or API unreachable)
+
+
+class HealthReport(BaseModel):
+    status: Literal["ok", "degraded"]
+    agents: list[AgentHealth]
+    missing_bots: list[str]
+    invalid_models: list[str]
+
+
+async def _validate_model(client: AsyncAnthropic, model: str) -> bool | None:
+    provider, _, bare = model.rpartition(":")
+    if provider not in ("", "anthropic"):
+        return None
+    if bare in _model_cache:
+        return _model_cache[bare]
+    try:
+        await client.models.retrieve(bare)
+    except NotFoundError:
+        _model_cache[bare] = False
+        return False
+    except Exception:
+        log.warning("health.model_check_unavailable", model=bare)
+        return None
+    _model_cache[bare] = True
+    return True
+
+
+async def build_health_report(
+    db: AsyncClient,
+    *,
+    running_bots: set[str],
+    anthropic_client: AsyncAnthropic,
+) -> HealthReport:
+    """Cross-check every active agent in the DB against runtime reality.
+
+    An active agent whose bot dispatcher is not running, or whose configured
+    model the Anthropic API does not serve, degrades the report (503 at the
+    endpoint) so Railway's deploy healthcheck fails loudly instead of the bot
+    going silent.
+    """
+    result = (
+        await db.table("agents").select("slug, model, is_active").eq("is_active", True).execute()
+    )
+
+    agents: list[AgentHealth] = []
+    missing_bots: list[str] = []
+    invalid_models: list[str] = []
+    for row in result.data:
+        slug, model = row["slug"], row["model"]
+        bot_running = slug in running_bots
+        model_ok = await _validate_model(anthropic_client, model)
+        if not bot_running:
+            missing_bots.append(slug)
+        if model_ok is False:
+            invalid_models.append(slug)
+        agents.append(
+            AgentHealth(slug=slug, model=model, bot_running=bot_running, model_ok=model_ok)
+        )
+
+    degraded = bool(missing_bots or invalid_models)
+    if degraded:
+        log.warning("health.degraded", missing_bots=missing_bots, invalid_models=invalid_models)
+    return HealthReport(
+        status="degraded" if degraded else "ok",
+        agents=agents,
+        missing_bots=missing_bots,
+        invalid_models=invalid_models,
+    )

@@ -9,7 +9,9 @@ from contextlib import asynccontextmanager
 import logfire
 import structlog
 from aiogram import Bot
+from anthropic import AsyncAnthropic
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from jordan_claw.analytics import emitter
 from jordan_claw.analytics.posthog_client import shutdown_posthog
@@ -29,6 +31,7 @@ from jordan_claw.gateway.voice import (
     replay_response,
     transcribe,
 )
+from jordan_claw.health import build_health_report
 from jordan_claw.proactive.scheduler import scheduler_loop
 
 
@@ -139,6 +142,7 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.db = db
     app.state.bots = bots
+    app.state.anthropic = AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     # Mount analytics proxy after settings are loaded so org_id/token are available
     app.include_router(
@@ -162,6 +166,7 @@ async def lifespan(app: FastAPI):
         await scheduler_task
     await emitter.drain_pending_emits()
     shutdown_posthog()
+    await app.state.anthropic.close()
     await bot.session.close()
     if workout_bot is not None:
         await workout_bot.session.close()
@@ -183,8 +188,22 @@ async def drain_pending_event_tasks() -> None:
 
 
 @app.get("/health")
-async def health_check():
-    return {"status": "ok"}
+async def health_check(request: Request):
+    """Config-aware health: active DB agents must have a running bot and a served model.
+
+    Degraded returns 503 so Railway's deploy healthcheck fails loudly on the
+    silent failure modes (missing bot token, retired model) instead of the bot
+    going quiet for weeks.
+    """
+    report = await build_health_report(
+        request.app.state.db,
+        running_bots=set(request.app.state.bots),
+        anthropic_client=request.app.state.anthropic,
+    )
+    payload = report.model_dump()
+    if report.status != "ok":
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 
 @app.post("/webhooks/{source}", status_code=202)
