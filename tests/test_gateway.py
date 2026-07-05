@@ -17,7 +17,6 @@ def make_agent_config() -> AgentConfig:
         slug="claw-main",
         system_prompt="You are helpful.",
         model="claude-sonnet-4-20250514",
-        tools=[],
         is_active=True,
     )
 

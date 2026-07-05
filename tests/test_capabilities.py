@@ -48,7 +48,6 @@ async def test_graceful_agent_completes_plain_run():
         slug="test-agent",
         system_prompt="Be helpful.",
         model="test",
-        tools=[],
         capabilities=["core"],
         is_active=True,
     )
