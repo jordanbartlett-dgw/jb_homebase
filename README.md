@@ -115,10 +115,10 @@ evals/                   # Top-level (not under tests/) — eval runs cost money
   tasks/                 # memory_recall_task, obsidian_retrieval_task
   fixtures/corpus.yaml   # 30-note synthetic eval corpus
   baselines/             # Committed score baselines for regression detection
-tests/                   # 222 unit and integration tests
+tests/                   # 307 unit and integration tests
 scripts/
   obsidian_sync/         # CLI for vault ingest/export
-supabase/migrations/     # 001-007 schema migrations
+supabase/migrations/     # 001-014 schema migrations (005 removed as a no-op)
 docs/plans/              # Implementation plans (analytics-observability.md)
 Dockerfile
 pyproject.toml
@@ -180,11 +180,16 @@ Tests mock all external services. No live API calls.
 ## Deployment
 
 Deployed to Railway. Auto-deploys from the `main` branch on GitHub.
+CI (GitHub Actions) runs ruff lint, a format gate, and the full test suite
+on every push and pull request.
 
 ```
 Repo:   jordanbartlett-dgw/jb_homebase
 Bot:    @jb_homebase_bot
-Health: GET /health -> {"status": "ok"}
+Health: GET /health -> config-aware report (active agents vs running bots,
+        DB models validated against the Anthropic models API); degraded -> 503.
+        Railway healthchecks this path on deploy, so a broken config never
+        replaces a healthy deployment.
 Port:   8000
 ```
 
