@@ -8,10 +8,59 @@ part of 'app_state.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
+/// Shared gateway client — one connection pool for the whole session.
+
+@ProviderFor(apiClient)
+const apiClientProvider = ApiClientProvider._();
+
+/// Shared gateway client — one connection pool for the whole session.
+
+final class ApiClientProvider
+    extends $FunctionalProvider<ApiClient, ApiClient, ApiClient>
+    with $Provider<ApiClient> {
+  /// Shared gateway client — one connection pool for the whole session.
+  const ApiClientProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'apiClientProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$apiClientHash();
+
+  @$internal
+  @override
+  $ProviderElement<ApiClient> $createElement($ProviderPointer pointer) =>
+      $ProviderElement(pointer);
+
+  @override
+  ApiClient create(Ref ref) {
+    return apiClient(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(ApiClient value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<ApiClient>(value),
+    );
+  }
+}
+
+String _$apiClientHash() => r'ae260c7f226d26b4d11723fe2ce5925a588d90aa';
+
 /// Auth state — true once the user has tapped through passkey or magic link.
 ///
 /// keepAlive: the router only ever `ref.read`s this, so the default
 /// autoDispose would drop the signed-in state the moment it was set.
+///
+/// Live builds boot signed in: the compile-time CLAW_APP_TOKEN is the
+/// interim auth (PR2 plan), so there is nothing for a sign-in screen to do.
 
 @ProviderFor(AuthController)
 const authControllerProvider = AuthControllerProvider._();
@@ -20,12 +69,18 @@ const authControllerProvider = AuthControllerProvider._();
 ///
 /// keepAlive: the router only ever `ref.read`s this, so the default
 /// autoDispose would drop the signed-in state the moment it was set.
+///
+/// Live builds boot signed in: the compile-time CLAW_APP_TOKEN is the
+/// interim auth (PR2 plan), so there is nothing for a sign-in screen to do.
 final class AuthControllerProvider
     extends $NotifierProvider<AuthController, bool> {
   /// Auth state — true once the user has tapped through passkey or magic link.
   ///
   /// keepAlive: the router only ever `ref.read`s this, so the default
   /// autoDispose would drop the signed-in state the moment it was set.
+  ///
+  /// Live builds boot signed in: the compile-time CLAW_APP_TOKEN is the
+  /// interim auth (PR2 plan), so there is nothing for a sign-in screen to do.
   const AuthControllerProvider._()
     : super(
         from: null,
@@ -53,12 +108,15 @@ final class AuthControllerProvider
   }
 }
 
-String _$authControllerHash() => r'9bdc1f377ccabdc8d37330349bdf97becc020cab';
+String _$authControllerHash() => r'64738a93e99b8d35ab14286d9a8fb7e40ecf3aac';
 
 /// Auth state — true once the user has tapped through passkey or magic link.
 ///
 /// keepAlive: the router only ever `ref.read`s this, so the default
 /// autoDispose would drop the signed-in state the moment it was set.
+///
+/// Live builds boot signed in: the compile-time CLAW_APP_TOKEN is the
+/// interim auth (PR2 plan), so there is nothing for a sign-in screen to do.
 
 abstract class _$AuthController extends $Notifier<bool> {
   bool build();
@@ -317,7 +375,7 @@ final class AgentThreadProvider
   }
 }
 
-String _$agentThreadHash() => r'38ddddfff53e5cb8859fd419521d5226c99f0ab1';
+String _$agentThreadHash() => r'4153d32eee852bea9f2fb3715afb17afd7596b98';
 
 /// Chat thread per agent. Threads live for the whole session so switching
 /// agents (or tabs) never wipes a conversation.

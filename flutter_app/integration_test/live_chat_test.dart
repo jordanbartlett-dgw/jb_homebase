@@ -1,0 +1,60 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+
+import 'package:jb_homebase_app/app.dart';
+import 'package:jb_homebase_app/features/chat/widgets/typing_indicator.dart';
+import 'package:jb_homebase_app/shared/api/gateway_config.dart';
+
+/// Drives the LIVE send path on a device/simulator against a gateway
+/// reachable at GATEWAY_URL (in CI/dev: the local stub in scratchpad).
+///
+/// Run:
+///   flutter test integration_test -d `udid` \
+///     --dart-define=GATEWAY_URL=http://127.0.0.1:8787 \
+///     --dart-define=CLAW_APP_TOKEN=stub-token
+void main() {
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('live boot skips sign-in and a send round-trips the gateway',
+      (tester) async {
+    assert(GatewayConfig.isLive, 'run with GATEWAY_URL + CLAW_APP_TOKEN');
+
+    await tester.pumpWidget(const ProviderScope(child: JBHomebaseApp()));
+    await tester.pumpAndSettle();
+
+    // Live mode boots straight to the dashboard — no passkey screen.
+    expect(find.text('DAILY DIGEST'), findsOneWidget);
+
+    // Dock → Claw Main chat. Content scrolls beneath the floating pill
+    // nav, so lift the dock above it before tapping.
+    await tester.drag(find.text('YOUR AGENTS'), const Offset(0, -150));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Claw Main'));
+    await tester.pumpAndSettle();
+
+    // Live threads start empty — no seeded mock messages.
+    expect(find.textContaining('Pull the SAGE quotes'), findsNothing);
+
+    await tester.enterText(
+        find.byType(TextField).first, 'ping from integration test');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pump();
+    expect(find.text('ping from integration test'), findsOneWidget);
+
+    // The stub replies after ~1.5s; poll with fixed pumps (the typing
+    // indicator animates forever, so pumpAndSettle would hang).
+    var found = false;
+    for (var i = 0; i < 80 && !found; i++) {
+      await tester.pump(const Duration(milliseconds: 250));
+      found = find
+          .textContaining('stub reply for claw-main')
+          .evaluate()
+          .isNotEmpty;
+    }
+    expect(found, isTrue,
+        reason: 'gateway reply should land in the thread');
+    expect(find.byType(TypingIndicator), findsNothing);
+  });
+}

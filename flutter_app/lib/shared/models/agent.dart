@@ -31,7 +31,8 @@ class Agent {
       tint: Color(0xFF64805F), // sage
     ),
     Agent(
-      id: 'workout',
+      // Gateway slug (settings.workout_agent_slug) — NOT "workout".
+      id: 'workout-coach',
       name: 'Workout Coach',
       tagline: 'Training & recovery',
       icon: Icons.directions_run_outlined,
