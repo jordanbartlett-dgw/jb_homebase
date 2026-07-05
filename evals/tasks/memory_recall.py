@@ -49,10 +49,7 @@ def _state_to_facts(state) -> list[MemoryFact]:
 
 
 def _state_to_events(state) -> list[dict]:
-    return [
-        {"summary": e.summary, "created_at": e.created_at}
-        for e in state.events
-    ]
+    return [{"summary": e.summary, "created_at": e.created_at} for e in state.events]
 
 
 async def memory_recall_task(inputs: MemoryRecallInputs) -> str:

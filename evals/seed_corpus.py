@@ -55,13 +55,17 @@ async def _ensure_eva_org(client) -> None:
     )
     if existing.data:
         return
-    await client.table("organizations").insert(
-        {
-            "id": settings.eval_test_org_id,
-            "name": EVA_ORG_NAME,
-            "slug": EVA_ORG_SLUG,
-        }
-    ).execute()
+    await (
+        client.table("organizations")
+        .insert(
+            {
+                "id": settings.eval_test_org_id,
+                "name": EVA_ORG_NAME,
+                "slug": EVA_ORG_SLUG,
+            }
+        )
+        .execute()
+    )
     log.info("eva_org_created", org_id=settings.eval_test_org_id)
 
 

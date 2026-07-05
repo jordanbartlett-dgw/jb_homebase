@@ -203,6 +203,11 @@ async def schedule_event(
         description: Optional description
     """
     return await create_calendar_event(
-        ctx.deps.fastmail_username, ctx.deps.fastmail_app_password,
-        title, start, end, location, description,
+        ctx.deps.fastmail_username,
+        ctx.deps.fastmail_app_password,
+        title,
+        start,
+        end,
+        location,
+        description,
     )

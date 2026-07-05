@@ -33,6 +33,7 @@ async def handle_message(
     openai_api_key: str = "",
     history_limit: int = 50,
     environment: str = "development",
+    run_kind: RunKind = RunKind.USER_MESSAGE,
     bot: Bot | None = None,
 ) -> GatewayResponse:
     """Process an incoming message through the full gateway lifecycle."""
@@ -77,12 +78,11 @@ async def handle_message(
             role="user",
             content=msg.content,
             channel_message_id=msg.channel_message_id,
+            metadata=msg.metadata,
         ),
         get_recent_messages(db, conversation_id, limit=history_limit),
     )
-    db_messages = [
-        m for m in db_messages if m.get("channel_message_id") != msg.channel_message_id
-    ]
+    db_messages = [m for m in db_messages if m.get("channel_message_id") != msg.channel_message_id]
 
     # 4. Build agent from DB config, run with deps via instrumented wrapper
     try:
@@ -107,7 +107,7 @@ async def handle_message(
             org_id=msg.org_id,
             agent_slug=agent_slug,
             model=model_name,
-            run_kind=RunKind.USER_MESSAGE,
+            run_kind=run_kind,
             channel=msg.channel,
             conversation_id=conversation_id,
             message_history=history,

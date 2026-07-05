@@ -5,9 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic_ai import ModelRequest, ModelResponse
 from pydantic_ai.messages import TextPart, UserPromptPart
+from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.models.test import TestModel
 
 from jordan_claw.agents.deps import AgentDeps
-from jordan_claw.agents.factory import build_agent, db_messages_to_history
+from jordan_claw.agents.factory import build_agent, create_agent, db_messages_to_history
 from jordan_claw.db.agents import AgentConfig, get_agent_config
 
 
@@ -71,7 +73,7 @@ async def test_get_agent_config_returns_typed_config():
                 "slug": "test-agent",
                 "system_prompt": "You are helpful.",
                 "model": "claude-sonnet-4-20250514",
-                "tools": ["current_datetime", "search_web"],
+                "capabilities": ["core", "web"],
                 "is_active": True,
             }
         ]
@@ -91,7 +93,7 @@ async def test_get_agent_config_returns_typed_config():
 
     assert isinstance(config, AgentConfig)
     assert config.slug == "test-agent"
-    assert config.tools == ["current_datetime", "search_web"]
+    assert config.capabilities == ["core", "web"]
     assert config.system_prompt == "You are helpful."
 
 
@@ -122,7 +124,7 @@ async def test_build_agent_uses_db_config():
         slug="test-agent",
         system_prompt="Be helpful.",
         model="test",
-        tools=["current_datetime", "search_web"],
+        capabilities=["core", "web"],
         is_active=True,
     )
 
@@ -132,19 +134,19 @@ async def test_build_agent_uses_db_config():
         agent, model_name = await build_agent(mock_db, "org-001", "test-agent")
 
     assert model_name == "test"
-    from pydantic_ai.tools import ToolDefinition
-    from pydantic_ai.toolsets.filtered import FilteredToolset
 
-    ts = agent._user_toolsets[0]
-    assert isinstance(ts, FilteredToolset)
+    test_model = TestModel(call_tools=[])  # send tool defs to the model, invoke none
+    deps = AgentDeps(
+        org_id="org-001",
+        tavily_api_key="test-key",
+        fastmail_username="test@example.com",
+        fastmail_app_password="test-pass",
+    )
+    await agent.run("hi", deps=deps, model=test_model)
 
-    def _allows(name: str) -> bool:
-        td = ToolDefinition(name=name, description="", parameters_json_schema={})
-        return ts.filter_func(None, td)
-
-    assert _allows("current_datetime")
-    assert _allows("search_web")
-    assert not _allows("check_calendar")
+    sent_tools = {t.name for t in test_model.last_model_request_parameters.function_tools}
+    # fetch_article proves capabilities drive the toolset, not the legacy tools list.
+    assert sent_tools == {"current_datetime", "search_web", "fetch_article"}
 
 
 def test_history_budget_truncates_oldest_messages():
@@ -194,7 +196,7 @@ def test_history_no_budget_returns_all():
 
 
 @pytest.mark.asyncio
-async def test_build_agent_skips_unknown_tools():
+async def test_build_agent_skips_unknown_capabilities():
     fake_config = AgentConfig(
         id="agent-001",
         org_id="org-001",
@@ -202,7 +204,7 @@ async def test_build_agent_skips_unknown_tools():
         slug="test-agent",
         system_prompt="Be helpful.",
         model="test",
-        tools=["current_datetime", "nonexistent_tool"],
+        capabilities=["core", "nonexistent"],
         is_active=True,
     )
 
@@ -212,82 +214,20 @@ async def test_build_agent_skips_unknown_tools():
         agent, model_name = await build_agent(mock_db, "org-001", "test-agent")
 
     assert model_name == "test"
-    from pydantic_ai.tools import ToolDefinition
-    from pydantic_ai.toolsets.filtered import FilteredToolset
 
-    ts = agent._user_toolsets[0]
-    assert isinstance(ts, FilteredToolset)
-
-    def _allows(name: str) -> bool:
-        td = ToolDefinition(name=name, description="", parameters_json_schema={})
-        return ts.filter_func(None, td)
-
-    assert _allows("current_datetime")
-    # The filter includes nonexistent_tool by name — but BASE_TOOLSET won't have it,
-    # so it won't appear at runtime. The factory logs a warning for unknown tool names.
-    assert not _allows("check_calendar")
-
-
-def test_base_toolset_has_all_registered_tools():
-    """BASE_TOOLSET should contain all 16 tools."""
-    from jordan_claw.tools import BASE_TOOLSET
-
-    expected_tools = {
-        "current_datetime",
-        "search_web",
-        "check_calendar",
-        "schedule_event",
-        "recall_memory",
-        "forget_memory",
-        "search_notes",
-        "read_note",
-        "create_source_note",
-        "fetch_article",
-        "get_workout_profile",
-        "save_workout_profile",
-        "get_workout_plan",
-        "save_workout_plan",
-        "log_workout",
-        "get_recent_workouts",
-    }
-    # FunctionToolset exposes tool names via .tools (a dict keyed by name)
-    registered = set(BASE_TOOLSET.tools.keys())
-    assert registered == expected_tools
-
-
-@pytest.mark.asyncio
-async def test_build_agent_uses_filtered_toolset():
-    """build_agent should use FilteredToolset to scope tools per config."""
-    fake_config = AgentConfig(
-        id="agent-001",
+    test_model = TestModel(call_tools=[])  # send tool defs to the model, invoke none
+    deps = AgentDeps(
         org_id="org-001",
-        name="Test Agent",
-        slug="test-agent",
-        system_prompt="Be helpful.",
-        model="test",
-        tools=["current_datetime", "search_web"],
-        is_active=True,
+        tavily_api_key="test-key",
+        fastmail_username="test@example.com",
+        fastmail_app_password="test-pass",
     )
+    await agent.run("hi", deps=deps, model=test_model)
 
-    mock_db = AsyncMock()
-
-    with patch("jordan_claw.agents.factory.get_agent_config", return_value=fake_config):
-        agent, model_name = await build_agent(mock_db, "org-001", "test-agent")
-
-    assert model_name == "test"
-    from pydantic_ai.tools import ToolDefinition
-    from pydantic_ai.toolsets.filtered import FilteredToolset
-
-    ts = agent._user_toolsets[0]
-    assert isinstance(ts, FilteredToolset)
-
-    def _allows(name: str) -> bool:
-        td = ToolDefinition(name=name, description="", parameters_json_schema={})
-        return ts.filter_func(None, td)
-
-    assert _allows("current_datetime")
-    assert _allows("search_web")
-    assert not _allows("check_calendar")
+    sent_tools = {t.name for t in test_model.last_model_request_parameters.function_tools}
+    # "nonexistent" is not in CAPABILITY_REGISTRY, so only core's tool reaches the model.
+    # resolve_capabilities logs a warning for unknown capability ids.
+    assert sent_tools == {"current_datetime"}
 
 
 def test_history_budget_no_orphan_response_at_start():
@@ -314,7 +254,9 @@ def test_trim_history_processor_strips_orphaned_tool_results():
     messages = [
         ModelRequest(parts=[UserPromptPart(content="A" * 4000)]),
         ModelResponse(parts=[ToolCallPart(tool_name="search_web", args="", tool_call_id="tc1")]),
-        ModelRequest(parts=[ToolReturnPart(tool_name="search_web", content="result", tool_call_id="tc1")]),
+        ModelRequest(
+            parts=[ToolReturnPart(tool_name="search_web", content="result", tool_call_id="tc1")]
+        ),
         ModelResponse(parts=[TextPart(content="B" * 4000)]),
         ModelRequest(parts=[UserPromptPart(content="C" * 400)]),
         ModelResponse(parts=[TextPart(content="D" * 400)]),
@@ -364,8 +306,58 @@ def test_trim_history_processor_never_returns_empty():
     # Simulate in-flight history: only tool call + tool return (no user prompt)
     messages = [
         ModelResponse(parts=[ToolCallPart(tool_name="search_notes", args="", tool_call_id="tc1")]),
-        ModelRequest(parts=[ToolReturnPart(tool_name="search_notes", content="x" * 2000, tool_call_id="tc1")]),
+        ModelRequest(
+            parts=[ToolReturnPart(tool_name="search_notes", content="x" * 2000, tool_call_id="tc1")]
+        ),
     ]
     result = trim_history_processor(messages, max_tokens=4000)
 
     assert len(result) >= 1
+
+
+@pytest.mark.asyncio
+async def test_trim_history_runs_inside_agent_run():
+    """ProcessHistory must actually trim history during a run, not just exist.
+
+    Guards the v2 capabilities wiring in create_agent: a FunctionModel captures
+    what the model receives after a long history passes through the agent.
+    """
+    fake_config = AgentConfig(
+        id="agent-001",
+        org_id="org-001",
+        name="Test Agent",
+        slug="test-agent",
+        system_prompt="Be helpful.",
+        model="test",
+        capabilities=[],
+        is_active=True,
+    )
+    agent, _ = create_agent(fake_config)
+
+    received: list = []
+
+    def capture(messages, info):
+        received.extend(messages)
+        return ModelResponse(parts=[TextPart(content="ok")])
+
+    history = []
+    for i in range(6):
+        history.append(ModelRequest(parts=[UserPromptPart(content=f"u{i} " + "x" * 3000)]))
+        history.append(ModelResponse(parts=[TextPart(content=f"a{i} " + "x" * 3000)]))
+
+    deps = AgentDeps(
+        org_id="org-001",
+        tavily_api_key="test-key",
+        fastmail_username="test@example.com",
+        fastmail_app_password="test-pass",
+    )
+    await agent.run(
+        "new question",
+        deps=deps,
+        message_history=history,
+        model=FunctionModel(capture),
+    )
+
+    received_text = str(received)
+    assert "u5" in received_text  # newest exchange survives
+    assert "u0" not in received_text  # oldest trimmed by the 4000-token budget

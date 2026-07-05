@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import inspect
 
-from jordan_claw.tools import BASE_TOOLSET
+from jordan_claw.agents.capabilities import CAPABILITY_REGISTRY
+
+# All tools across every capability group, keyed by registered name.
+ALL_TOOLS = {
+    name: tool
+    for group in CAPABILITY_REGISTRY.values()
+    for name, tool in group.toolset.tools.items()
+}
 
 EXPECTED_TOOLS = [
     "current_datetime",
@@ -26,21 +33,21 @@ EXPECTED_TOOLS = [
 
 def test_registry_has_all_expected_tools():
     for name in EXPECTED_TOOLS:
-        assert name in BASE_TOOLSET.tools, f"Missing tool: {name}"
+        assert name in ALL_TOOLS, f"Missing tool: {name}"
 
 
 def test_registry_has_no_unexpected_tools():
-    assert set(BASE_TOOLSET.tools.keys()) == set(EXPECTED_TOOLS)
+    assert set(ALL_TOOLS.keys()) == set(EXPECTED_TOOLS)
 
 
 def test_registry_values_are_callable():
-    for name, tool in BASE_TOOLSET.tools.items():
+    for name, tool in ALL_TOOLS.items():
         assert callable(tool.function), f"{name} is not callable"
 
 
 def test_plain_tools_have_no_ctx_param():
     """current_datetime should not accept RunContext."""
-    sig = inspect.signature(BASE_TOOLSET.tools["current_datetime"].function)
+    sig = inspect.signature(ALL_TOOLS["current_datetime"].function)
     param_names = list(sig.parameters.keys())
     assert "ctx" not in param_names
 
@@ -65,6 +72,6 @@ def test_deps_tools_have_ctx_param():
         "get_recent_workouts",
     ]
     for name in deps_tools:
-        sig = inspect.signature(BASE_TOOLSET.tools[name].function)
+        sig = inspect.signature(ALL_TOOLS[name].function)
         first_param = list(sig.parameters.keys())[0]
         assert first_param == "ctx", f"{name} first param should be 'ctx', got '{first_param}'"

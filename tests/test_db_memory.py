@@ -102,9 +102,15 @@ async def test_upsert_facts_replace_low_confidence():
     ]
     existing = [
         MemoryFact(
-            id="f1", org_id=ORG_ID, category="preference", content="Prefers Python",
-            source="conversation", confidence=0.5, metadata={},
-            created_at="2026-04-01T00:00:00Z", updated_at="2026-04-01T00:00:00Z",
+            id="f1",
+            org_id=ORG_ID,
+            category="preference",
+            content="Prefers Python",
+            source="conversation",
+            confidence=0.5,
+            metadata={},
+            created_at="2026-04-01T00:00:00Z",
+            updated_at="2026-04-01T00:00:00Z",
         ),
     ]
     await upsert_facts(db, ORG_ID, facts, existing)
@@ -125,9 +131,15 @@ async def test_upsert_facts_flag_high_confidence():
     ]
     existing = [
         MemoryFact(
-            id="f1", org_id=ORG_ID, category="preference", content="Prefers Python",
-            source="conversation", confidence=0.9, metadata={},
-            created_at="2026-04-01T00:00:00Z", updated_at="2026-04-01T00:00:00Z",
+            id="f1",
+            org_id=ORG_ID,
+            category="preference",
+            content="Prefers Python",
+            source="conversation",
+            confidence=0.9,
+            metadata={},
+            created_at="2026-04-01T00:00:00Z",
+            updated_at="2026-04-01T00:00:00Z",
         ),
     ]
     await upsert_facts(db, ORG_ID, facts, existing)

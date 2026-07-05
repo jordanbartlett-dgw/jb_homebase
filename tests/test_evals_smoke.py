@@ -30,9 +30,7 @@ async def test_harness_runs_end_to_end() -> None:
             name="hits_required_fact",
             inputs=MemoryRecallInputs(
                 memory_state=MemoryState(
-                    facts=[
-                        SyntheticFact(category="preference", content="Jordan uses uv")
-                    ]
+                    facts=[SyntheticFact(category="preference", content="Jordan uses uv")]
                 ),
                 question="What package manager?",
             ),

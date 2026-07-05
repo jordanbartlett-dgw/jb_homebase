@@ -60,9 +60,12 @@ async def get_or_create_conversation(
                 conversation_id=conversation["id"],
                 idle_minutes=int((datetime.now(UTC) - last_msg).total_seconds() / 60),
             )
-            await client.table("conversations").update({"status": "archived"}).eq(
-                "id", conversation["id"]
-            ).execute()
+            await (
+                client.table("conversations")
+                .update({"status": "archived"})
+                .eq("id", conversation["id"])
+                .execute()
+            )
         else:
             return conversation
 

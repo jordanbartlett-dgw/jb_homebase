@@ -13,12 +13,7 @@ log = structlog.get_logger()
 
 async def get_enabled_schedules(client: AsyncClient) -> list[ProactiveSchedule]:
     """Load all enabled proactive schedules."""
-    result = (
-        await client.table("proactive_schedules")
-        .select("*")
-        .eq("enabled", True)
-        .execute()
-    )
+    result = await client.table("proactive_schedules").select("*").eq("enabled", True).execute()
     return [ProactiveSchedule.model_validate(row) for row in result.data]
 
 
@@ -88,11 +83,7 @@ async def get_telegram_chat_id(
     """Look up the Telegram chat ID for an agent. Falls back to the org's
     default agent when no slug is given (memory-flag and legacy callers)."""
     query = client.table("agents").select("telegram_chat_id").eq("org_id", org_id)
-    query = (
-        query.eq("slug", agent_slug)
-        if agent_slug is not None
-        else query.eq("is_default", True)
-    )
+    query = query.eq("slug", agent_slug) if agent_slug is not None else query.eq("is_default", True)
     result = await query.limit(1).execute()
     if not result.data:
         return None

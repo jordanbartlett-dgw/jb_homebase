@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -36,7 +35,9 @@ def test_vault(tmp_path):
 @patch("scripts.obsidian_sync.ingest.insert_chunks")
 @patch("scripts.obsidian_sync.ingest.insert_note")
 @patch("scripts.obsidian_sync.ingest.get_notes_by_vault_paths")
-async def test_ingest_new_notes(mock_get_existing, mock_insert, mock_chunks, mock_embed, test_vault):
+async def test_ingest_new_notes(
+    mock_get_existing, mock_insert, mock_chunks, mock_embed, test_vault
+):
     mock_get_existing.return_value = {}
     mock_insert.return_value = {"id": "new-note-id"}
     mock_embed.return_value = [[0.1] * 512]
@@ -55,7 +56,9 @@ async def test_ingest_new_notes(mock_get_existing, mock_insert, mock_chunks, moc
 @patch("scripts.obsidian_sync.ingest.insert_chunks")
 @patch("scripts.obsidian_sync.ingest.insert_note")
 @patch("scripts.obsidian_sync.ingest.get_notes_by_vault_paths")
-async def test_ingest_skips_unchanged(mock_get_existing, mock_insert, mock_chunks, mock_embed, test_vault):
+async def test_ingest_skips_unchanged(
+    mock_get_existing, mock_insert, mock_chunks, mock_embed, test_vault
+):
     # Read the file to get its real hash
     import hashlib
 
@@ -86,7 +89,9 @@ async def test_ingest_skips_unchanged(mock_get_existing, mock_insert, mock_chunk
 @patch("scripts.obsidian_sync.ingest.delete_chunks_for_note")
 @patch("scripts.obsidian_sync.ingest.update_note")
 @patch("scripts.obsidian_sync.ingest.get_notes_by_vault_paths")
-async def test_ingest_updates_changed(mock_get_existing, mock_update, mock_del_chunks, mock_chunks, mock_embed, test_vault):
+async def test_ingest_updates_changed(
+    mock_get_existing, mock_update, mock_del_chunks, mock_chunks, mock_embed, test_vault
+):
     mock_get_existing.return_value = {
         "30-Notes/Test Concept.md": {
             "id": "existing-id",
@@ -110,7 +115,9 @@ async def test_ingest_updates_changed(mock_get_existing, mock_update, mock_del_c
 @patch("scripts.obsidian_sync.ingest.insert_note")
 @patch("scripts.obsidian_sync.ingest.insert_chunks")
 @patch("scripts.obsidian_sync.ingest.get_notes_by_vault_paths")
-async def test_ingest_archives_deleted(mock_get_existing, mock_chunks, mock_insert, mock_archive, mock_embed, test_vault):
+async def test_ingest_archives_deleted(
+    mock_get_existing, mock_chunks, mock_insert, mock_archive, mock_embed, test_vault
+):
     mock_get_existing.return_value = {
         "30-Notes/Test Concept.md": {
             "id": "existing-id",

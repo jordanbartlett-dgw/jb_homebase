@@ -178,7 +178,7 @@ async def run_agent_instrumented[OutputT](
             raise
 
         duration_ms = int((time.monotonic() - start) * 1000)
-        usage = extract_usage(result.usage())
+        usage = extract_usage(result.usage)
         tool_call_count = _count_tool_calls(result.all_messages())
         cost = compute_cost(model, usage["input_tokens"], usage["output_tokens"])
 

@@ -127,7 +127,11 @@ async def execute_morning_briefing(
     agent_slug = config.get("agent_slug", settings.default_agent_slug)
 
     return await _run_agent_prompt(
-        db, org_id, agent_slug, settings, prompt,
+        db,
+        org_id,
+        agent_slug,
+        settings,
+        prompt,
         schedule_name="morning_briefing",
     )
 
@@ -154,9 +158,10 @@ async def execute_weekly_review(
     memory = await load_memory_context(db, org_id)
     recent_events = await get_recent_events(db, org_id, limit=30)
 
-    events_text = "\n".join(
-        f"- {e.get('summary', 'Unknown')}" for e in recent_events
-    ) or "No notable events this week."
+    events_text = (
+        "\n".join(f"- {e.get('summary', 'Unknown')}" for e in recent_events)
+        or "No notable events this week."
+    )
 
     prompt = WEEKLY_REVIEW_PROMPT.format(
         calendar=calendar,
@@ -166,7 +171,11 @@ async def execute_weekly_review(
     agent_slug = config.get("agent_slug", settings.default_agent_slug)
 
     return await _run_agent_prompt(
-        db, org_id, agent_slug, settings, prompt,
+        db,
+        org_id,
+        agent_slug,
+        settings,
+        prompt,
         schedule_name="weekly_review",
     )
 
@@ -263,7 +272,11 @@ async def execute_calendar_reminder(
     agent_slug = config.get("agent_slug", settings.default_agent_slug)
 
     return await _run_agent_prompt(
-        db, org_id, agent_slug, settings, prompt,
+        db,
+        org_id,
+        agent_slug,
+        settings,
+        prompt,
         schedule_name="calendar_reminder",
     )
 
@@ -304,9 +317,10 @@ async def execute_daily_workout(
     today = datetime.now(ZoneInfo(tz_name))
 
     logs = await get_recent_workout_logs(db, org_id, limit=7)
-    logs_text = "\n".join(
-        f"- [{log.logged_date}] {log.activity}: {log.notes or ''}" for log in logs
-    ) or "No logged workouts."
+    logs_text = (
+        "\n".join(f"- [{log.logged_date}] {log.activity}: {log.notes or ''}" for log in logs)
+        or "No logged workouts."
+    )
 
     prompt = DAILY_WORKOUT_PROMPT.format(
         today=today.strftime("%A %Y-%m-%d"),

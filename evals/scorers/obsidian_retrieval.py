@@ -8,16 +8,16 @@ from evals.types import ObsidianRetrievalInputs, RetrievalOutput
 
 
 @dataclass
-class TopKMembershipScorer(
-    Evaluator[ObsidianRetrievalInputs, RetrievalOutput, dict]
-):
+class TopKMembershipScorer(Evaluator[ObsidianRetrievalInputs, RetrievalOutput, dict]):
     """Score = |expected ∩ top_k(returned)| / |expected|.
 
     Default k=3. Slug match is exact, case-insensitive.
     """
 
     k: int = 3
-    evaluation_name: str = "top_k_membership"
+
+    def get_default_evaluation_name(self) -> str:
+        return "top_k_membership"
 
     def evaluate(
         self,

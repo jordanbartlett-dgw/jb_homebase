@@ -119,14 +119,28 @@ async def test_read_note_multiple_matches(mock_get):
 
     mock_get.return_value = [
         ObsidianNote(
-            id="note-1", org_id="org-1", vault_path="a.md", title="Safety Culture",
-            note_type="atomic-note", content="", frontmatter={}, content_hash="h1",
-            created_at="2026-04-04T00:00:00+00:00", updated_at="2026-04-04T00:00:00+00:00",
+            id="note-1",
+            org_id="org-1",
+            vault_path="a.md",
+            title="Safety Culture",
+            note_type="atomic-note",
+            content="",
+            frontmatter={},
+            content_hash="h1",
+            created_at="2026-04-04T00:00:00+00:00",
+            updated_at="2026-04-04T00:00:00+00:00",
         ),
         ObsidianNote(
-            id="note-2", org_id="org-1", vault_path="b.md", title="Psychological Safety",
-            note_type="source", content="", frontmatter={}, content_hash="h2",
-            created_at="2026-04-04T00:00:00+00:00", updated_at="2026-04-04T00:00:00+00:00",
+            id="note-2",
+            org_id="org-1",
+            vault_path="b.md",
+            title="Psychological Safety",
+            note_type="source",
+            content="",
+            frontmatter={},
+            content_hash="h2",
+            created_at="2026-04-04T00:00:00+00:00",
+            updated_at="2026-04-04T00:00:00+00:00",
         ),
     ]
     ctx = _make_ctx()
@@ -202,9 +216,7 @@ async def test_create_source_note_renders_correct_markdown(mock_insert, mock_emb
 async def test_fetch_article_returns_content(mock_tavily_cls):
     mock_client = AsyncMock()
     mock_client.extract.return_value = {
-        "results": [
-            {"raw_content": "This is the article body text."}
-        ]
+        "results": [{"raw_content": "This is the article body text."}]
     }
     mock_tavily_cls.return_value = mock_client
     ctx = _make_ctx()
@@ -229,11 +241,7 @@ async def test_fetch_article_no_results(mock_tavily_cls):
 @patch("jordan_claw.tools.obsidian.get_tavily_client")
 async def test_fetch_article_truncates_long_content(mock_tavily_cls):
     mock_client = AsyncMock()
-    mock_client.extract.return_value = {
-        "results": [
-            {"raw_content": "A" * 20000}
-        ]
-    }
+    mock_client.extract.return_value = {"results": [{"raw_content": "A" * 20000}]}
     mock_tavily_cls.return_value = mock_client
     ctx = _make_ctx()
     result = await fetch_article(ctx, url="https://example.com/long")

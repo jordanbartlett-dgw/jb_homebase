@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import structlog
+from openai import AsyncOpenAI
 from supabase._async.client import AsyncClient
 
 from jordan_claw.db.obsidian import (
@@ -13,8 +14,6 @@ from jordan_claw.db.obsidian import (
     insert_note,
     update_note,
 )
-from openai import AsyncOpenAI
-
 from jordan_claw.obsidian.embeddings import chunk_text, generate_embeddings
 from jordan_claw.obsidian.parser import parse_note_file
 

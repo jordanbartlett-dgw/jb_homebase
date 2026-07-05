@@ -98,9 +98,7 @@ def _passed(case_scores: dict[str, float], threshold: float = 0.5) -> bool:
 
 
 async def _run_one(spec: EvalSpec) -> RunSummary:
-    ds: Dataset[Any, Any, Any] = Dataset[
-        spec.inputs_type, spec.expected_type, dict
-    ].from_file(
+    ds: Dataset[Any, Any, Any] = Dataset[spec.inputs_type, spec.expected_type, dict].from_file(
         spec.yaml_path,
         custom_evaluator_types=spec.custom_evaluators,
     )
@@ -116,9 +114,7 @@ async def _run_one(spec: EvalSpec) -> RunSummary:
 
     baseline = _load_baseline(spec.name)
     prev_score = baseline.get("score") if baseline else None
-    regression = (
-        prev_score is not None and score < prev_score - REGRESSION_THRESHOLD
-    )
+    regression = prev_score is not None and score < prev_score - REGRESSION_THRESHOLD
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")

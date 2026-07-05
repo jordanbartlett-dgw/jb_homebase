@@ -17,7 +17,6 @@ def make_agent_config() -> AgentConfig:
         slug="claw-main",
         system_prompt="You are helpful.",
         model="claude-sonnet-4-20250514",
-        tools=[],
         is_active=True,
     )
 
@@ -86,7 +85,7 @@ async def test_successful_message_flow(mock_db):
 
     mock_result = MagicMock()
     mock_result.output = "Hello! How can I help?"
-    mock_result.usage.return_value = mock_usage
+    mock_result.usage = mock_usage
 
     mock_agent = AsyncMock()
     mock_agent.run.return_value = mock_result
@@ -185,7 +184,7 @@ async def test_memory_context_injected_into_agent(mock_db):
 
     mock_result = MagicMock()
     mock_result.output = "I remember your preferences."
-    mock_result.usage.return_value = mock_usage
+    mock_result.usage = mock_usage
 
     mock_agent = AsyncMock()
     mock_agent.run.return_value = mock_result
@@ -227,3 +226,53 @@ async def test_memory_context_injected_into_agent(mock_db):
     # Verify memory_context was passed to create_agent
     build_call_kwargs = mock_build.call_args.kwargs
     assert build_call_kwargs.get("memory_context") == "## Memory Context\n- Prefers Python"
+
+
+@pytest.mark.asyncio
+async def test_user_message_metadata_persisted(mock_db):
+    """IncomingMessage.metadata rides along on the user-message save.
+
+    Voice stores agent_slug there so a replayed request can recover the
+    original route without a fresh classifier call.
+    """
+    fake_conversation = {"id": "conv-004"}
+    mock_save = AsyncMock(return_value={})
+    msg = IncomingMessage(
+        channel="app-voice",
+        channel_thread_id="app-voice",
+        channel_message_id="app-voice-utt-1",
+        content="log my workout",
+        org_id="1408252a-fd36-4fd3-b527-3b2f495d7b9c",
+        metadata={"agent_slug": "workout-coach"},
+    )
+
+    with (
+        patch("jordan_claw.gateway.router.message_exists", return_value=False),
+        patch(
+            "jordan_claw.gateway.router.get_or_create_conversation",
+            return_value=fake_conversation,
+        ),
+        patch("jordan_claw.gateway.router.save_message", new=mock_save),
+        patch("jordan_claw.gateway.router.get_recent_messages", return_value=[]),
+        patch("jordan_claw.gateway.router.load_memory_context", return_value=""),
+        patch(
+            "jordan_claw.gateway.router.get_agent_config",
+            side_effect=Exception("LLM timeout"),
+        ),
+        patch(
+            "jordan_claw.gateway.router.update_conversation_status",
+            return_value=None,
+        ),
+    ):
+        await handle_message(
+            msg,
+            db=mock_db,
+            agent_slug="workout-coach",
+            tavily_api_key="test-key",
+            fastmail_username="test@fastmail.com",
+            fastmail_app_password="test-password",
+        )
+
+    user_save = mock_save.await_args_list[0]
+    assert user_save.kwargs["role"] == "user"
+    assert user_save.kwargs["metadata"] == {"agent_slug": "workout-coach"}

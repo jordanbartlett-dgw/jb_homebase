@@ -69,10 +69,18 @@ async def test_get_active_plan_none_when_missing():
 
 @pytest.mark.asyncio
 async def test_get_active_plan_returns_model():
-    db, query = _mock_db(select_data=[{
-        "id": "p1", "org_id": ORG_ID, "status": "active",
-        "starts_on": "2026-07-07", "weeks": [], "rationale": "Base",
-    }])
+    db, query = _mock_db(
+        select_data=[
+            {
+                "id": "p1",
+                "org_id": ORG_ID,
+                "status": "active",
+                "starts_on": "2026-07-07",
+                "weeks": [],
+                "rationale": "Base",
+            }
+        ]
+    )
     plan = await get_active_plan(db, ORG_ID)
     assert plan.status == "active"
     query.eq.assert_any_call("status", "active")
@@ -87,9 +95,7 @@ async def test_save_workout_plan_archives_then_inserts():
             days=[PlanDay(day="monday", session_type="run", description="Easy 4mi")],
         )
     ]
-    row = await save_workout_plan(
-        db, ORG_ID, starts_on="2026-07-07", weeks=weeks, rationale="Base"
-    )
+    row = await save_workout_plan(db, ORG_ID, starts_on="2026-07-07", weeks=weeks, rationale="Base")
     assert row["id"] == "p2"
     query.update.assert_called_once_with({"status": "archived"})
     inserted = query.insert.call_args[0][0]
@@ -102,8 +108,12 @@ async def test_save_workout_plan_archives_then_inserts():
 async def test_insert_workout_log():
     db, query = _mock_db(select_data=[{"id": "l1"}])
     await insert_workout_log(
-        db, ORG_ID, logged_date="2026-07-03", activity="run",
-        details={"distance_mi": 5}, notes="legs heavy",
+        db,
+        ORG_ID,
+        logged_date="2026-07-03",
+        activity="run",
+        details={"distance_mi": 5},
+        notes="legs heavy",
     )
     sent = query.insert.call_args[0][0]
     assert sent["activity"] == "run"
@@ -112,9 +122,11 @@ async def test_insert_workout_log():
 
 @pytest.mark.asyncio
 async def test_get_recent_workout_logs_ordered_desc():
-    db, query = _mock_db(select_data=[
-        {"id": "l1", "org_id": ORG_ID, "logged_date": "2026-07-02", "activity": "run"},
-    ])
+    db, query = _mock_db(
+        select_data=[
+            {"id": "l1", "org_id": ORG_ID, "logged_date": "2026-07-02", "activity": "run"},
+        ]
+    )
     logs = await get_recent_workout_logs(db, ORG_ID, limit=7)
     assert logs[0].activity == "run"
     query.order.assert_called_once_with("logged_date", desc=True)

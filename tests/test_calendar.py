@@ -243,8 +243,11 @@ async def test_create_event_accepts_iso_string():
         return_value=mock_cal,
     ):
         result = await create_calendar_event(
-            "user@test.com", "test-pass", "String event",
-            "2026-04-10T09:00:00", "2026-04-10T10:00:00",
+            "user@test.com",
+            "test-pass",
+            "String event",
+            "2026-04-10T09:00:00",
+            "2026-04-10T10:00:00",
         )
 
     assert "Created" in result

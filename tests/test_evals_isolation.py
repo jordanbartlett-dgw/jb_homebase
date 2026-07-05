@@ -63,9 +63,7 @@ def test_anon_key_cannot_read_obsidian_notes_for_any_org() -> None:
             .execute()
         )
         # Unfiltered
-        all_rows = (
-            await client.table("obsidian_notes").select("id").limit(10).execute()
-        )
+        all_rows = await client.table("obsidian_notes").select("id").limit(10).execute()
         return len(eva_rows.data), len(other_rows.data), len(all_rows.data)
 
     eva_count, other_count, all_count = asyncio.run(_check())

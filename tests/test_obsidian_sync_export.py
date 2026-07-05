@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -25,7 +24,10 @@ def _make_claw_note() -> ObsidianNote:
         vault_path="20-Sources/New Article.md",
         title="New Article",
         note_type="source",
-        content="## Summary\n\nA summary.\n\n## Key Takeaways\n\n1. Point one\n\n## Related Topics\n\n\n## Notes\n",
+        content=(
+            "## Summary\n\nA summary.\n\n## Key Takeaways\n\n1. Point one\n\n"
+            "## Related Topics\n\n\n## Notes\n"
+        ),
         frontmatter={
             "type": "source",
             "title": "New Article",
