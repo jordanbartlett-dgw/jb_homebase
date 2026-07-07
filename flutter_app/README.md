@@ -10,12 +10,17 @@ JB Homebase design pivot — this README is current).
 
 ## Status
 
-- iOS platform scaffold generated; builds and runs on the simulator.
-- All data is mock (`lib/shared/api/mock_data.dart`); `api_client.dart` is a
-  no-op shell. Real HTTP, streaming, auth, voice capture, and push land in
-  PR2 — search the repo for `TODO(backend)` for the exact integration points.
-- `dart analyze --fatal-infos` clean; widget + flow tests pass
-  (`flutter test`).
+- **Text chat is LIVE against the prod gateway** (2026-07-05): sends go to
+  `POST /app/messages` with bearer `CLAW_APP_TOKEN` auth and one idempotency
+  key per message; replies land in per-agent threads. Voice upload
+  (`ApiClient.sendVoice` → `POST /voice`) is built and tested but unused —
+  real audio capture (`record`) is the next feature.
+- Still mock: Daily Digest (no server endpoint yet), voice overlay
+  (placeholder transcript), passkey/magic-link screens (live builds skip
+  them — the static token is the interim auth).
+- `dart analyze --fatal-infos` clean; unit + widget + flow tests pass
+  (`flutter test`); on-simulator integration test drives the live path
+  (`integration_test/live_chat_test.dart`).
 
 ## The app
 
@@ -56,6 +61,29 @@ flutter run -d "iPhone 17"
 Xcode 26.0 note: `device_info_plus` is pinned to 12.3.0 in
 `pubspec.yaml` `dependency_overrides` — newer versions need the iOS 26.1
 SDK. Drop the pin after upgrading Xcode.
+
+### Running it live
+
+Without dart-defines the app is the mock design build (what the widget
+tests exercise). Two defines switch every surface that has a backend to
+the real gateway and skip the sign-in screen:
+
+```bash
+flutter run -d "iPhone 17" \
+  --dart-define=GATEWAY_URL=https://jbhomebase-production.up.railway.app \
+  --dart-define=CLAW_APP_TOKEN=<token from Railway env>
+```
+
+The defines are baked into the binary, so relaunching the app from the
+home screen keeps working after `flutter run` detaches. Live threads
+start empty (conversation history lives server-side, one gateway
+conversation per agent). Agent ids in `lib/shared/models/agent.dart` ARE
+the gateway slugs — `claw-main`, `workout-coach`.
+
+The live-path integration test runs against a local stub of
+`/app/messages` (see `integration_test/live_chat_test.dart` header; the
+stub pattern is documented there). Don't run the real gateway locally —
+it steals the prod Telegram bot's `getUpdates` polling.
 
 ## File map
 
