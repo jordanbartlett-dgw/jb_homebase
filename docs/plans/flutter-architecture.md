@@ -1,5 +1,12 @@
 # Jordan Claw Flutter App — Architecture Decisions
 
+> **PARTIALLY STALE.** The design/IA/theming sections (Granola-style Today/
+> Room/Drawer, system fonts, light-only) were superseded by the JB Homebase
+> design pivot (July 2026) — trust the code in `flutter_app/lib/` and
+> `docs/flutter-design/`. The LOCKED technical decisions (Riverpod, go_router,
+> http-not-Dio, bundle id, voice format, auth fallback) and the backend-wiring
+> roadmap remain authoritative — flag any deviation to Jordan before building.
+
 Investigation phase for the Flutter scaffold. Decisions are opinionated singletons. Where confidence is low, it is called out plainly. Date of research: May 2026.
 
 ## Summary table

@@ -1,5 +1,11 @@
 # Claw Main -- Prompt & Behavior Reference
 
+> **STALE — historical snapshot (April 2026, 4-tool Sonnet-4 era).** Do not
+> build from this. Prompt truth today: `agents.system_prompt` in the DB (query
+> it), tool docstrings in `src/jordan_claw/tools/`, memory rendering in
+> `memory/reader.py`, capability bundles in `agents/capabilities.py`. Current
+> map: `docs/architecture.md`. Kept for the history of prompt decisions.
+
 Everything that shapes how the agent thinks, speaks, and acts. Edit any section below, then bring changes back to plan mode before applying.
 
 ---
