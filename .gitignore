@@ -1,6 +1,8 @@
 # Project tooling
 .worktrees/
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/settings.json
 .serena/
 .infisical.json
 
