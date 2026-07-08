@@ -16,7 +16,11 @@ from fastapi.responses import JSONResponse
 from jordan_claw.analytics import emitter
 from jordan_claw.analytics.posthog_client import shutdown_posthog
 from jordan_claw.analytics.types import RunKind
-from jordan_claw.channels.telegram import create_telegram_dispatcher, start_polling
+from jordan_claw.channels.telegram import (
+    create_telegram_dispatcher,
+    start_polling,
+    watch_polling_liveness,
+)
 from jordan_claw.config import get_settings
 from jordan_claw.db.client import close_supabase_client, get_supabase_client
 from jordan_claw.db.messages import get_message_by_channel_id
@@ -115,11 +119,14 @@ async def lifespan(app: FastAPI):
         environment=settings.environment,
     )
 
-    # Start Telegram polling as background task
-    polling_tasks = [asyncio.create_task(start_polling(bot, dp))]
-
     # Scheduler invariant: bots must always contain default_agent_slug
     bots: dict[str, Bot] = {settings.default_agent_slug: bot}
+
+    # Start Telegram polling as background task; a dying polling task evicts
+    # its bot from `bots` so /health degrades instead of reporting it running
+    main_polling = asyncio.create_task(start_polling(bot, dp))
+    watch_polling_liveness(main_polling, agent_slug=settings.default_agent_slug, bots=bots)
+    polling_tasks = [main_polling]
 
     # Optional second bot: the workout coach
     workout_bot: Bot | None = None
@@ -138,7 +145,9 @@ async def lifespan(app: FastAPI):
             environment=settings.environment,
         )
         bots[settings.workout_agent_slug] = workout_bot
-        polling_tasks.append(asyncio.create_task(start_polling(workout_bot, workout_dp)))
+        workout_polling = asyncio.create_task(start_polling(workout_bot, workout_dp))
+        watch_polling_liveness(workout_polling, agent_slug=settings.workout_agent_slug, bots=bots)
+        polling_tasks.append(workout_polling)
         logger.info("workout_bot_started", agent_slug=settings.workout_agent_slug)
 
     # Start proactive messaging scheduler

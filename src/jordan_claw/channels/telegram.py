@@ -184,3 +184,24 @@ async def start_polling(bot: Bot, dp: Dispatcher) -> None:
         await dp.start_polling(bot)
     finally:
         logger.info("telegram_polling_stopped")
+
+
+def watch_polling_liveness(task: asyncio.Task, *, agent_slug: str, bots: dict[str, Bot]) -> None:
+    """Evict the bot from the running set if its polling task dies.
+
+    start_polling only exits via cancellation in normal operation. Any other
+    exit (revoked token, auth failure) is a fire-and-forget task death /health
+    cannot see — the bot would keep reporting healthy while silent.
+    """
+
+    def _on_done(t: asyncio.Task) -> None:
+        if t.cancelled():
+            return
+        bots.pop(agent_slug, None)
+        exc = t.exception()
+        if exc is not None:
+            logger.error("telegram_polling_died", agent_slug=agent_slug, error=str(exc))
+        else:
+            logger.error("telegram_polling_stopped_unexpectedly", agent_slug=agent_slug)
+
+    task.add_done_callback(_on_done)
