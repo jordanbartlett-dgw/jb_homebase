@@ -14,11 +14,11 @@ from jordan_claw.agents.factory import create_agent
 from jordan_claw.db.agents import AgentConfig
 
 
-def test_registry_covers_all_twenty_tools():
+def test_registry_covers_all_tools():
     tool_names = set()
     for group in CAPABILITY_REGISTRY.values():
         tool_names.update(group.toolset.tools)
-    assert len(tool_names) == 20
+    assert len(tool_names) == 24
 
 
 def test_expected_groups_exist():
@@ -32,6 +32,7 @@ def test_expected_groups_exist():
         "workout_readonly",
         "obsidian_readonly",
         "reminders",
+        "meds",
     }
 
 
@@ -115,6 +116,19 @@ async def test_workout_coach_gets_note_reads_but_no_note_writes():
     assert {"search_notes", "read_note"} <= sent
     assert "create_source_note" not in sent
     assert "fetch_article" not in sent
+
+
+@pytest.mark.asyncio
+async def test_med_check_capabilities_reach_the_model():
+    """Wiring proof: an agent granted core+meds sends all meds tool defs to the model."""
+    sent = await _sent_tools(_prod_shaped_config("med-check", ["core", "meds"]))
+    assert {
+        "normalize_medication",
+        "fetch_fda_label",
+        "get_medication_profile",
+        "save_medication_profile",
+        "current_datetime",
+    } <= sent
 
 
 @pytest.mark.asyncio

@@ -8,6 +8,12 @@ from pydantic_ai.toolsets import FunctionToolset
 
 from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.tools.calendar import check_calendar, schedule_event
+from jordan_claw.tools.meds import (
+    fetch_fda_label,
+    get_medication_profile_tool,
+    normalize_medication,
+    save_medication_profile,
+)
 from jordan_claw.tools.memory import forget_memory, recall_memory
 from jordan_claw.tools.obsidian import create_source_note, fetch_article, read_note, search_notes
 from jordan_claw.tools.reminders import cancel_reminder, list_reminders, set_reminder
@@ -101,6 +107,20 @@ CAPABILITY_REGISTRY: dict[str, ToolGroup] = {
             (set_reminder, "set_reminder"),
             (list_reminders, "list_reminders"),
             (cancel_reminder, "cancel_reminder"),
+        ),
+    ),
+    "meds": ToolGroup(
+        id="meds",
+        description=(
+            "Medication safety pre-screening for Jordan's daughter: RxNorm drug "
+            "identity, FDA label warnings with QT extraction, and her current "
+            "medication profile."
+        ),
+        toolset=_toolset(
+            (normalize_medication, "normalize_medication"),
+            (fetch_fda_label, "fetch_fda_label"),
+            (get_medication_profile_tool, "get_medication_profile"),
+            (save_medication_profile, "save_medication_profile"),
         ),
     ),
     # Read-only cross-agent views. Same tool fns as the full groups — never

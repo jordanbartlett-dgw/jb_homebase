@@ -32,6 +32,10 @@ EXPECTED_TOOLS = [
     "set_reminder",
     "list_reminders",
     "cancel_reminder",
+    "normalize_medication",
+    "fetch_fda_label",
+    "get_medication_profile",
+    "save_medication_profile",
 ]
 
 
