@@ -231,6 +231,26 @@ def test_trim_history_processor_trims_to_budget():
     assert result[0].parts[0].content == "C" * 4000
 
 
+def test_trim_budget_is_tokens_not_chars():
+    """The budget unit is tokens (est. 4 chars/token), not raw characters.
+
+    8,800 chars ≈ 2,200 tokens fits comfortably in the default 4000-token
+    budget. If the budget were ever misapplied as a character count, most of
+    this history would be silently dropped — this pins the unit semantics.
+    """
+    from jordan_claw.agents.factory import trim_history_processor
+
+    messages = []
+    for i in range(4):
+        messages.append(ModelRequest(parts=[UserPromptPart(content=f"u{i}" + "x" * 1100)]))
+        messages.append(ModelResponse(parts=[TextPart(content=f"a{i}" + "y" * 1100)]))
+
+    result = trim_history_processor(messages)
+
+    # ~8,800 chars total: over a 4000-CHAR budget, under a 4000-TOKEN budget.
+    assert result == messages
+
+
 def test_trim_history_processor_never_returns_empty():
     """trim_history_processor must never return empty even if all messages are tool-related.
 

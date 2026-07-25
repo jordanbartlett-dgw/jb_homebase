@@ -45,6 +45,8 @@ async def build_agent(
     return create_agent(config, memory_context=memory_context)
 
 
+# Token estimator shared with memory/reader.py: 1 token ≈ 4 chars. The budget
+# below is in TOKENS; chars are only the estimation unit (4000 tokens ≈ 16k chars).
 CHARS_PER_TOKEN = 4
 
 
@@ -52,8 +54,10 @@ def trim_history_processor(
     messages: list[ModelRequest | ModelResponse],
     max_tokens: int = 4000,
 ) -> list[ModelRequest | ModelResponse]:
-    """History processor that trims oldest messages to stay within token budget.
+    """History processor that trims oldest messages to stay within a token budget.
 
+    max_tokens is a real token budget, estimated at CHARS_PER_TOKEN chars per
+    token (so the default admits ~16,000 chars, not 4,000).
     Always preserves at least the most recent user+assistant exchange.
     Ensures history never starts with an assistant message.
     """

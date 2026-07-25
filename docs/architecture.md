@@ -87,8 +87,8 @@ seeds in-process `loop.call_later` timers for 30-min-before calendar reminders.
   openai key). Registered via `ts.add_function(fn, name=...)`.
 - History: `db_messages_to_history` converts DB rows (user/assistant only);
   `trim_history_processor` (a `ProcessHistory` capability on every agent) does
-  the trimming — 4000-token char-budget (4 chars/token), newest kept, orphaned
-  leads stripped.
+  the trimming — 4000-TOKEN budget estimated at 4 chars/token (≈16k chars
+  admitted), newest kept, orphaned leads stripped.
 - Memory context: `memory/reader.py::load_memory_context` — cached rendered
   block, 500-token budget, prepended to instructions. Extraction is
   fire-and-forget post-reply (`memory/extractor.py`, Haiku, structured output;
