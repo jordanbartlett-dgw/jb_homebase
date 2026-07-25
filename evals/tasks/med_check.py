@@ -11,6 +11,7 @@ from pydantic_ai.toolsets import FunctionToolset
 
 from evals.fixtures.med_check import FIXTURES
 from evals.types import MedCheckInputs
+from jordan_claw.meds.models import MedicationEntry
 
 TARGET_MODEL = "anthropic:claude-sonnet-5"  # prod org default_model, pinned
 
@@ -60,7 +61,7 @@ def _build_toolset(fixture: dict[str, str]) -> FunctionToolset:
         return fixture["get_medication_profile"]
 
     async def save_medication_profile(
-        medications: list[dict] | None = None,
+        medications: list[MedicationEntry] | None = None,
         allergies: str | None = None,
         notes: str | None = None,
     ) -> str:

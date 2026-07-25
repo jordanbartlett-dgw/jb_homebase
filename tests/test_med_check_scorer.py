@@ -17,7 +17,7 @@ async def _echo_task(inputs: MedCheckInputs) -> str:
     return inputs.user_message
 
 
-async def _score(output_text: str, expected: MedCheckExpected) -> float:
+async def _score(output_text: str, expected: MedCheckExpected | None) -> float:
     ds = Dataset[MedCheckInputs, MedCheckExpected, dict](
         name="phrase_assertion_unit",
         cases=[
@@ -68,3 +68,9 @@ async def test_clean_pass_no_required_no_forbidden() -> None:
     text = "Nothing Rett-specific found in the sources checked."
     expected = MedCheckExpected()
     assert await _score(text, expected) == 1.0
+
+
+@pytest.mark.asyncio
+async def test_missing_expected_output_fails_closed() -> None:
+    text = "Nothing Rett-specific found in the sources checked."
+    assert await _score(text, None) == 0.0

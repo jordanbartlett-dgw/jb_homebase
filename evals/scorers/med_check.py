@@ -24,12 +24,12 @@ class PhraseAssertionScorer(Evaluator[MedCheckInputs, str, MedCheckExpected]):
         return "phrase_assertion"
 
     def evaluate(self, ctx: EvaluatorContext[MedCheckInputs, str, MedCheckExpected]) -> float:
-        if not isinstance(ctx.output, str):
+        if ctx.expected_output is None or not isinstance(ctx.output, str):
             return 0.0
         output = ctx.output.lower()
         expected = ctx.expected_output
-        required = [p.lower() for p in (expected.required_phrases if expected else [])]
-        forbidden = [p.lower() for p in (expected.forbidden_phrases if expected else [])]
+        required = [p.lower() for p in expected.required_phrases]
+        forbidden = [p.lower() for p in expected.forbidden_phrases]
         forbidden += [p.lower() for p in GLOBAL_FORBIDDEN]
         if any(p in output for p in forbidden):
             return 0.0
