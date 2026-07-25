@@ -6,12 +6,14 @@ prompt changes, update both (drift risk documented in docs/med-check-agent.md)."
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic_ai import Agent
 from pydantic_ai.toolsets import FunctionToolset
 
 from evals.fixtures.med_check import FIXTURES
 from evals.types import MedCheckInputs
-from jordan_claw.meds.models import MedicationEntry
+from jordan_claw.meds.models import HealthCategory, MedicationEntry
 
 TARGET_MODEL = "anthropic:claude-sonnet-5"  # prod org default_model, pinned
 
@@ -60,7 +62,7 @@ Severity: if Jordan logs something severe or an ER visit, or describes symptoms 
 Memory: recall_memory for context outside the medication profile. Forget facts only when Jordan asks."""
 
 
-def _build_toolset(fixture: dict[str, str]) -> FunctionToolset:
+def _build_toolset(fixture: dict[str, str], captured_notes: list[str]) -> FunctionToolset:
     ts: FunctionToolset = FunctionToolset()
 
     async def normalize_medication(name: str) -> str:
@@ -96,6 +98,55 @@ def _build_toolset(fixture: dict[str, str]) -> FunctionToolset:
         """Current date and time."""
         return "2026-07-25T12:00:00-05:00 (America/Chicago)"
 
+    async def log_health_event(
+        event_date: str,
+        category: HealthCategory,
+        title: str,
+        details: dict | None = None,
+        notes: str | None = None,
+        severity: Literal["mild", "moderate", "severe", "er_visit"] | None = None,
+        allow_duplicate: bool = False,
+    ) -> str:
+        """Record ONE health event for Jordan's daughter when he reports something
+        that happened: a milestone, seizure, breathing episode, measurement,
+        illness, appointment, or medication change. NOT for adding detail to an
+        event already logged — use amend_last_health_event for that. Repeat
+        episodes on the same day are real: log each one with allow_duplicate=true."""
+        return fixture["log_health_event"]
+
+    async def amend_last_health_event(
+        details: dict | None = None,
+        notes: str | None = None,
+        category: HealthCategory | None = None,
+        event_date: str | None = None,
+        severity: Literal["mild", "moderate", "severe", "er_visit"] | None = None,
+    ) -> str:
+        """Add detail or corrections to the MOST RECENTLY LOGGED health event, when
+        Jordan follows up about something already logged. NOT for logging a new
+        event — use log_health_event."""
+        return fixture["amend_last_health_event"]
+
+    async def get_health_events(
+        start_date: str,
+        end_date: str,
+        category: str | None = None,
+    ) -> str:
+        """Read logged health events in a date range, oldest first, for composing
+        timelines or answering questions about what happened. NOT for the
+        medication list — use get_medication_profile."""
+        return fixture["get_health_events"]
+
+    async def get_last_visit_date() -> str:
+        """Most recent logged appointment date. Use to default the range for a
+        doctor timeline. NOT for general events — use get_health_events."""
+        return fixture["get_last_visit_date"]
+
+    async def create_timeline_note(title: str, markdown_body: str) -> str:
+        """Write a doctor-facing health timeline note into the Obsidian vault.
+        NOT for general notes or web sources."""
+        captured_notes.append(markdown_body)
+        return f"Timeline note '{title}' created. It will appear in your vault after the next sync."
+
     for fn in (
         normalize_medication,
         fetch_fda_label,
@@ -104,6 +155,11 @@ def _build_toolset(fixture: dict[str, str]) -> FunctionToolset:
         search_web,
         fetch_article,
         current_datetime,
+        log_health_event,
+        amend_last_health_event,
+        get_health_events,
+        get_last_visit_date,
+        create_timeline_note,
     ):
         ts.add_function(fn, name=fn.__name__)
     return ts
@@ -111,6 +167,16 @@ def _build_toolset(fixture: dict[str, str]) -> FunctionToolset:
 
 async def med_check_task(inputs: MedCheckInputs) -> str:
     fixture = FIXTURES[inputs.fixture]
-    agent = Agent(TARGET_MODEL, instructions=MED_CHECK_PROMPT, toolsets=[_build_toolset(fixture)])
+    # Per-run holder, not module-level — parallel eval runs must not
+    # cross-contaminate each other's captured notes (see fixtures/med_check.py).
+    captured_notes: list[str] = []
+    agent = Agent(
+        TARGET_MODEL,
+        instructions=MED_CHECK_PROMPT,
+        toolsets=[_build_toolset(fixture, captured_notes)],
+    )
     result = await agent.run(inputs.user_message)
-    return str(result.output)
+    reply = str(result.output)
+    if captured_notes:
+        return f"{reply}\n\n===NOTE===\n{captured_notes[-1]}"
+    return reply
