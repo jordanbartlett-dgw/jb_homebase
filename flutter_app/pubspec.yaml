@@ -24,6 +24,7 @@ dependencies:
   # Design system fonts (Playfair Display + Inter) and date formatting
   google_fonts: ^6.2.1
   intl: ^0.20.0
+  flutter_markdown_plus: ^1.0.12
 
   # Voice
   record: ^6.0.0
