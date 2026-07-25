@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from datetime import UTC, datetime
 from typing import Literal
@@ -11,6 +12,13 @@ import yaml
 from pydantic_ai import RunContext
 
 from jordan_claw.agents.deps import AgentDeps
+from jordan_claw.db.care import (
+    CARE_PROFILE_FIELDS,
+    get_care_document,
+    get_care_profile,
+    upsert_care_document,
+    upsert_care_profile,
+)
 from jordan_claw.db.health_log import (
     get_events_for_date,
     get_health_events_range,
@@ -21,7 +29,13 @@ from jordan_claw.db.health_log import (
 )
 from jordan_claw.db.meds import get_medication_profile, upsert_medication_profile
 from jordan_claw.db.obsidian import insert_chunks, insert_note
-from jordan_claw.meds.models import HealthCategory, MedicationEntry
+from jordan_claw.meds.models import (
+    CareContact,
+    CareProfile,
+    HealthCategory,
+    MedicationEntry,
+    MedicationProfile,
+)
 from jordan_claw.obsidian.embeddings import chunk_text, generate_embeddings
 from jordan_claw.tools.calendar import CENTRAL_TZ
 
@@ -535,3 +549,235 @@ async def create_timeline_note(
 
     # TODO(phase-2-followup): PDF export would hook here — compose once, render twice.
     return f"Timeline note '{title}' created. It will appear in your vault after the next sync."
+
+
+CARE_DOC_CHAR_BUDGET = 2600  # ~2,500-char one-page target + slack
+CARE_DOC_LABELS = {"emergency": "Emergency One-Pager", "handoff": "Caregiver Handoff"}
+
+
+def _section_hash(value: object) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode()).hexdigest()[:8]
+
+
+def _care_source_hash(
+    doc_type: str, care: CareProfile | None, meds: MedicationProfile | None
+) -> str:
+    """sha256-based fingerprint of the fields a doc_type is composed from, used by
+    check_care_docs_current to detect staleness.
+    emergency: full care profile + medications + allergies + timeline_display_name.
+    handoff: full care profile + timeline_display_name only (meds appear in the
+    handoff only as 'handled by her parents' unless a dose falls in care windows,
+    so a medication-only edit must not flip the handoff stale).
+
+    Returns a JSON string, not a bare digest:
+    {"total": <sha256 hex of the whole payload>, "sections": {<care-profile
+    field name, or "display_name"/"medications"/"allergies">: <sha256[:8] of
+    that section alone>}}. check_care_docs_current compares "total" for the
+    cheap current/stale check and diffs "sections" against a freshly computed
+    bundle to name exactly which sections changed. The db layer stores and
+    reads this as an opaque string; it does not need to know the format.
+    """
+    care_dump = care.model_dump(exclude={"org_id"}) if care else {}
+    sections = {field: _section_hash(care_dump.get(field)) for field in CARE_PROFILE_FIELDS}
+    sections["display_name"] = _section_hash(meds.timeline_display_name if meds else None)
+
+    payload: dict = {"care": care_dump if care else None}
+    payload["display_name"] = meds.timeline_display_name if meds else None
+    if doc_type == "emergency":
+        medications = [m.model_dump() for m in meds.medications] if meds else []
+        allergies = meds.allergies if meds else None
+        sections["medications"] = _section_hash(medications)
+        sections["allergies"] = _section_hash(allergies)
+        payload["medications"] = medications
+        payload["allergies"] = allergies
+
+    total = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+    return json.dumps({"total": total, "sections": sections}, sort_keys=True)
+
+
+async def get_care_profile_tool(ctx: RunContext[AgentDeps]) -> str:
+    """Read her current care profile: diagnoses, critical flags, seizure plan,
+    baselines, communication style, daily routines, escalation path, and care
+    contacts. Call this before intake (to see what's still missing) and before
+    generating either care document (so it composes from what's actually
+    saved, not assumptions). Reports which sections are still empty.
+    NOT for medications or allergies — use get_medication_profile_tool."""
+    profile = await get_care_profile(ctx.deps.supabase_client, ctx.deps.org_id)
+    if profile is None:
+        return (
+            "No care profile exists yet. Sections to collect: diagnoses, "
+            "critical_flags, seizure_plan, baselines, communication, routines, "
+            "escalation, contacts."
+        )
+    empty = profile.empty_sections()
+    status = "Profile is complete." if not empty else f"Empty sections: {', '.join(empty)}."
+    return f"{status}\n\n{profile.model_dump_json(exclude={'org_id'}, indent=2)}"
+
+
+async def save_care_profile(
+    ctx: RunContext[AgentDeps],
+    diagnoses: list[str] | None = None,
+    critical_flags: list[str] | None = None,
+    seizure_plan: str | None = None,
+    baselines: str | None = None,
+    communication: str | None = None,
+    routines: str | None = None,
+    escalation: str | None = None,
+    contacts: list[CareContact] | None = None,
+) -> str:
+    """Save one or more care-profile sections as Jordan reports them, during
+    intake or an update — one answer at a time is fine, this is a partial
+    save. diagnoses, critical_flags, and contacts each REPLACE the whole list
+    — read the current profile with get_care_profile_tool first and pass the
+    full updated list, never just the delta. contacts is a list of
+    {role, name, phone}. Never invent or infer content; only save what Jordan
+    actually said.
+    NOT for medications or allergies — use save_medication_profile."""
+    await upsert_care_profile(
+        ctx.deps.supabase_client,
+        ctx.deps.org_id,
+        diagnoses=diagnoses,
+        critical_flags=critical_flags,
+        seizure_plan=seizure_plan,
+        baselines=baselines,
+        communication=communication,
+        routines=routines,
+        escalation=escalation,
+        contacts=[c.model_dump() for c in contacts] if contacts is not None else None,
+    )
+    return "Care profile saved."
+
+
+async def save_care_document(
+    ctx: RunContext[AgentDeps],
+    doc_type: Literal["emergency", "handoff"],
+    markdown_body: str,
+) -> str:
+    """Write a composed care document (emergency one-pager or caregiver
+    handoff) into the vault (folder Health/Documents/). Compose the markdown
+    body per the prompt's rules FIRST — this tool only writes what you hand
+    it, it does not draft or edit content.
+    Title is "{timeline_display_name} - {Emergency One-Pager|Caregiver
+    Handoff} - {YYYY-MM-DD}"; timeline_display_name must already be set
+    (get_medication_profile_tool / save_medication_profile) or this refuses
+    and asks Jordan what name to use, without writing anything.
+    An emergency body must fit roughly one page (~2,500 chars) — if it comes
+    in over budget the tool refuses with the char count and does NOT write;
+    cut routine detail, never safety content, and recompose. The handoff has
+    no such gate.
+    On a successful write this records the fingerprint check_care_docs_current
+    uses to detect staleness, and returns the note title.
+    NOT for drafting or editing the body, and NOT for the doctor timeline —
+    use create_timeline_note for that."""
+    meds_profile = await get_medication_profile(ctx.deps.supabase_client, ctx.deps.org_id)
+    display_name = meds_profile.timeline_display_name if meds_profile else None
+    if not display_name:
+        return "timeline_display_name is not set - ask Jordan what name to use before generating"
+
+    if doc_type == "emergency" and len(markdown_body) > CARE_DOC_CHAR_BUDGET:
+        return (
+            f"body is {len(markdown_body)} chars, over the one-page budget - cut "
+            "routine detail, never safety content, and rewrite"
+        )
+
+    care = await get_care_profile(ctx.deps.supabase_client, ctx.deps.org_id)
+
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    title = f"{display_name} - {CARE_DOC_LABELS[doc_type]} - {today}"
+
+    frontmatter = {
+        "type": "care-document",
+        "doc_type": doc_type,
+        "title": title,
+        "generated": today,
+        "tags": ["health", "care-document"],
+        "status": "generated",
+    }
+
+    vault_path = f"Health/Documents/{title}.md"
+
+    # Build the full file content for hashing (frontmatter + body)
+    full_file = f"---\n{yaml.dump(frontmatter, default_flow_style=False)}---\n\n{markdown_body}"
+    content_hash = hashlib.sha256(full_file.encode()).hexdigest()
+
+    note_row = await insert_note(
+        ctx.deps.supabase_client,
+        org_id=ctx.deps.org_id,
+        vault_path=vault_path,
+        title=title,
+        note_type="care_document",
+        content=markdown_body,
+        frontmatter=frontmatter,
+        tags=["health", "care-document"],
+        wiki_links=[],
+        content_hash=content_hash,
+        source_origin="claw",
+        sync_status="pending_export",
+    )
+
+    chunks = chunk_text(markdown_body)
+    embeddings = await generate_embeddings(
+        [c["content"] for c in chunks],
+        api_key=ctx.deps.openai_api_key,
+    )
+
+    note_id = note_row.get("id", "")
+    chunk_rows = [
+        {
+            "note_id": note_id,
+            "chunk_index": c["chunk_index"],
+            "content": c["content"],
+            "embedding": embeddings[i],
+            "token_count": c["token_count"],
+        }
+        for i, c in enumerate(chunks)
+    ]
+    await insert_chunks(ctx.deps.supabase_client, chunk_rows)
+
+    source_hash = _care_source_hash(doc_type, care, meds_profile)
+    await upsert_care_document(
+        ctx.deps.supabase_client,
+        ctx.deps.org_id,
+        doc_type=doc_type,
+        source_hash=source_hash,
+        note_title=title,
+    )
+
+    return f"'{title}' created. It will appear in your vault after the next sync."
+
+
+async def check_care_docs_current(ctx: RunContext[AgentDeps]) -> str:
+    """Report whether the emergency one-pager and caregiver handoff are still
+    current: never_generated (no document saved yet), current, or stale
+    (profile or medication data changed since the last generation — names
+    which sections changed). Call this before telling Jordan a document is
+    up to date, and before deciding whether a regenerate is needed.
+    NOT for generating or editing a document — use save_care_document."""
+    care = await get_care_profile(ctx.deps.supabase_client, ctx.deps.org_id)
+    meds_profile = await get_medication_profile(ctx.deps.supabase_client, ctx.deps.org_id)
+
+    lines: list[str] = []
+    for doc_type in ("emergency", "handoff"):
+        row = await get_care_document(ctx.deps.supabase_client, ctx.deps.org_id, doc_type)
+        if row is None:
+            lines.append(f"{doc_type}: never_generated")
+            continue
+
+        current = json.loads(_care_source_hash(doc_type, care, meds_profile))
+        try:
+            stored = json.loads(row["source_hash"])
+        except (TypeError, ValueError, KeyError):
+            stored = None
+
+        if stored is not None and stored.get("total") == current["total"]:
+            lines.append(f"{doc_type}: current (generated {row.get('generated_at', '?')})")
+            continue
+
+        stored_sections = stored.get("sections", {}) if stored else {}
+        changed = [
+            name for name, h in current["sections"].items() if stored_sections.get(name) != h
+        ]
+        changed_str = ", ".join(changed) if changed else "unknown (unreadable stored hash)"
+        lines.append(f"{doc_type}: stale (changed: {changed_str})")
+
+    return "\n".join(lines)
