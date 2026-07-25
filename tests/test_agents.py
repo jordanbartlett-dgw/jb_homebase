@@ -115,6 +115,81 @@ async def test_get_agent_config_not_found_raises():
         await get_agent_config(mock_db, "org-001", "missing-agent")
 
 
+def test_resolve_model_order():
+    from jordan_claw.db.agents import resolve_model
+
+    # Per-agent override wins over the org default.
+    assert resolve_model("anthropic:claude-haiku-4-5", "anthropic:claude-sonnet-5") == (
+        "anthropic:claude-haiku-4-5"
+    )
+    # NULL agent model falls back to the org default.
+    assert resolve_model(None, "anthropic:claude-sonnet-5") == "anthropic:claude-sonnet-5"
+    # Neither set is a hard misconfig.
+    with pytest.raises(ValueError, match="No model configured"):
+        resolve_model(None, None)
+
+
+def _table_router(tables: dict[str, list[dict]]) -> MagicMock:
+    def table(name: str) -> MagicMock:
+        mock_query = MagicMock()
+        mock_query.execute = AsyncMock(return_value=MagicMock(data=tables.get(name, [])))
+        mock_query.eq.return_value = mock_query
+        mock_query.select.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        return mock_query
+
+    mock_db = MagicMock()
+    mock_db.table.side_effect = table
+    return mock_db
+
+
+@pytest.mark.asyncio
+async def test_get_agent_config_null_model_resolves_org_default():
+    """Post-020 shape: agents.model is NULL, organizations.default_model rules."""
+    mock_db = _table_router(
+        {
+            "agents": [
+                {
+                    "id": "agent-001",
+                    "org_id": "org-001",
+                    "name": "Test Agent",
+                    "slug": "test-agent",
+                    "system_prompt": "You are helpful.",
+                    "model": None,
+                    "capabilities": ["core"],
+                    "is_active": True,
+                }
+            ],
+            "organizations": [{"default_model": "anthropic:claude-sonnet-5"}],
+        }
+    )
+    config = await get_agent_config(mock_db, "org-001", "test-agent")
+    assert config.model == "anthropic:claude-sonnet-5"
+
+
+@pytest.mark.asyncio
+async def test_get_agent_config_override_beats_org_default():
+    mock_db = _table_router(
+        {
+            "agents": [
+                {
+                    "id": "agent-001",
+                    "org_id": "org-001",
+                    "name": "Test Agent",
+                    "slug": "test-agent",
+                    "system_prompt": "You are helpful.",
+                    "model": "anthropic:claude-haiku-4-5",
+                    "capabilities": ["core"],
+                    "is_active": True,
+                }
+            ],
+            "organizations": [{"default_model": "anthropic:claude-sonnet-5"}],
+        }
+    )
+    config = await get_agent_config(mock_db, "org-001", "test-agent")
+    assert config.model == "anthropic:claude-haiku-4-5"
+
+
 @pytest.mark.asyncio
 async def test_build_agent_uses_db_config():
     fake_config = AgentConfig(

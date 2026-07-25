@@ -21,6 +21,7 @@ def make_db(rows: list[dict]) -> MagicMock:
     mock_query.execute = AsyncMock(return_value=MagicMock(data=rows))
     mock_query.eq.return_value = mock_query
     mock_query.select.return_value = mock_query
+    mock_query.limit.return_value = mock_query
     mock_db = MagicMock()
     mock_db.table.return_value = mock_query
     return mock_db
@@ -38,9 +39,35 @@ def not_found() -> NotFoundError:
 
 
 AGENT_ROWS = [
-    {"slug": "claw-main", "model": "anthropic:claude-sonnet-5", "is_active": True},
-    {"slug": "workout-coach", "model": "anthropic:claude-sonnet-5", "is_active": True},
+    {
+        "slug": "claw-main",
+        "org_id": "org-1",
+        "model": "anthropic:claude-sonnet-5",
+        "is_active": True,
+    },
+    {
+        "slug": "workout-coach",
+        "org_id": "org-1",
+        "model": "anthropic:claude-sonnet-5",
+        "is_active": True,
+    },
 ]
+
+
+def make_db_multi(tables: dict[str, list[dict]]) -> MagicMock:
+    """Mock db whose result rows depend on the table queried."""
+
+    def table(name: str) -> MagicMock:
+        mock_query = MagicMock()
+        mock_query.execute = AsyncMock(return_value=MagicMock(data=tables.get(name, [])))
+        mock_query.eq.return_value = mock_query
+        mock_query.select.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        return mock_query
+
+    mock_db = MagicMock()
+    mock_db.table.side_effect = table
+    return mock_db
 
 
 @pytest.fixture(autouse=True)
@@ -111,7 +138,7 @@ async def test_model_validation_is_cached():
 
 @pytest.mark.asyncio
 async def test_non_anthropic_model_skipped():
-    rows = [{"slug": "claw-main", "model": "openai:gpt-5", "is_active": True}]
+    rows = [{"slug": "claw-main", "org_id": "org-1", "model": "openai:gpt-5", "is_active": True}]
     client = make_anthropic()
     report = await build_health_report(
         make_db(rows), running_bots={"claw-main"}, anthropic_client=client
@@ -119,3 +146,38 @@ async def test_non_anthropic_model_skipped():
     assert report.status == "ok"
     assert report.agents[0].model_ok is None
     client.models.retrieve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_null_model_validates_resolved_org_default():
+    """Post-020 shape: agent rows are NULL and inherit organizations.default_model.
+    /health must validate the RESOLVED model, not the raw NULL."""
+    db = make_db_multi(
+        {
+            "agents": [{"slug": "claw-main", "org_id": "org-1", "model": None, "is_active": True}],
+            "organizations": [{"default_model": "anthropic:claude-sonnet-5"}],
+        }
+    )
+    client = make_anthropic()
+    report = await build_health_report(db, running_bots={"claw-main"}, anthropic_client=client)
+    assert report.status == "ok"
+    assert report.agents[0].model == "anthropic:claude-sonnet-5"
+    assert report.agents[0].model_ok is True
+    client.models.retrieve.assert_awaited_once_with("claude-sonnet-5")
+
+
+@pytest.mark.asyncio
+async def test_unresolvable_model_degrades():
+    """NULL agent model + unset org default is a misconfig — gate the deploy."""
+    db = make_db_multi(
+        {
+            "agents": [{"slug": "claw-main", "org_id": "org-1", "model": None, "is_active": True}],
+            "organizations": [{"default_model": None}],
+        }
+    )
+    report = await build_health_report(
+        db, running_bots={"claw-main"}, anthropic_client=make_anthropic()
+    )
+    assert report.status == "degraded"
+    assert report.invalid_models == ["claw-main"]
+    assert report.agents[0].model == "(unset)"
