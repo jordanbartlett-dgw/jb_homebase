@@ -80,7 +80,8 @@ ever list/cancel `source='reminder'` rows.
 
 - Config source of truth: `agents` DB row (`db/agents.py::AgentConfig`) —
   `slug`, `system_prompt`, `model` (provider-prefixed, nullable), `capabilities
-  text[]`, `is_active`. Two agents: `claw-main`, `workout-coach`. A NULL model
+  text[]`, `is_active`. Three agents: `claw-main`, `workout-coach`, `med-check`
+  (app-served only, no bot). A NULL model
   inherits `organizations.default_model` (`db/agents.py::resolve_model` — row
   override wins); `/health` validates the RESOLVED model and degrades when
   neither is set.
@@ -92,14 +93,17 @@ ever list/cancel `source='reminder'` rows.
   fetch_article), **calendar** (check_calendar, schedule_event), **memory**
   (recall_memory, forget_memory), **obsidian** (search_notes, read_note,
   create_source_note), **workout** (7 tools), **reminders** (set_reminder,
-  list_reminders, cancel_reminder), plus read-only cross-agent views
-  **workout_readonly** (3 read tools, on claw-main) and **obsidian_readonly**
-  (search_notes + read_note, on workout-coach) that reuse the same tool fns —
-  never grant a *_readonly group alongside its full group (duplicate names).
-  20 distinct tools total. Unknown ids are skipped with a warning (safe deploy
-  ordering). log_workout refuses same-day same-activity duplicates unless
-  allow_duplicate=true; amend_last_workout updates the latest log (follow-up
-  detail was double-logging sessions).
+  list_reminders, cancel_reminder), **meds** (normalize_medication,
+  fetch_fda_label, get_medication_profile, save_medication_profile — on
+  med-check), plus read-only cross-agent views **workout_readonly** (3 read
+  tools, on claw-main) and **obsidian_readonly** (search_notes + read_note, on
+  workout-coach) that reuse the same tool fns — never grant a *_readonly group
+  alongside its full group (duplicate names). 24 distinct tools total. Unknown
+  ids are skipped with a warning (safe deploy ordering). log_workout refuses
+  same-day same-activity duplicates unless allow_duplicate=true;
+  amend_last_workout updates the latest log (follow-up detail was
+  double-logging sessions). Med-check details, sources, and the deployed
+  prompt: `docs/med-check-agent.md`.
 - Tools are plain async fns taking `ctx: RunContext[AgentDeps]`
   (`agents/deps.py`: org_id, tavily key, fastmail creds, supabase client,
   openai key). Registered via `ts.add_function(fn, name=...)`.
@@ -140,15 +144,17 @@ Observability details, event catalogue, dashboard ids: `docs/observability.md`.
 
 ## Database (Supabase, hosted)
 
-Migrations `001`–`020` (005 removed as a no-op), applied by hand in the SQL
-Editor — 016/019 are schema (run before their code deploy), 015/017/018/020 are
-data grants/seeds (015 applied 2026-07-25; 017/018/020 run only after deploy —
-headers state the ordering). Tables: organizations, agents, conversations, messages, memory_facts /
+Migrations `001`–`022` (005 removed as a no-op), applied by hand in the SQL
+Editor — 016/019/021 are schema (run before their code deploy),
+015/017/018/020/022 are data grants/seeds (015 applied 2026-07-25;
+017/018/020/022 run only after deploy — headers state the ordering). Tables:
+organizations, agents, conversations, messages, memory_facts /
 memory_events / memory_context, obsidian_notes / obsidian_note_chunks
 (pgvector, 512-dim text-embedding-3-small, RPC `search_obsidian_notes`),
 proactive_schedules, proactive_messages, usage_events (cost ledger), feedback,
-workout_profiles / workout_plans / workout_logs, event_triggers,
-watcher_cursors. RLS: deny-all on obsidian tables (service key bypasses).
+workout_profiles / workout_plans / workout_logs, medication_profiles,
+event_triggers, watcher_cursors. RLS: deny-all on obsidian tables (service key
+bypasses).
 Pooling: pooler port 6543 with `?pgbouncer=true`.
 
 ## Env vars (complete; `config.py::Settings` is authoritative)
@@ -171,14 +177,19 @@ disabled), `CLAW_APP_TOKEN` ("" = app/voice endpoints disabled),
 
 `claw-eval run <dataset>|--all` (`evals/run_eval.py`). Registry in
 `evals/registry.py`: `memory_recall` (20 cases, RequiredFactsScorer + pinned
-LLMJudge) and `obsidian_retrieval` (20 cases, TopKMembershipScorer, no LLM —
-embeddings + RPC against the eval org). Task model pinned in
-`evals/tasks/memory_recall.py` deliberately — evals stay green independent of
-DB agent config. Baselines committed in `evals/baselines/`; regression =
-score < baseline − 0.05 → exit 2 → Railway cron reports failure; PostHog
-`eval_run_completed` carries the flag. Fail-fast settings guard exists because
-pydantic-evals silently swallows task-fn exceptions. Costs: memory_recall
-~$0.10/run, obsidian_retrieval ~$0.001. Full runbook: `docs/evals.md`.
+LLMJudge), `obsidian_retrieval` (20 cases, TopKMembershipScorer, no LLM —
+embeddings + RPC against the eval org), and `med_check` (4 cases,
+PhraseAssertionScorer — required/forbidden phrases plus a global forbidden
+list enforcing the asymmetry rule; fixture-backed stub tools, live model).
+Task model pinned in `evals/tasks/memory_recall.py` deliberately — evals stay
+green independent of DB agent config; `evals/tasks/med_check.py::MED_CHECK_PROMPT`
+is a second copy of the deployed med-check prompt and must be kept in sync by
+hand (`docs/med-check-agent.md` has the drift note). Baselines committed in
+`evals/baselines/`; regression = score < baseline − 0.05 → exit 2 → Railway
+cron reports failure; PostHog `eval_run_completed` carries the flag. Fail-fast
+settings guard exists because pydantic-evals silently swallows task-fn
+exceptions. Costs: memory_recall ~$0.10/run, obsidian_retrieval ~$0.001. Full
+runbook: `docs/evals.md`.
 
 ## Flutter app (thin client)
 
