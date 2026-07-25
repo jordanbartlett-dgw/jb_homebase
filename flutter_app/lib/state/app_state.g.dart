@@ -321,7 +321,7 @@ final class AgentThreadProvider
   }
 }
 
-String _$agentThreadHash() => r'1b050d48634ad55eb415a3c887b322a58828fab5';
+String _$agentThreadHash() => r'744e377e647e52f597329f86020c097aac774a8c';
 
 /// Chat thread per agent. Threads live for the whole session so switching
 /// agents (or tabs) never wipes a conversation.

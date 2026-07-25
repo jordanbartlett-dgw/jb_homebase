@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import caldav
 import icalendar
 import structlog
+from pydantic import BaseModel
 from pydantic_ai import RunContext
 
 from jordan_claw.agents.deps import AgentDeps
@@ -20,6 +21,21 @@ CENTRAL_TZ = ZoneInfo("America/Chicago")
 # discovery round trips on repeat calls; the DAVClient itself is still built
 # per call so credentials never leak across orgs.
 _calendar_url_cache: dict[str, str] = {}
+
+
+class CalendarAccessError(RuntimeError):
+    """Calendar service could not be reached or queried."""
+
+
+class CalendarEvent(BaseModel):
+    """Structured calendar event shared by app responses and agent formatting."""
+
+    id: str
+    title: str
+    starts_at: datetime
+    ends_at: datetime
+    all_day: bool
+    location: str | None = None
 
 
 def _connect_calendar(username: str, app_password: str) -> caldav.Calendar:
@@ -52,54 +68,116 @@ def _format_dt(dt: datetime | dt_module.date) -> str:
     return dt.strftime("%H:%M")
 
 
-async def get_calendar_events(
+def _normalize_range_boundary(value: str | datetime, *, end: bool) -> datetime:
+    if isinstance(value, str):
+        parsed = datetime.strptime(value, "%Y-%m-%d")
+        if end:
+            parsed = parsed.replace(hour=23, minute=59, second=59)
+        value = parsed
+    return value.replace(tzinfo=CENTRAL_TZ) if value.tzinfo is None else value
+
+
+def _event_datetime(value: datetime | dt_module.date) -> datetime:
+    if type(value) is dt_module.date:
+        return datetime.combine(value, dt_module.time.min, tzinfo=CENTRAL_TZ)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=CENTRAL_TZ)
+    return value.astimezone(CENTRAL_TZ)
+
+
+def _component_text(component, key: str) -> str | None:
+    if key not in component:
+        return None
+    value = component[key]
+    encoded = value.to_ical()
+    return encoded.decode() if isinstance(encoded, bytes) else str(encoded)
+
+
+async def list_calendar_events(
     username: str,
     app_password: str,
     start_date: str | datetime,
     end_date: str | datetime,
-) -> str:
-    """Query CalDAV for events in a date range and return formatted text.
+) -> list[CalendarEvent]:
+    """Query CalDAV for structured events in a date range.
 
-    Accepts ISO date strings (YYYY-MM-DD) or datetime objects.
+    Raises CalendarAccessError when Fastmail cannot be reached. Malformed
+    individual events are logged and skipped so one bad entry does not hide
+    the rest of the agenda.
     """
-    if isinstance(start_date, str):
-        start_date = datetime.strptime(start_date, "%Y-%m-%d")
-    if isinstance(end_date, str):
-        end_date = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
-
-    if start_date.tzinfo is None:
-        start_date = start_date.replace(tzinfo=CENTRAL_TZ)
-    if end_date.tzinfo is None:
-        end_date = end_date.replace(tzinfo=CENTRAL_TZ)
+    start_date = _normalize_range_boundary(start_date, end=False)
+    end_date = _normalize_range_boundary(end_date, end=True)
 
     try:
         calendar = await asyncio.to_thread(_connect_calendar, username, app_password)
         items = await asyncio.to_thread(calendar.search, start=start_date, end=end_date, event=True)
     except Exception as exc:
         log.error("calendar.get_events.failed", error=str(exc))
-        return f"Error fetching calendar events: {exc}"
+        raise CalendarAccessError("Calendar is temporarily unavailable.") from exc
 
-    lines: list[str] = []
+    events: list[CalendarEvent] = []
     for item in items:
         try:
             for comp in item.icalendar_instance.walk():
                 if comp.name != "VEVENT":
                     continue
-                summary = comp["SUMMARY"].to_ical().decode()
-                start = comp["DTSTART"].dt
-                end = comp["DTEND"].dt
-                line = f"- {summary}: {_format_dt(start)} - {_format_dt(end)}"
-                if "LOCATION" in comp:
-                    location = comp["LOCATION"].to_ical().decode()
-                    line += f" ({location})"
-                lines.append(line)
+                title = _component_text(comp, "SUMMARY") or "Untitled event"
+                raw_start = comp["DTSTART"].dt
+                if "DTEND" in comp:
+                    raw_end = comp["DTEND"].dt
+                elif type(raw_start) is dt_module.date:
+                    raw_end = raw_start + dt_module.timedelta(days=1)
+                else:
+                    raw_end = raw_start + dt_module.timedelta(hours=1)
+                all_day = type(raw_start) is dt_module.date
+                starts_at = _event_datetime(raw_start)
+                ends_at = _event_datetime(raw_end)
+                uid = _component_text(comp, "UID")
+                events.append(
+                    CalendarEvent(
+                        id=uid or f"{title}-{starts_at.isoformat()}",
+                        title=title,
+                        starts_at=starts_at,
+                        ends_at=ends_at,
+                        all_day=all_day,
+                        location=_component_text(comp, "LOCATION") or None,
+                    )
+                )
         except Exception as exc:
             log.warning("calendar.parse_event.failed", error=str(exc))
             continue
 
-    if not lines:
+    return sorted(events, key=lambda event: event.starts_at)
+
+
+async def get_calendar_events(
+    username: str,
+    app_password: str,
+    start_date: str | datetime,
+    end_date: str | datetime,
+) -> str:
+    """Query CalDAV and return the formatted text expected by agent tools."""
+    try:
+        events = await list_calendar_events(username, app_password, start_date, end_date)
+    except CalendarAccessError as exc:
+        return f"Error fetching calendar events: {exc}"
+
+    if not events:
         return "No events scheduled."
 
+    lines = []
+    for event in events:
+        if event.all_day:
+            line = f"- {event.title}: All day"
+        else:
+            line = (
+                f"- {event.title}: "
+                f"{event.starts_at.astimezone(CENTRAL_TZ).strftime('%H:%M')} - "
+                f"{event.ends_at.astimezone(CENTRAL_TZ).strftime('%H:%M')}"
+            )
+        if event.location:
+            line += f" ({event.location})"
+        lines.append(line)
     return "\n".join(lines)
 
 

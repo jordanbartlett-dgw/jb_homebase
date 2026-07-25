@@ -1,5 +1,6 @@
-import '../models/message.dart';
 import '../models/conversation.dart';
+import '../models/message.dart';
+import '../models/today.dart';
 
 /// All mock data for the design build. Replace with real API calls in PR2.
 ///
@@ -9,6 +10,50 @@ class MockData {
   const MockData._();
 
   static DateTime get _now => DateTime(2026, 7, 4, 8, 15);
+
+  static TodayOverview get todayOverview {
+    final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    return TodayOverview(
+      date: day,
+      timezone: 'America/Chicago',
+      digest: DailyDigest(
+        id: 'digest-today',
+        content:
+            'Your board call is at 10:00 AM. Review the open SAGE quotes '
+            'beforehand, and protect the afternoon focus block.',
+        generatedAt: day.add(const Duration(hours: 7, minutes: 2)),
+      ),
+      calendarAvailable: true,
+      calendarMessage: null,
+      events: [
+        CalendarEvent(
+          id: 'event-board-call',
+          title: 'FG board call',
+          startsAt: day.add(const Duration(hours: 10)),
+          endsAt: day.add(const Duration(hours: 11)),
+          allDay: false,
+          location: 'Zoom',
+        ),
+        CalendarEvent(
+          id: 'event-focus',
+          title: 'Focus block',
+          startsAt: day.add(const Duration(hours: 13)),
+          endsAt: day.add(const Duration(hours: 15)),
+          allDay: false,
+          location: null,
+        ),
+        CalendarEvent(
+          id: 'event-family',
+          title: 'Family day',
+          startsAt: day.add(const Duration(days: 1)),
+          endsAt: day.add(const Duration(days: 2)),
+          allDay: true,
+          location: null,
+        ),
+      ],
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Chat threads, keyed by agent id.

@@ -236,4 +236,51 @@ void main() {
       );
     });
   });
+
+  group('today', () {
+    test('fetches bearer-authenticated digest and calendar payload', () async {
+      late http.Request captured;
+      final client = ApiClient(
+        baseUrl: 'https://gateway.test',
+        appToken: 'claw-token',
+        inner: MockClient((request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode({
+              'date': '2026-07-25',
+              'timezone': 'America/Chicago',
+              'digest': {
+                'id': 'digest-1',
+                'content': 'Your briefing is ready.',
+                'generated_at': '2026-07-25T07:02:00-05:00',
+              },
+              'calendar_status': 'ok',
+              'calendar_message': null,
+              'events': [
+                {
+                  'id': 'event-1',
+                  'title': 'Board call',
+                  'starts_at': '2026-07-25T10:00:00-05:00',
+                  'ends_at': '2026-07-25T11:00:00-05:00',
+                  'all_day': false,
+                  'location': 'Zoom',
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+
+      final today = await client.fetchToday();
+
+      expect(captured.method, 'GET');
+      expect(captured.url.path, '/app/today');
+      expect(captured.url.queryParameters['days'], '7');
+      expect(captured.headers['Authorization'], 'Bearer claw-token');
+      expect(today.digest?.content, 'Your briefing is ready.');
+      expect(today.events.single.title, 'Board call');
+      expect(today.events.single.location, 'Zoom');
+    });
+  });
 }

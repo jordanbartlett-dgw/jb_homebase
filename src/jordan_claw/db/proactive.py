@@ -126,6 +126,29 @@ async def insert_proactive_message(
     )
 
 
+async def get_latest_proactive_message(
+    client: AsyncClient,
+    *,
+    org_id: str,
+    task_type: str,
+    delivered_from: datetime,
+    delivered_before: datetime,
+) -> dict | None:
+    """Return the latest proactive artifact delivered in a time window."""
+    result = (
+        await client.table("proactive_messages")
+        .select("id, task_type, content, delivered_at")
+        .eq("org_id", org_id)
+        .eq("task_type", task_type)
+        .gte("delivered_at", delivered_from.isoformat())
+        .lt("delivered_at", delivered_before.isoformat())
+        .order("delivered_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
 async def was_sent_today(
     client: AsyncClient,
     schedule_id: str,

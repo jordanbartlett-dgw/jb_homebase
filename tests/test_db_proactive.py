@@ -17,6 +17,7 @@ def _mock_db(data: list[dict] | None = None) -> MagicMock:
     chain.select.return_value = chain
     chain.limit.return_value = chain
     chain.gte.return_value = chain
+    chain.lt.return_value = chain
     chain.lte.return_value = chain
     chain.order.return_value = chain
     chain.insert.return_value = chain
@@ -82,6 +83,36 @@ async def test_insert_proactive_message():
         schedule_id="s1",
     )
     db.table.assert_called_with("proactive_messages")
+
+
+@pytest.mark.asyncio
+async def test_get_latest_proactive_message_is_org_and_day_scoped():
+    from datetime import UTC, datetime
+
+    from jordan_claw.db.proactive import get_latest_proactive_message
+
+    row = {
+        "id": "brief-1",
+        "task_type": "morning_briefing",
+        "content": "Good morning!",
+        "delivered_at": "2026-07-25T12:00:00+00:00",
+    }
+    db = _mock_db([row])
+    query = db.table.return_value
+
+    result = await get_latest_proactive_message(
+        db,
+        org_id="org-1",
+        task_type="morning_briefing",
+        delivered_from=datetime(2026, 7, 25, 5, 0, tzinfo=UTC),
+        delivered_before=datetime(2026, 7, 26, 5, 0, tzinfo=UTC),
+    )
+
+    assert result == row
+    query.eq.assert_any_call("org_id", "org-1")
+    query.eq.assert_any_call("task_type", "morning_briefing")
+    query.order.assert_called_once_with("delivered_at", desc=True)
+    query.limit.assert_called_once_with(1)
 
 
 @pytest.mark.asyncio

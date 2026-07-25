@@ -44,6 +44,14 @@ Every inbound message, regardless of channel, funnels into
   the next send mints a clean one). Titles are derived from the first user
   message, so history requires no title column. Expired active sessions are
   archived during hydration as well as on send to prevent old/new UI mixing.
+- `GET /app/today` (`gateway/app_today.py`): authenticated, read-only Today
+  payload. Reads the latest `morning_briefing` proactive message delivered
+  during the current America/Chicago day and fetches a structured Fastmail
+  agenda for the requested 1–30 day window (7 by default). It never triggers
+  an agent run. Calendar failure degrades to `calendar_status="unavailable"`
+  while preserving the digest. The current digest source remains coupled to
+  successful Telegram delivery; durable channel-independent briefing storage
+  is a later migration.
 - `POST /voice` (`main.py::voice_message`): raw audio body + bearer auth →
   `gateway/voice.py::transcribe` (raw httpx to OpenAI Whisper) →
   `gateway/classifier.py::classify` (Haiku, structured `RouteDecision`, always
@@ -204,14 +212,17 @@ exercise) and the sign-in screen shows. Agent ids in
 
 Live today: text chat (`ApiClient.sendMessage` → `/app/messages`, per-message
 idempotency key, 120s timeout, deliberate no-streaming), current-thread
-hydration, paginated read-only History, and New Chat archiving. Built but
-uncalled: `ApiClient.sendVoice` → `/voice`. Any NEW live surface must branch
-on `GatewayConfig.isLive` and keep the mock path working — widget tests run
-in mock mode, and an unguarded live call hits an empty baseUrl there. Stubbed:
+hydration, paginated read-only History, New Chat archiving, and Today
+(`ApiClient.fetchToday` → `/app/today`) with a real morning briefing and
+structured seven-day calendar. `TodayRepository` maps wire payloads to domain
+models; `TodayController` owns refresh/loading/error state; Home, digest
+detail, and Calendar remain lean views. Built but uncalled:
+`ApiClient.sendVoice` → `/voice`. Any NEW live surface must branch on
+`GatewayConfig.isLive` and keep the mock path working — widget tests run in
+mock mode, and an unguarded live call hits an empty baseUrl there. Stubbed:
 voice capture/preview (fake waveform, placeholder transcript),
 passkey/magic-link (live builds skip auth — the static token is interim auth),
-digest/calendar (the dashboard shows an honest coming-next state), push
-(Firebase deps present, uninitialized). Blocked on Apple Developer account: DEVELOPMENT_TEAM /
+push (Firebase deps present, uninitialized). Blocked on Apple Developer account: DEVELOPMENT_TEAM /
 archiving, APNs key, AASA hosting for passkeys+magic-link (fallback decision:
 ship magic-link-only if passkeys breaks). Xcode 26.0 pin: `device_info_plus`
 12.3.0 override until Xcode ≥ 26.1.

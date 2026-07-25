@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import 'conversation_api_models.dart';
 import 'gateway_config.dart';
+import 'today_api_models.dart';
 
 /// Reply from the gateway for one sent message (text or voice).
 class AgentReply {
@@ -161,6 +162,15 @@ class ApiClient {
         )
         .timeout(_timeout);
     _decode(resp);
+  }
+
+  /// GET /app/today — existing briefing plus a seven-day calendar agenda.
+  Future<TodayPayload> fetchToday() async {
+    final uri = Uri.parse(
+      '$baseUrl/app/today',
+    ).replace(queryParameters: {'days': '7'});
+    final resp = await _inner.get(uri, headers: _authorizationHeaders()).timeout(_timeout);
+    return TodayPayload.fromJson(_decode(resp));
   }
 
   Map<String, String> _authorizationHeaders() {

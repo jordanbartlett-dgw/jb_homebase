@@ -9,6 +9,8 @@ class Routes {
   static const String home = '/home';
   static const String agents = '/agents';
   static const String history = '/history';
+  static const String digest = '/home/digest';
+  static const String calendar = '/home/calendar';
 
   static String historyDetail(String conversationId) {
     return '$history/${Uri.encodeComponent(conversationId)}';

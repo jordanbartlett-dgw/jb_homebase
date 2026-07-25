@@ -19,12 +19,17 @@ void main() {
     await tester.tap(find.text('Sign in with passkey'));
     await tester.pumpAndSettle();
     expect(find.text('DAILY DIGEST'), findsOneWidget);
-    expect(find.text('YOUR AGENTS'), findsOneWidget);
+    expect(find.text('UP NEXT'), findsOneWidget);
 
     // Dashboard dock → Workout Coach chat. Content scrolls beneath the
-    // floating pill nav, so lift the dock above it before tapping.
-    await tester.drag(find.text('YOUR AGENTS'), const Offset(0, -150));
+    // floating pill nav, so reveal the now-lower agent section first.
+    await tester.scrollUntilVisible(
+      find.text('YOUR AGENTS'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
+    expect(find.text('YOUR AGENTS'), findsOneWidget);
     await tester.tap(find.text('Workout Coach'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Hill repeats today'), findsOneWidget);

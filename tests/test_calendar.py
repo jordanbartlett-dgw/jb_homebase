@@ -97,6 +97,69 @@ async def test_get_events_returns_formatted_list():
 
 
 @pytest.mark.asyncio
+async def test_list_events_returns_structured_sorted_events():
+    from jordan_claw.tools.calendar import list_calendar_events
+
+    morning_start = datetime(2026, 4, 1, 9, 0, tzinfo=CHICAGO)
+    morning_end = datetime(2026, 4, 1, 10, 0, tzinfo=CHICAGO)
+    afternoon_start = datetime(2026, 4, 1, 14, 0, tzinfo=CHICAGO)
+    afternoon_end = datetime(2026, 4, 1, 15, 30, tzinfo=CHICAGO)
+    items = [
+        _make_calendar_item(
+            [
+                _make_vevent(
+                    "Client call",
+                    afternoon_start,
+                    afternoon_end,
+                    location="Zoom",
+                )
+            ]
+        ),
+        _make_calendar_item([_make_vevent("Team standup", morning_start, morning_end)]),
+    ]
+
+    with patch(
+        "jordan_claw.tools.calendar._connect_calendar",
+        return_value=_make_mock_calendar(items),
+    ):
+        events = await list_calendar_events(
+            "user@test.com",
+            "test-pass",
+            datetime(2026, 4, 1, tzinfo=CHICAGO),
+            datetime(2026, 4, 2, tzinfo=CHICAGO),
+        )
+
+    assert [event.title for event in events] == ["Team standup", "Client call"]
+    assert events[0].all_day is False
+    assert events[1].location == "Zoom"
+    assert events[1].starts_at.hour == 14
+
+
+@pytest.mark.asyncio
+async def test_list_events_normalizes_all_day_dates():
+    from jordan_claw.tools.calendar import list_calendar_events
+
+    start = dt_module.date(2026, 4, 5)
+    end = dt_module.date(2026, 4, 6)
+    items = [_make_calendar_item([_make_vevent("Family day", start, end)])]
+
+    with patch(
+        "jordan_claw.tools.calendar._connect_calendar",
+        return_value=_make_mock_calendar(items),
+    ):
+        events = await list_calendar_events(
+            "user@test.com",
+            "test-pass",
+            datetime(2026, 4, 5, tzinfo=CHICAGO),
+            datetime(2026, 4, 6, tzinfo=CHICAGO),
+        )
+
+    assert events[0].all_day is True
+    assert events[0].starts_at.hour == 0
+    assert events[0].ends_at.date() == end
+
+
+@pytest.mark.asyncio
 async def test_get_events_empty_calendar():
     from jordan_claw.tools.calendar import get_calendar_events
 
@@ -194,6 +257,28 @@ async def test_caldav_connection_error():
         )
 
     assert "error" in result.lower() or "Error" in result
+
+
+@pytest.mark.asyncio
+async def test_list_events_raises_typed_connection_error():
+    from jordan_claw.tools.calendar import (
+        CalendarAccessError,
+        list_calendar_events,
+    )
+
+    with (
+        patch(
+            "jordan_claw.tools.calendar._connect_calendar",
+            side_effect=Exception("Connection refused"),
+        ),
+        pytest.raises(CalendarAccessError, match="temporarily unavailable"),
+    ):
+        await list_calendar_events(
+            "user@test.com",
+            "test-pass",
+            datetime(2026, 4, 1, tzinfo=CHICAGO),
+            datetime(2026, 4, 2, tzinfo=CHICAGO),
+        )
 
 
 @pytest.mark.asyncio

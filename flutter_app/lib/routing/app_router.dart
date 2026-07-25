@@ -7,7 +7,9 @@ import '../features/auth/passkey_screen.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/history/history_detail_screen.dart';
 import '../features/history/history_screen.dart';
+import '../features/home/calendar_screen.dart';
 import '../features/home/dashboard_screen.dart';
+import '../features/home/digest_detail_screen.dart';
 import '../features/voice/voice_overlay.dart';
 import '../shell/homebase_shell.dart';
 import '../state/app_state.dart';
@@ -65,6 +67,16 @@ GoRouter buildAppRouter(WidgetRef ref) {
               GoRoute(
                 path: Routes.home,
                 builder: (context, state) => const DashboardScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'digest',
+                    builder: (context, state) => const DigestDetailScreen(),
+                  ),
+                  GoRoute(
+                    path: 'calendar',
+                    builder: (context, state) => const CalendarScreen(),
+                  ),
+                ],
               ),
             ],
           ),

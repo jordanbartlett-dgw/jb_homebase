@@ -46,6 +46,7 @@ from jordan_claw.gateway.app_history import (
     get_current_app_conversation,
     list_app_history,
 )
+from jordan_claw.gateway.app_today import TodayResponse, load_today
 from jordan_claw.gateway.classifier import classify
 from jordan_claw.gateway.voice import (
     OriginalRunIncompleteError,
@@ -383,6 +384,23 @@ async def app_conversation_detail(
     if detail is None:
         raise HTTPException(status_code=404, detail="conversation not found")
     return detail
+
+
+@app.get("/app/today", response_model=TodayResponse)
+async def app_today(
+    request: Request,
+    days: int = Query(default=7, ge=1, le=30),
+) -> TodayResponse:
+    """Return today's existing briefing and a structured upcoming agenda."""
+    _require_app_token(request, surface="app today")
+    settings = request.app.state.settings
+    return await load_today(
+        request.app.state.db,
+        org_id=settings.default_org_id,
+        fastmail_username=settings.fastmail_username,
+        fastmail_app_password=settings.fastmail_app_password,
+        days=days,
+    )
 
 
 @app.post("/voice", response_model=VoiceResponse)

@@ -10,17 +10,19 @@ JB Homebase design pivot — this README is current).
 
 ## Status
 
-- **Text chat and conversation history are live gateway surfaces**: sends go to
+- **Text chat, conversation history, Daily Digest, and Calendar are live
+  gateway surfaces**: sends go to
   `POST /app/messages` with bearer `CLAW_APP_TOKEN` auth and one idempotency
   key per message; active threads hydrate after relaunch. History lists
   retained sessions, opens read-only transcripts, and New Chat archives the
-  current session before the next send. Voice upload
+  current session before the next send. Home reads `GET /app/today` for the
+  existing morning briefing and structured seven-day Fastmail agenda; refresh
+  re-fetches without rerunning the agent. Voice upload
   (`ApiClient.sendVoice` → `POST /voice`) is built and tested but unused —
   real audio capture (`record`) is the next feature.
-- Still pending: Daily Digest and calendar (the dashboard shows an honest
-  coming-next state instead of fabricated activity), voice overlay
-  (placeholder transcript), passkey/magic-link screens (live builds skip
-  them — the static token is the interim auth).
+- Still pending: channel-independent digest persistence, voice overlay
+  (placeholder transcript), passkey/magic-link screens (live builds skip them
+  — the static token is the interim auth), and push delivery.
 - `dart analyze --fatal-infos` clean; unit + widget + flow tests pass
   (`flutter test`); on-simulator integration test drives the live path
   (`integration_test/live_chat_test.dart`).
@@ -30,8 +32,9 @@ JB Homebase design pivot — this README is current).
 Passkey sign-in (tap-through mock) → three-tab shell with a floating pill
 nav (NavigationRail on ≥ 840dp):
 
-- **Home** — eyebrow date, Playfair greeting, honest Daily Digest placeholder,
-  and horizontal agent dock.
+- **Home** — real Daily Digest preview, upcoming Fastmail events, pull-to-
+  refresh, and horizontal agent dock. Digest opens into a full selectable
+  briefing; Calendar opens a grouped seven-day agenda with an Ask Claw action.
 - **Agents** — agent picker chips (Claw Main, Workout Coach), asymmetric
   chat bubbles, per-agent tinted typing indicator, tool-call chips,
   composer with mic (voice overlay) + send, and New Chat. Threads are
@@ -85,7 +88,7 @@ from server-side conversation history, one gateway thread per agent. Agent ids i
 the gateway slugs — `claw-main`, `workout-coach`.
 
 The live-path integration test runs against a local stub of
-`/app/messages` and `/app/conversations/current` (see
+`/app/messages`, `/app/conversations/current`, and `/app/today` (see
 `integration_test/live_chat_test.dart`). Don't run the real gateway locally —
 it steals the prod Telegram bot's `getUpdates` polling.
 
@@ -102,6 +105,7 @@ lib/
   shell/homebase_shell.dart    floating pill nav / NavigationRail
   features/
     home/                      dashboard (digest, agent dock, previews)
+                               + digest/calendar detail screens
     chat/                      chat screen + typing indicator, tool chips
     history/                   history list + read-only transcript
     auth/                      passkey + magic link
@@ -113,6 +117,7 @@ lib/
   data/repositories/           API payload → domain model boundaries
   state/app_state.dart         Riverpod: auth, active agent, threads, typing
   state/conversation_state.dart Riverpod: history pages + transcript details
+  state/today_state.dart       Riverpod: briefing/calendar loading + refresh
 test/
   widget_test.dart             boot smoke test
   flow_test.dart               sign-in → dashboard → chat → history

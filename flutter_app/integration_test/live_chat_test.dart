@@ -9,6 +9,8 @@ import 'package:jb_homebase_app/shared/api/gateway_config.dart';
 
 /// Drives the LIVE send path on a device/simulator against a gateway
 /// reachable at GATEWAY_URL (in CI/dev: the local stub in scratchpad).
+/// The stub must implement GET /app/today and
+/// GET /app/conversations/current in addition to POST /app/messages.
 ///
 /// Run:
 ///   flutter test integration_test -d `udid` \
