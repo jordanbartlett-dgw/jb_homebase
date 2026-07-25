@@ -116,10 +116,11 @@ Observability details, event catalogue, dashboard ids: `docs/observability.md`.
 | Runaway run | 200k token budget → `TokenBudgetExceededError` | `agent_runner.py` |
 | Unset secret | empty-string sentinel = feature disabled (webhook 503, workout bot skipped, fastmail watcher off) | `config.py` |
 
-Known gap (found 2026-07-07, unfixed): `/health` reports a bot as running as
-soon as its token is non-empty — `app.state.bots` is populated before
-`start_polling` is confirmed alive, and polling-task exceptions are swallowed.
-A revoked token crashes the polling task silently while health stays green.
+Polling liveness (gap found 2026-07-07, fixed 2026-07-08): a dying polling
+task (revoked token, auth failure) evicts its bot from `app.state.bots` via
+`watch_polling_liveness` (`channels/telegram.py`), so `/health` degrades
+instead of reporting a silent bot as running. Shutdown cancellation does not
+evict.
 
 ## Database (Supabase, hosted)
 
