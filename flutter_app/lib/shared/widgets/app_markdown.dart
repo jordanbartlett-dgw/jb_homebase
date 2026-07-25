@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Branded Markdown renderer for agent output and long-form app content.
 class AppMarkdown extends StatelessWidget {
@@ -9,12 +12,14 @@ class AppMarkdown extends StatelessWidget {
     this.color,
     this.selectable = true,
     this.compact = false,
+    this.onOpenLink,
   });
 
   final String data;
   final Color? color;
   final bool selectable;
   final bool compact;
+  final ValueChanged<Uri>? onOpenLink;
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +38,7 @@ class AppMarkdown extends StatelessWidget {
     return MarkdownBody(
       data: data,
       selectable: selectable,
+      onTapLink: (_, href, _) => _handleLink(context, href),
       styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
         p: body,
         strong: body?.copyWith(fontWeight: FontWeight.w700),
@@ -74,6 +80,33 @@ class AppMarkdown extends StatelessWidget {
         h3Padding: const EdgeInsets.only(top: 6, bottom: 4),
         listIndent: 22,
       ),
+    );
+  }
+
+  void _handleLink(BuildContext context, String? href) {
+    final uri = href == null ? null : Uri.tryParse(href);
+    if (uri == null ||
+        !uri.hasAuthority ||
+        uri.host.isEmpty ||
+        (uri.scheme != 'https' && uri.scheme != 'http')) {
+      _showLinkError(context);
+      return;
+    }
+    if (onOpenLink case final callback?) {
+      callback(uri);
+      return;
+    }
+    unawaited(_openLink(context, uri));
+  }
+
+  Future<void> _openLink(BuildContext context, Uri uri) async {
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) _showLinkError(context);
+  }
+
+  void _showLinkError(BuildContext context) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(content: Text('Couldn’t open this source.')),
     );
   }
 }

@@ -10,7 +10,8 @@ JB Homebase design pivot — this README is current).
 
 ## Status
 
-- **Text chat, conversation history, Daily Digest, and Calendar are live
+- **Text chat for Claw Main, Workout Coach, and Med Check; conversation
+  history; Daily Digest; and Calendar are live
   gateway surfaces**: sends go to
   `POST /app/messages` with bearer `CLAW_APP_TOKEN` auth and one idempotency
   key per message; active threads hydrate after relaunch. History lists
@@ -35,11 +36,12 @@ nav (NavigationRail on ≥ 840dp):
 - **Home** — real Daily Digest preview, upcoming Fastmail events, pull-to-
   refresh, and horizontal agent dock. Digest opens into a full selectable
   briefing; Calendar opens a grouped seven-day agenda with an Ask Claw action.
-- **Agents** — agent picker chips (Claw Main, Workout Coach), asymmetric
+- **Agents** — agent picker chips (Claw Main, Workout Coach, Med Check), asymmetric
   chat bubbles, per-agent tinted typing indicator, tool-call chips,
   composer with mic (voice overlay) + send, and New Chat. Threads are
   per-agent Riverpod families, survive tab switches, and hydrate from the
-  gateway after relaunch.
+  gateway after relaunch. Med Check adds a decision-support boundary and
+  editable starter prompts; Markdown source links open in the system browser.
 - **History** — retained app sessions grouped by date with agent identity,
   active-session state, cursor pagination, and read-only transcripts.
 

@@ -11,6 +11,9 @@ class Agent {
     required this.tagline,
     required this.icon,
     required this.tint,
+    this.introduction,
+    this.caution,
+    this.starterPrompts = const [],
   });
 
   final String id;
@@ -20,6 +23,15 @@ class Agent {
 
   /// A restrained cobalt-family identity color used only for small states.
   final Color tint;
+
+  /// Optional agent-specific onboarding shown before the first message.
+  final String? introduction;
+
+  /// Important usage boundary shown without implying a positive status.
+  final String? caution;
+
+  /// Editable prompt starters for specialized agents.
+  final List<String> starterPrompts;
 
   static const roster = <Agent>[
     Agent(
@@ -44,6 +56,18 @@ class Agent {
       tagline: 'Medication screening',
       icon: Icons.medication_outlined,
       tint: Color(0xFF4A6BE0), // cobalt family, between the two existing tints
+      introduction:
+          'Check a medication against the current profile, public label data, '
+          'QT-risk sources, and Rett-specific guidance.',
+      caution:
+          'Decision support, not medical clearance. Confirm medication changes '
+          'with her pharmacist and cardiology team.',
+      starterPrompts: [
+        'Her doctor wants to start her on [medication]. Can you check it?',
+        'What’s on her current medication list?',
+        'She started ondansetron 4 mg as needed today. Add it to her profile.',
+        'Does amoxicillin interact with anything she takes?',
+      ],
     ),
   ];
 

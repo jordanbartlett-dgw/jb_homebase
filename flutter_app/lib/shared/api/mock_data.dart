@@ -74,7 +74,10 @@ class MockData {
       Message(
         id: 'med-check-1',
         role: MessageRole.assistant,
-        body: 'No interactions flagged for your current medication list. Anything new to add?',
+        body:
+            'I can screen a medication against the current profile and public '
+            'sources. I’ll report what I find, but the pharmacist and cardiology '
+            'team should confirm every medication change.',
         timestamp: _now.subtract(const Duration(minutes: 30)),
       ),
     ],
@@ -131,6 +134,15 @@ class MockData {
       lastMessageAt: _now.subtract(const Duration(minutes: 17)),
     ),
     ConversationSummary(
+      id: 'history-med-check-today',
+      agentSlug: 'med-check',
+      status: 'archived',
+      title: 'Check ondansetron against her current medication list',
+      messageCount: 2,
+      createdAt: _now.subtract(const Duration(hours: 3)),
+      lastMessageAt: _now.subtract(const Duration(hours: 2, minutes: 58)),
+    ),
+    ConversationSummary(
       id: 'history-workout-yesterday',
       agentSlug: 'workout-coach',
       status: 'archived',
@@ -173,6 +185,9 @@ class MockData {
                 role: MessageRole.assistant,
                 body: summary.agentSlug == 'workout-coach'
                     ? 'I adjusted the week and kept your recovery day intact.'
+                    : summary.agentSlug == 'med-check'
+                    ? 'I found a QT-related label warning. Confirm this medication '
+                          'with her pharmacist and cardiology team before starting it.'
                     : 'I found the relevant details and summarized the next actions.',
                 timestamp: summary.lastMessageAt,
               ),

@@ -14,6 +14,8 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final fromUser = message.role == MessageRole.user;
+    final width = MediaQuery.sizeOf(context).width;
+    final maxWidth = fromUser ? (width * 0.75).clamp(0.0, 560.0) : (width * 0.90).clamp(0.0, 720.0);
     const radius = Radius.circular(AppTheme.radiusBubble);
     const sharp = Radius.circular(4);
 
@@ -23,7 +25,7 @@ class MessageBubble extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 5),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
+          maxWidth: maxWidth,
         ),
         decoration: BoxDecoration(
           color: fromUser ? theme.colorScheme.inverseSurface : theme.colorScheme.surface,

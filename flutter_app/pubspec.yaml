@@ -25,6 +25,7 @@ dependencies:
   google_fonts: ^6.2.1
   intl: ^0.20.0
   flutter_markdown_plus: ^1.0.12
+  url_launcher: ^6.3.2
 
   # Voice
   record: ^6.0.0

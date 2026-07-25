@@ -65,4 +65,45 @@ void main() {
     expect(find.byType(MarkdownBody), findsNothing);
     expect(find.text('**keep this literal**'), findsOneWidget);
   });
+
+  testWidgets('source links invoke the approved URL handler', (tester) async {
+    Uri? opened;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: Scaffold(
+          body: AppMarkdown(
+            data: '[FDA label](https://www.accessdata.fda.gov/example)',
+            onOpenLink: (uri) => opened = uri,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('FDA label'));
+    expect(opened, Uri.parse('https://www.accessdata.fda.gov/example'));
+  });
+
+  testWidgets('non-web links are rejected', (tester) async {
+    Uri? opened;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: Scaffold(
+          body: AppMarkdown(
+            data: '[Local file](file:///private/data)',
+            onOpenLink: (uri) => opened = uri,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Local file'));
+    await tester.pump();
+
+    expect(opened, isNull);
+    expect(find.text('Couldn’t open this source.'), findsOneWidget);
+  });
 }

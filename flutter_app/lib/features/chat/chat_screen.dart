@@ -10,6 +10,7 @@ import '../../shared/widgets/bouncy_button.dart';
 import '../../shared/widgets/message_bubble.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_theme.dart';
+import 'widgets/agent_welcome.dart';
 import 'widgets/tool_call_chip.dart';
 import 'widgets/typing_indicator.dart';
 
@@ -51,6 +52,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final agent = ref.read(activeAgentProvider);
     ref.read(agentThreadProvider(agent.id).notifier).appendUserMessage(text);
     _input.clear();
+  }
+
+  void _selectStarterPrompt(String prompt) {
+    HapticFeedback.selectionClick();
+    _input
+      ..text = prompt
+      ..selection = TextSelection.collapsed(offset: prompt.length);
   }
 
   Future<void> _startNewChat(Agent agent) async {
@@ -178,7 +186,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ),
                 ),
                 data: (_) => messages.isEmpty && !typing
-                    ? _EmptyThread(agent: agent)
+                    ? AgentWelcome(
+                        agent: agent,
+                        onSelectPrompt: _selectStarterPrompt,
+                      )
                     : ListView.builder(
                         key: ValueKey(agent.id),
                         controller: _scrollFor(agent.id),
@@ -289,37 +300,6 @@ class _AgentPicker extends StatelessWidget {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-class _EmptyThread extends StatelessWidget {
-  const _EmptyThread({required this.agent});
-
-  final Agent agent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: AppTheme.pagePadding,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              agent.icon,
-              size: 38,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Start a conversation with ${agent.name}',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-          ],
-        ),
       ),
     );
   }
