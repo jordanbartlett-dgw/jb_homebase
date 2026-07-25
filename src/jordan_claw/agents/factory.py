@@ -77,20 +77,26 @@ def trim_history_processor(
 
     kept.reverse()
 
-    # Strip leading ModelResponse (orphaned assistant) and ModelRequest
-    # containing ToolReturnPart (orphaned tool_result without tool_use).
-    # Never strip to empty — pydantic-ai requires non-empty processed history.
-    while len(kept) > 1:
-        first = kept[0]
-        if (
-            isinstance(first, ModelResponse)
-            or isinstance(first, ModelRequest)
-            and any(isinstance(p, ToolReturnPart) for p in first.parts)
-        ):
-            kept.pop(0)
-        else:
-            break
+    # The history must open at a user turn: Anthropic rejects a leading
+    # assistant message, and a tool_result whose tool_use was trimmed away
+    # 400s the whole request ("unexpected tool_use_id"). kept is always a
+    # suffix of messages, so move its start to a clean boundary.
+    def _is_clean_start(msg: ModelRequest | ModelResponse) -> bool:
+        return isinstance(msg, ModelRequest) and not any(
+            isinstance(p, ToolReturnPart) for p in msg.parts
+        )
 
+    start = len(messages) - len(kept)
+    ahead = next((i for i in range(start, len(messages)) if _is_clean_start(messages[i])), None)
+    if ahead is not None:
+        return messages[ahead:]
+    # No user turn inside the budget window (a single oversized tool exchange,
+    # e.g. a full FDA label, can exceed the whole budget). The budget goes soft
+    # rather than sending an invalid request: walk back to the user turn that
+    # opened the stranded exchange. The 200k-token run guardrail still bounds us.
+    behind = next((i for i in range(start - 1, -1, -1) if _is_clean_start(messages[i])), None)
+    if behind is not None:
+        return messages[behind:]
     return kept
 
 

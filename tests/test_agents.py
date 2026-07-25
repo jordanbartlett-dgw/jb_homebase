@@ -285,6 +285,54 @@ def test_trim_history_processor_strips_orphaned_tool_results():
     assert all(isinstance(p, UserPromptPart) for p in result[0].parts)
 
 
+def test_trim_history_processor_never_strands_midrun_tool_exchange():
+    """One oversized tool return mid-run must not produce a history that opens
+    with an orphaned tool_result (Anthropic 400: unexpected tool_use_id).
+
+    Prod repro (med-check, 2026-07-25): first user turn -> model calls a tool ->
+    tool returns ~17k chars -> trim drops the user turn and the tool_use response,
+    leaving only the tool_result. The budget must go soft instead: keep the
+    exchange intact back to the user turn that opened it.
+    """
+    from pydantic_ai import ToolReturnPart
+    from pydantic_ai.messages import ToolCallPart
+
+    from jordan_claw.agents.factory import trim_history_processor
+
+    messages = [
+        ModelRequest(parts=[UserPromptPart(content="can you check ondansetron?")]),
+        ModelResponse(
+            parts=[ToolCallPart(tool_name="fetch_fda_label", args="", tool_call_id="tc1")]
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(tool_name="fetch_fda_label", content="X" * 17000, tool_call_id="tc1")
+            ]
+        ),
+    ]
+    result = trim_history_processor(messages, max_tokens=4000)
+
+    # The whole exchange survives, starting at the user turn.
+    assert isinstance(result[0], ModelRequest)
+    assert any(isinstance(p, UserPromptPart) for p in result[0].parts)
+    # Every tool_result still has its tool_use in the history.
+    call_ids = {
+        p.tool_call_id
+        for m in result
+        if isinstance(m, ModelResponse)
+        for p in m.parts
+        if isinstance(p, ToolCallPart)
+    }
+    return_ids = {
+        p.tool_call_id
+        for m in result
+        if isinstance(m, ModelRequest)
+        for p in m.parts
+        if isinstance(p, ToolReturnPart)
+    }
+    assert return_ids <= call_ids
+
+
 def test_trim_history_processor_trims_to_budget():
     """trim_history_processor should drop oldest messages to stay within token budget."""
     from jordan_claw.agents.factory import trim_history_processor
