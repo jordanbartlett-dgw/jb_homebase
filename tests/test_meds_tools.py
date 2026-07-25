@@ -175,6 +175,32 @@ async def test_fda_label_torsades_lands_in_qt_hits(monkeypatch):
     assert "Cases of torsades de pointes occurred in postmarketing use." in out
 
 
+LABEL_PRECAUTIONS_ONLY = {
+    "results": [
+        {
+            "warnings": ["Use caution in hepatic impairment."],
+            "precautions": ["May prolong the QT interval; monitor ECG in at-risk patients."],
+            "drug_interactions": ["Avoid concomitant apomorphine."],
+        }
+    ]
+}
+
+
+@pytest.mark.asyncio
+async def test_fda_label_precautions_only_qt_lands_in_qt_hits(monkeypatch):
+    """Old-format (non-PLR) labels carry QT language in `precautions`, not
+    `warnings_and_cautions` — this must still surface in qt_hits."""
+
+    async def fake_get_json(url, params=None):
+        return 200, LABEL_PRECAUTIONS_ONLY
+
+    monkeypatch.setattr(meds, "_get_json", fake_get_json)
+    out = await meds.fetch_fda_label(FakeCtx(), "old-format-drug")
+    assert "QT-RELATED SENTENCES" in out
+    assert "May prolong the QT interval; monitor ECG in at-risk patients." in out
+    assert "## precautions" in out
+
+
 @pytest.mark.asyncio
 async def test_fda_label_no_result_distinct_from_error(monkeypatch):
     async def fake_404(url, params=None):

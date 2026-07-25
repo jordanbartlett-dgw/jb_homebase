@@ -82,6 +82,10 @@ def test_deps_tools_have_ctx_param():
         "set_reminder",
         "list_reminders",
         "cancel_reminder",
+        "normalize_medication",
+        "fetch_fda_label",
+        "get_medication_profile",
+        "save_medication_profile",
     ]
     for name in deps_tools:
         sig = inspect.signature(ALL_TOOLS[name].function)

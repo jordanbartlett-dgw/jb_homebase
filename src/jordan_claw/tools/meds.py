@@ -128,6 +128,8 @@ LABEL_SECTIONS = (
     "contraindications",
     "warnings",
     "warnings_and_cautions",
+    "precautions",
+    "general_precautions",
     "drug_interactions",
     "adverse_reactions",
 )
