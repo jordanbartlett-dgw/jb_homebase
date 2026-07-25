@@ -95,6 +95,38 @@ async def test_normalize_combination_product_lists_every_ingredient(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_ingredient_lookup_failure_is_distinct_from_no_ingredients(monkeypatch):
+    async def fake_get_json(url, params=None):
+        if "approximateTerm" in url:
+            return 200, APPROX_ZOFRAN
+        if url.endswith("/rxcui/196474/properties.json"):
+            return 200, PROPS_ZOFRAN
+        if url.endswith("/rxcui/196474/related.json"):
+            return 0, None  # ingredient lookup fails, e.g. timeout
+        raise AssertionError(f"unexpected url {url}")
+
+    monkeypatch.setattr(meds, "_get_json", fake_get_json)
+    out = await meds.normalize_medication(FakeCtx(), "zofrann")
+    assert "FAILED" in out
+    assert "could not verify ingredients" in out
+    assert "returned nothing" not in out
+
+
+@pytest.mark.asyncio
+async def test_normalize_all_detail_lookups_fail(monkeypatch):
+    async def fake_get_json(url, params=None):
+        if "approximateTerm" in url:
+            return 200, APPROX_ZOFRAN
+        if url.endswith("/properties.json"):
+            return 0, None  # every candidate's detail lookup fails
+        raise AssertionError(f"unexpected url {url}")
+
+    monkeypatch.setattr(meds, "_get_json", fake_get_json)
+    out = await meds.normalize_medication(FakeCtx(), "zofrann")
+    assert "detail lookups failed" in out
+
+
+@pytest.mark.asyncio
 async def test_normalize_no_match_is_explicit(monkeypatch):
     async def fake_get_json(url, params=None):
         return 200, {"approximateGroup": {"candidate": []}}

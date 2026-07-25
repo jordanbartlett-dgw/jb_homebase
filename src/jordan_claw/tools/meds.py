@@ -58,13 +58,18 @@ async def _candidate_summary(rxcui: str) -> str | None:
     )
 
     status, related = await _get_json(f"{RXNAV_BASE}/rxcui/{rxcui}/related.json", {"tty": "IN"})
-    ingredients: list[str] = []
-    if status == 200 and related:
+    if status != 200 or related is None:
+        ing = (
+            "(ingredient lookup FAILED — could not verify ingredients, "
+            "report the check as incomplete)"
+        )
+    else:
+        ingredients: list[str] = []
         for group in (related.get("relatedGroup") or {}).get("conceptGroup") or []:
             for concept in group.get("conceptProperties") or []:
                 if concept.get("name") and concept["name"] not in ingredients:
                     ingredients.append(concept["name"])
-    ing = ", ".join(ingredients) if ingredients else "(ingredient lookup returned nothing)"
+        ing = ", ".join(ingredients) if ingredients else "(ingredient lookup returned nothing)"
     return f"- rxcui {rxcui}: {name} ({kind}) — active ingredient(s): {ing}"
 
 
