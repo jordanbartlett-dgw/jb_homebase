@@ -90,43 +90,21 @@ def trim_history_processor(
     return kept
 
 
-def db_messages_to_history(
-    messages: list[dict],
-    max_tokens: int = 4000,
-) -> list[ModelRequest | ModelResponse]:
+def db_messages_to_history(messages: list[dict]) -> list[ModelRequest | ModelResponse]:
     """Convert DB message rows to Pydantic AI message history format.
 
     Only converts user and assistant messages. Skips system and tool roles.
-    When max_tokens > 0, drops oldest messages first to stay within budget.
-    Always preserves at least the most recent user+assistant exchange.
+    Trimming happens in trim_history_processor, wired as a ProcessHistory
+    capability on every agent.
     """
-    converted: list[tuple[ModelRequest | ModelResponse, int]] = []
+    converted: list[ModelRequest | ModelResponse] = []
     for msg in messages:
         role = msg["role"]
         content = msg["content"]
-        char_count = len(content)
 
         if role == "user":
-            converted.append((ModelRequest(parts=[UserPromptPart(content=content)]), char_count))
+            converted.append(ModelRequest(parts=[UserPromptPart(content=content)]))
         elif role == "assistant":
-            converted.append((ModelResponse(parts=[TextPart(content=content)]), char_count))
+            converted.append(ModelResponse(parts=[TextPart(content=content)]))
 
-    if not converted or max_tokens <= 0:
-        return [item for item, _ in converted]
-
-    max_chars = max_tokens * CHARS_PER_TOKEN
-    kept: list[ModelRequest | ModelResponse] = []
-    total_chars = 0
-    for i in range(len(converted) - 1, -1, -1):
-        item, char_count = converted[i]
-        if total_chars + char_count > max_chars and len(kept) >= 2:
-            break
-        kept.append(item)
-        total_chars += char_count
-
-    kept.reverse()
-
-    while kept and isinstance(kept[0], ModelResponse):
-        kept.pop(0)
-
-    return kept
+    return converted

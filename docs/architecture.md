@@ -83,8 +83,10 @@ seeds in-process `loop.call_later` timers for 30-min-before calendar reminders.
 - Tools are plain async fns taking `ctx: RunContext[AgentDeps]`
   (`agents/deps.py`: org_id, tavily key, fastmail creds, supabase client,
   openai key). Registered via `ts.add_function(fn, name=...)`.
-- History: `db_messages_to_history` + `trim_history_processor` — 4000-token
-  char-budget (4 chars/token), newest kept, orphaned leads stripped.
+- History: `db_messages_to_history` converts DB rows (user/assistant only);
+  `trim_history_processor` (a `ProcessHistory` capability on every agent) does
+  the trimming — 4000-token char-budget (4 chars/token), newest kept, orphaned
+  leads stripped.
 - Memory context: `memory/reader.py::load_memory_context` — cached rendered
   block, 500-token budget, prepended to instructions. Extraction is
   fire-and-forget post-reply (`memory/extractor.py`, Haiku, structured output;
