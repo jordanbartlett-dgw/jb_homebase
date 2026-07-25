@@ -16,7 +16,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 
 from evals.fixtures.med_check import FIXTURES
-from evals.tasks.med_check import _build_toolset
+from evals.tasks.med_check import _build_toolset, _compose_reply
 
 FIXTURE_DRIVEN_KEYS = (
     "normalize_medication",
@@ -31,13 +31,6 @@ FIXTURE_DRIVEN_KEYS = (
 )
 
 
-def _compose(reply: str, captured_notes: list[str]) -> str:
-    """Mirrors the concatenation med_check_task applies when a note was written."""
-    if captured_notes:
-        return f"{reply}\n\n===NOTE===\n{captured_notes[-1]}"
-    return reply
-
-
 @pytest.mark.asyncio
 async def test_create_timeline_note_captures_markdown_body() -> None:
     fixture = FIXTURES["timeline_three_months"]
@@ -48,14 +41,14 @@ async def test_create_timeline_note_captures_markdown_body() -> None:
     result = await agent.run("prep the timeline")
 
     assert captured_notes, "create_timeline_note stub did not capture a note body"
-    composed = _compose(str(result.output), captured_notes)
+    composed = _compose_reply(str(result.output), captured_notes)
     assert "===NOTE===" in composed
     assert captured_notes[-1] in composed
 
 
 @pytest.mark.asyncio
 async def test_no_note_written_returns_reply_unchanged() -> None:
-    composed = _compose("just a reply, no note", captured_notes=[])
+    composed = _compose_reply("just a reply, no note", captured_notes=[])
     assert composed == "just a reply, no note"
 
 

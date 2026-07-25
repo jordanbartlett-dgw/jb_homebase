@@ -165,6 +165,19 @@ def _build_toolset(fixture: dict[str, str], captured_notes: list[str]) -> Functi
     return ts
 
 
+NOTE_MARKER = "===NOTE==="  # scorers/med_check.py splits on this to grade note-only content
+
+
+def _compose_reply(reply: str, captured_notes: list[str]) -> str:
+    """Grading surface for timeline cases: when create_timeline_note was called,
+    append the composed note body behind the NOTE_MARKER so scorers grade the
+    actual note content, not just the chat-facing confirmation line. See
+    fixtures/med_check.py for the full grading-surface writeup."""
+    if captured_notes:
+        return f"{reply}\n\n{NOTE_MARKER}\n{captured_notes[-1]}"
+    return reply
+
+
 async def med_check_task(inputs: MedCheckInputs) -> str:
     fixture = FIXTURES[inputs.fixture]
     # Per-run holder, not module-level — parallel eval runs must not
@@ -176,7 +189,4 @@ async def med_check_task(inputs: MedCheckInputs) -> str:
         toolsets=[_build_toolset(fixture, captured_notes)],
     )
     result = await agent.run(inputs.user_message)
-    reply = str(result.output)
-    if captured_notes:
-        return f"{reply}\n\n===NOTE===\n{captured_notes[-1]}"
-    return reply
+    return _compose_reply(str(result.output), captured_notes)
