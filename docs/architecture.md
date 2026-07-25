@@ -78,8 +78,10 @@ seeds in-process `loop.call_later` timers for 30-min-before calendar reminders.
   (a `FunctionToolset`): **core** (current_datetime), **web** (search_web,
   fetch_article), **calendar** (check_calendar, schedule_event), **memory**
   (recall_memory, forget_memory), **obsidian** (search_notes, read_note,
-  create_source_note), **workout** (6 tools). 16 tools total. Unknown ids are
-  skipped with a warning (safe deploy ordering).
+  create_source_note), **workout** (7 tools). 17 tools total. Unknown ids are
+  skipped with a warning (safe deploy ordering). log_workout refuses same-day
+  same-activity duplicates unless allow_duplicate=true; amend_last_workout
+  updates the latest log (follow-up detail was double-logging sessions).
 - Tools are plain async fns taking `ctx: RunContext[AgentDeps]`
   (`agents/deps.py`: org_id, tavily key, fastmail creds, supabase client,
   openai key). Registered via `ts.add_function(fn, name=...)`.

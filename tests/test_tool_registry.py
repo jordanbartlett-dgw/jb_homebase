@@ -27,6 +27,7 @@ EXPECTED_TOOLS = [
     "get_workout_plan",
     "save_workout_plan",
     "log_workout",
+    "amend_last_workout",
     "get_recent_workouts",
 ]
 
@@ -69,6 +70,7 @@ def test_deps_tools_have_ctx_param():
         "get_workout_plan",
         "save_workout_plan",
         "log_workout",
+        "amend_last_workout",
         "get_recent_workouts",
     ]
     for name in deps_tools:
