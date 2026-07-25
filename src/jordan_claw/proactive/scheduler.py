@@ -22,6 +22,7 @@ from jordan_claw.proactive.executors import (
     execute_reminder,
     execute_weekly_feedback_request,
     execute_weekly_review,
+    execute_weekly_training_review,
 )
 from jordan_claw.proactive.models import ProactiveSchedule
 from jordan_claw.tools.calendar import get_calendar_events
@@ -35,6 +36,7 @@ EXECUTOR_MAP = {
     "weekly_feedback_request": execute_weekly_feedback_request,
     "daily_workout": execute_daily_workout,
     "reminder": execute_reminder,
+    "weekly_training_review": execute_weekly_training_review,
 }
 
 CHECK_INTERVAL_SECONDS = 60
