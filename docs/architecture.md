@@ -36,6 +36,14 @@ Every inbound message, regardless of channel, funnels into
   replay converges via `gateway/app_chat.py::replay_app_response`. Blocking reply
   `{agent_slug, reply, conversation_id}`. Channel `app`, one conversation per
   agent (`channel_thread_id` = slug).
+- App history (`gateway/app_history.py`): authenticated
+  `GET /app/conversations` (created-at cursor page, optional agent filter),
+  `GET /app/conversations/current?agent_slug=...` (relaunch hydration),
+  `GET /app/conversations/{id}` (org-scoped read-only transcript), and
+  `POST /app/conversations/new` (archives the selected agent's active session;
+  the next send mints a clean one). Titles are derived from the first user
+  message, so history requires no title column. Expired active sessions are
+  archived during hydration as well as on send to prevent old/new UI mixing.
 - `POST /voice` (`main.py::voice_message`): raw audio body + bearer auth →
   `gateway/voice.py::transcribe` (raw httpx to OpenAI Whisper) →
   `gateway/classifier.py::classify` (Haiku, structured `RouteDecision`, always
@@ -185,21 +193,25 @@ pydantic-evals silently swallows task-fn exceptions. Costs: memory_recall
 
 ## Flutter app (thin client)
 
-Riverpod 3 codegen + go_router shell (Home/Agents/Insights) + Playfair/Inter
-sage design system. Live gating: dart-defines `GATEWAY_URL` + `CLAW_APP_TOKEN`
+Riverpod 3 codegen + go_router shell (Home/Agents/History) + Playfair/Inter
+monochrome/cobalt design system. Live gating: dart-defines `GATEWAY_URL` + `CLAW_APP_TOKEN`
 → `GatewayConfig.isLive`; without them every surface is mock (what widget tests
 exercise) and the sign-in screen shows. Agent ids in
 `lib/shared/models/agent.dart` ARE gateway slugs. `AgentThread`
-(`lib/state/app_state.dart`) is where live/mock branches.
+(`lib/state/app_state.dart`) hydrates live transcripts through
+`ConversationRepository`; history state lives in
+`lib/state/conversation_state.dart`.
 
 Live today: text chat (`ApiClient.sendMessage` → `/app/messages`, per-message
-idempotency key, 120s timeout, deliberate no-streaming). Built but uncalled:
-`ApiClient.sendVoice` → `/voice`. Any NEW live surface must branch on
-`GatewayConfig.isLive` and keep the mock path working — widget tests run in
-mock mode, and an unguarded live call hits an empty baseUrl there. Stubbed: voice capture/preview (fake waveform,
-placeholder transcript), passkey/magic-link (live builds skip auth — the static
-token is interim auth), digest card, insights, push (Firebase deps present,
-uninitialized). Blocked on Apple Developer account: DEVELOPMENT_TEAM /
+idempotency key, 120s timeout, deliberate no-streaming), current-thread
+hydration, paginated read-only History, and New Chat archiving. Built but
+uncalled: `ApiClient.sendVoice` → `/voice`. Any NEW live surface must branch
+on `GatewayConfig.isLive` and keep the mock path working — widget tests run
+in mock mode, and an unguarded live call hits an empty baseUrl there. Stubbed:
+voice capture/preview (fake waveform, placeholder transcript),
+passkey/magic-link (live builds skip auth — the static token is interim auth),
+digest/calendar (the dashboard shows an honest coming-next state), push
+(Firebase deps present, uninitialized). Blocked on Apple Developer account: DEVELOPMENT_TEAM /
 archiving, APNs key, AASA hosting for passkeys+magic-link (fallback decision:
 ship magic-link-only if passkeys breaks). Xcode 26.0 pin: `device_info_plus`
 12.3.0 override until Xcode ≥ 26.1.

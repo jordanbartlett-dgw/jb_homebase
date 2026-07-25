@@ -7,6 +7,7 @@ import '../../routing/routes.dart';
 import '../../shared/models/agent.dart';
 import '../../shared/models/message.dart';
 import '../../shared/widgets/bouncy_button.dart';
+import '../../shared/widgets/message_bubble.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_theme.dart';
 import 'widgets/tool_call_chip.dart';
@@ -17,7 +18,7 @@ import 'widgets/typing_indicator.dart';
 /// follows roster order) via AnimatedSwitcher keyed on agent id.
 ///
 /// Threads live in Riverpod ([agentThreadProvider]) so they survive tab
-/// switches; PR2 replaces the canned reply with gateway streaming.
+/// switches and hydrate from the gateway after an app relaunch.
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
 
@@ -28,7 +29,11 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   int _slideDirection = 1; // +1 slide from right, -1 from left
   final _input = TextEditingController();
-  final _scroll = ScrollController();
+  final _scrollByAgent = <String, ScrollController>{};
+
+  ScrollController _scrollFor(String agentId) {
+    return _scrollByAgent.putIfAbsent(agentId, ScrollController.new);
+  }
 
   void _selectAgent(Agent agent) {
     final current = ref.read(activeAgentProvider);
@@ -48,14 +53,47 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _input.clear();
   }
 
-  void _scrollToEnd() {
+  Future<void> _startNewChat(Agent agent) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Start a new chat?'),
+        content: const Text(
+          'This conversation will stay available in History.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('New chat'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final started = await ref.read(agentThreadProvider(agent.id).notifier).startNewChat();
+    if (!started && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Couldn’t start a new chat. Try again.'),
+        ),
+      );
+    }
+  }
+
+  void _scrollToEnd(String agentId) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scroll.hasClients) return;
+      final scroll = _scrollByAgent[agentId];
+      if (!mounted || scroll == null || !scroll.hasClients) return;
       // A mid-navigation frame can attach the position before layout runs;
       // maxScrollExtent null-crashes until dimensions exist.
-      if (!_scroll.position.hasContentDimensions) return;
-      _scroll.animateTo(
-        _scroll.position.maxScrollExtent,
+      if (!scroll.position.hasContentDimensions) return;
+      scroll.animateTo(
+        scroll.position.maxScrollExtent,
         duration: const Duration(milliseconds: 350),
         curve: Curves.easeOutCubic,
       );
@@ -65,28 +103,49 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void dispose() {
     _input.dispose();
-    _scroll.dispose();
+    for (final scroll in _scrollByAgent.values) {
+      scroll.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final agent = ref.watch(activeAgentProvider);
-    final messages = ref.watch(agentThreadProvider(agent.id));
+    final thread = ref.watch(agentThreadProvider(agent.id));
+    final messages = thread.asData?.value ?? const <Message>[];
     final typing = ref.watch(agentTypingProvider(agent.id));
 
     // Keep the newest message in view as the conversation grows.
     ref.listen(agentThreadProvider(agent.id), (previous, next) {
-      if ((previous?.length ?? 0) < next.length) _scrollToEnd();
+      final previousLength = previous?.asData?.value.length ?? 0;
+      final nextLength = next.asData?.value.length ?? 0;
+      if (previousLength < nextLength) _scrollToEnd(agent.id);
     });
     ref.listen(agentTypingProvider(agent.id), (previous, next) {
-      if (next) _scrollToEnd();
+      if (next) _scrollToEnd(agent.id);
     });
 
     return SafeArea(
       child: Column(
         children: [
-          _AgentPicker(selected: agent, onSelect: _selectAgent),
+          Row(
+            children: [
+              Expanded(
+                child: _AgentPicker(
+                  selected: agent,
+                  onSelect: _selectAgent,
+                ),
+              ),
+              IconButton(
+                key: const ValueKey('new-chat-button'),
+                tooltip: 'New chat',
+                onPressed: typing || thread.isLoading ? null : () => _startNewChat(agent),
+                icon: const Icon(Icons.add_comment_outlined),
+              ),
+              const SizedBox(width: 12),
+            ],
+          ),
           const SizedBox(height: 8),
 
           // Thread slides horizontally when the agent changes.
@@ -109,26 +168,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ),
                 );
               },
-              child: ListView.builder(
-                key: ValueKey(agent.id),
-                controller: _scroll,
-                padding: AppTheme.pagePadding.copyWith(top: 8, bottom: 16),
-                itemCount: messages.length + (typing ? 1 : 0),
-                itemBuilder: (context, i) {
-                  if (i == messages.length) {
-                    return TypingIndicator(
-                      tint: Theme.of(context).colorScheme.primary,
-                    );
-                  }
-                  final message = messages[i];
-                  if (message.role == MessageRole.toolCall) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 5),
-                      child: ToolCallChip(message: message),
-                    );
-                  }
-                  return _ChatBubble(message: message);
-                },
+              child: thread.when(
+                loading: () => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+                error: (error, _) => _ThreadError(
+                  onRetry: () => ref.invalidate(
+                    agentThreadProvider(agent.id),
+                  ),
+                ),
+                data: (_) => messages.isEmpty && !typing
+                    ? _EmptyThread(agent: agent)
+                    : ListView.builder(
+                        key: ValueKey(agent.id),
+                        controller: _scrollFor(agent.id),
+                        padding: AppTheme.pagePadding.copyWith(
+                          top: 8,
+                          bottom: 16,
+                        ),
+                        itemCount: messages.length + (typing ? 1 : 0),
+                        itemBuilder: (context, i) {
+                          if (i == messages.length) {
+                            return TypingIndicator(
+                              tint: Theme.of(context).colorScheme.primary,
+                            );
+                          }
+                          final message = messages[i];
+                          if (message.role == MessageRole.toolCall) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 5),
+                              child: ToolCallChip(message: message),
+                            );
+                          }
+                          return MessageBubble(message: message);
+                        },
+                      ),
               ),
             ),
           ),
@@ -138,6 +212,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             onSend: _send,
             hint: agent.name,
             onMic: () => context.push(Routes.voice),
+            enabled: thread.hasValue,
           ),
         ],
       ),
@@ -219,45 +294,48 @@ class _AgentPicker extends StatelessWidget {
   }
 }
 
-/// Asymmetric-radius bubbles:
-/// user   → rounded everywhere except a sharp bottom-right
-/// agent  → rounded everywhere except a sharp bottom-left
-class _ChatBubble extends StatelessWidget {
-  const _ChatBubble({required this.message});
+class _EmptyThread extends StatelessWidget {
+  const _EmptyThread({required this.agent});
 
-  final Message message;
+  final Agent agent;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final fromUser = message.role == MessageRole.user;
-    const r = Radius.circular(AppTheme.radiusBubble);
-    const sharp = Radius.circular(4);
+    return Center(
+      child: Padding(
+        padding: AppTheme.pagePadding,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              agent.icon,
+              size: 38,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Start a conversation with ${agent.name}',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-    return Align(
-      alignment: fromUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 5),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        decoration: BoxDecoration(
-          color: fromUser ? theme.colorScheme.inverseSurface : theme.colorScheme.surface,
-          borderRadius: BorderRadius.only(
-            topLeft: r,
-            topRight: r,
-            bottomLeft: fromUser ? r : sharp,
-            bottomRight: fromUser ? sharp : r,
-          ),
-          border: fromUser ? null : Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Text(
-          message.body,
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: fromUser ? theme.colorScheme.onInverseSurface : theme.colorScheme.onSurface,
-          ),
-        ),
+class _ThreadError extends StatelessWidget {
+  const _ThreadError({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: OutlinedButton(
+        onPressed: onRetry,
+        child: const Text('Reload conversation'),
       ),
     );
   }
@@ -271,12 +349,14 @@ class _Composer extends StatelessWidget {
     required this.onSend,
     required this.hint,
     required this.onMic,
+    required this.enabled,
   });
 
   final TextEditingController controller;
   final VoidCallback onSend;
   final String hint;
   final VoidCallback onMic;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -286,7 +366,7 @@ class _Composer extends StatelessWidget {
       child: Row(
         children: [
           BouncyButton(
-            onTap: onMic,
+            onTap: enabled ? onMic : () {},
             child: Container(
               width: 52,
               height: 52,
@@ -309,7 +389,10 @@ class _Composer extends StatelessWidget {
               ),
               child: TextField(
                 controller: controller,
-                onSubmitted: (_) => onSend(),
+                enabled: enabled,
+                onSubmitted: (_) {
+                  if (enabled) onSend();
+                },
                 textInputAction: TextInputAction.send,
                 style: theme.textTheme.bodyLarge,
                 decoration: InputDecoration(
@@ -322,12 +405,12 @@ class _Composer extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           BouncyButton(
-            onTap: onSend,
+            onTap: enabled ? onSend : () {},
             child: Container(
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary,
+                color: enabled ? theme.colorScheme.primary : theme.colorScheme.outlineVariant,
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.arrow_upward_rounded, color: theme.colorScheme.onPrimary),

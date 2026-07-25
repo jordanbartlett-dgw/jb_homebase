@@ -7,11 +7,11 @@ import 'package:jb_homebase_app/features/chat/widgets/typing_indicator.dart';
 
 /// Drives the core loop end to end against mock data:
 /// passkey sign-in → dashboard → agent dock into chat → send → canned
-/// reply → agent switch → insights tab. The typing indicator repeats its
+/// reply → agent switch → conversation history. The typing indicator repeats its
 /// animation, so fixed-duration pumps are used while it is on screen
 /// (pumpAndSettle would never settle).
 void main() {
-  testWidgets('Sign-in through dashboard, chat, and insights', (tester) async {
+  testWidgets('Sign-in through dashboard, chat, and history', (tester) async {
     await tester.pumpWidget(const ProviderScope(child: JBHomebaseApp()));
     await tester.pumpAndSettle();
 
@@ -51,10 +51,18 @@ void main() {
     expect(find.textContaining('Pull the SAGE quotes'), findsOneWidget);
     expect(find.textContaining('2 open quotes found'), findsOneWidget);
 
-    // Insights tab via the floating pill nav.
-    await tester.tap(find.byIcon(Icons.insights_rounded));
+    // History replaces the fabricated Insights tab and opens read-only
+    // transcripts.
+    await tester.tap(find.byIcon(Icons.history_rounded));
     await tester.pumpAndSettle();
-    expect(find.text('Insights'), findsWidgets);
-    expect(find.text('TRAINING LOAD'), findsOneWidget);
+    expect(find.text('History'), findsWidgets);
+    expect(
+      find.text('What is on my plate before the FG board call?'),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('history-main-today')));
+    await tester.pumpAndSettle();
+    expect(find.text('READ ONLY'), findsOneWidget);
+    expect(find.textContaining('Pull the SAGE quotes'), findsOneWidget);
   });
 }

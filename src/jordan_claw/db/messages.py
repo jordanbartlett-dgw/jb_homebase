@@ -101,3 +101,41 @@ async def get_recent_messages(
         .execute()
     )
     return list(reversed(result.data))
+
+
+async def get_messages_for_conversations(
+    client: AsyncClient,
+    conversation_ids: list[str],
+) -> list[dict]:
+    """Fetch user/assistant transcript rows for several conversations at once.
+
+    History pages call this once per page to avoid one messages query per
+    conversation.
+    """
+    if not conversation_ids:
+        return []
+    result = (
+        await client.table("messages")
+        .select("id, conversation_id, role, content, created_at")
+        .in_("conversation_id", conversation_ids)
+        .in_("role", ["user", "assistant"])
+        .order("created_at", desc=False)
+        .execute()
+    )
+    return result.data
+
+
+async def get_conversation_messages(
+    client: AsyncClient,
+    conversation_id: str,
+) -> list[dict]:
+    """Fetch the readable user/assistant transcript for one conversation."""
+    result = (
+        await client.table("messages")
+        .select("id, conversation_id, role, content, created_at")
+        .eq("conversation_id", conversation_id)
+        .in_("role", ["user", "assistant"])
+        .order("created_at", desc=False)
+        .execute()
+    )
+    return result.data

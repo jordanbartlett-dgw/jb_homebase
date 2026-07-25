@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/chat/chat_screen.dart';
 import '../features/home/dashboard_screen.dart';
-import '../features/insights/insights_screen.dart';
+import '../features/history/history_screen.dart';
 import '../theme/app_theme.dart';
 
 /// Shared theme configuration for design review in the Flutter Widget
@@ -56,7 +56,7 @@ Widget dashboardBrandPreview() => const DashboardScreen();
 Widget agentsBrandPreview() => const ChatScreen();
 
 @Preview(
-  name: 'Insights · Light',
+  name: 'History · Light',
   group: 'Monochrome + Cobalt',
   size: Size(390, 844),
   brightness: Brightness.light,
@@ -64,11 +64,11 @@ Widget agentsBrandPreview() => const ChatScreen();
   wrapper: homebasePreviewWrapper,
 )
 @Preview(
-  name: 'Insights · Dark',
+  name: 'History · Dark',
   group: 'Monochrome + Cobalt',
   size: Size(390, 844),
   brightness: Brightness.dark,
   theme: homebasePreviewTheme,
   wrapper: homebasePreviewWrapper,
 )
-Widget insightsBrandPreview() => const InsightsScreen();
+Widget historyBrandPreview() => const HistoryScreen();

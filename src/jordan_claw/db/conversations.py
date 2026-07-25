@@ -39,6 +39,49 @@ async def get_or_create_conversation(
     Closes conversations that have been idle longer than SESSION_TIMEOUT_MINUTES
     and starts a fresh one, so unrelated topics don't bleed into context.
     """
+    conversation = await get_active_conversation(
+        client,
+        org_id=org_id,
+        channel=channel,
+        channel_thread_id=channel_thread_id,
+    )
+    if conversation is not None:
+        return conversation
+
+    result = (
+        await client.table("conversations")
+        .insert(
+            {
+                "org_id": org_id,
+                "channel": channel,
+                "channel_thread_id": channel_thread_id,
+            }
+        )
+        .execute()
+    )
+    if agent_slug is not None:
+        await emitter.agent_session_started(
+            org_id=org_id,
+            user_id=None,
+            channel=channel,
+            agent_slug=agent_slug,
+        )
+    return result.data[0]
+
+
+async def get_active_conversation(
+    client: AsyncClient,
+    *,
+    org_id: str,
+    channel: str,
+    channel_thread_id: str,
+) -> dict | None:
+    """Return the active conversation, archiving it when its session expired.
+
+    This is the read-only counterpart to get_or_create_conversation. App
+    hydration uses it so an expired thread is never rendered as current and
+    then mixed with the fresh conversation minted by the next send.
+    """
     result = (
         await client.table("conversations")
         .select("*")
@@ -66,28 +109,89 @@ async def get_or_create_conversation(
                 .eq("id", conversation["id"])
                 .execute()
             )
-        else:
-            return conversation
+            return None
+        return conversation
+    return None
 
+
+async def list_channel_conversations(
+    client: AsyncClient,
+    *,
+    org_id: str,
+    channel: str,
+    limit: int,
+    before: datetime | None = None,
+    channel_thread_id: str | None = None,
+) -> tuple[list[dict], str | None]:
+    """List one page of conversations, newest session first.
+
+    Pagination is based on conversation creation time rather than updated_at:
+    older rows predate message-touch updates, while created_at is immutable and
+    yields a stable cursor.
+    """
+    query = (
+        client.table("conversations")
+        .select("id, channel_thread_id, status, created_at, updated_at")
+        .eq("org_id", org_id)
+        .eq("channel", channel)
+        .order("created_at", desc=True)
+        .limit(limit + 1)
+    )
+    if channel_thread_id is not None:
+        query = query.eq("channel_thread_id", channel_thread_id)
+    if before is not None:
+        query = query.lt("created_at", before.isoformat())
+
+    result = await query.execute()
+    rows = result.data[:limit]
+    next_before = rows[-1]["created_at"] if len(result.data) > limit and rows else None
+    return rows, next_before
+
+
+async def get_channel_conversation(
+    client: AsyncClient,
+    *,
+    conversation_id: str,
+    org_id: str,
+    channel: str,
+) -> dict | None:
+    """Fetch one conversation only when it belongs to the org and channel."""
     result = (
         await client.table("conversations")
-        .insert(
-            {
-                "org_id": org_id,
-                "channel": channel,
-                "channel_thread_id": channel_thread_id,
-            }
-        )
+        .select("id, channel_thread_id, status, created_at, updated_at")
+        .eq("id", conversation_id)
+        .eq("org_id", org_id)
+        .eq("channel", channel)
+        .limit(1)
         .execute()
     )
-    if agent_slug is not None:
-        await emitter.agent_session_started(
-            org_id=org_id,
-            user_id=None,
-            channel=channel,
-            agent_slug=agent_slug,
-        )
-    return result.data[0]
+    return result.data[0] if result.data else None
+
+
+async def archive_active_conversation(
+    client: AsyncClient,
+    *,
+    org_id: str,
+    channel: str,
+    channel_thread_id: str,
+) -> str | None:
+    """Archive the current session for a thread and return its id, if any."""
+    conversation = await get_active_conversation(
+        client,
+        org_id=org_id,
+        channel=channel,
+        channel_thread_id=channel_thread_id,
+    )
+    if conversation is None:
+        return None
+    await (
+        client.table("conversations")
+        .update({"status": "archived"})
+        .eq("id", conversation["id"])
+        .eq("org_id", org_id)
+        .execute()
+    )
+    return conversation["id"]
 
 
 async def update_conversation_status(

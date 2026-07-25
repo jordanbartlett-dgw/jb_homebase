@@ -18,7 +18,7 @@ class HomebaseShell extends StatelessWidget {
   static const _tabs = [
     (icon: Icons.grid_view_rounded, label: 'Home'),
     (icon: Icons.chat_bubble_outline_rounded, label: 'Agents'),
-    (icon: Icons.insights_rounded, label: 'Insights'),
+    (icon: Icons.history_rounded, label: 'History'),
   ];
 
   void _select(int index) {

@@ -5,8 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../features/auth/magic_link_screen.dart';
 import '../features/auth/passkey_screen.dart';
 import '../features/chat/chat_screen.dart';
+import '../features/history/history_detail_screen.dart';
+import '../features/history/history_screen.dart';
 import '../features/home/dashboard_screen.dart';
-import '../features/insights/insights_screen.dart';
 import '../features/voice/voice_overlay.dart';
 import '../shell/homebase_shell.dart';
 import '../state/app_state.dart';
@@ -78,8 +79,16 @@ GoRouter buildAppRouter(WidgetRef ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: Routes.insights,
-                builder: (context, state) => const InsightsScreen(),
+                path: Routes.history,
+                builder: (context, state) => const HistoryScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':conversationId',
+                    builder: (context, state) => HistoryDetailScreen(
+                      conversationId: state.pathParameters['conversationId']!,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

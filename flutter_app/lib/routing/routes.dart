@@ -8,7 +8,11 @@ class Routes {
   // Shell branches
   static const String home = '/home';
   static const String agents = '/agents';
-  static const String insights = '/insights';
+  static const String history = '/history';
+
+  static String historyDetail(String conversationId) {
+    return '$history/${Uri.encodeComponent(conversationId)}';
+  }
 
   // Auth
   static const String authPasskey = '/auth/passkey';

@@ -8,52 +8,6 @@ part of 'app_state.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// Shared gateway client — one connection pool for the whole session.
-
-@ProviderFor(apiClient)
-const apiClientProvider = ApiClientProvider._();
-
-/// Shared gateway client — one connection pool for the whole session.
-
-final class ApiClientProvider
-    extends $FunctionalProvider<ApiClient, ApiClient, ApiClient>
-    with $Provider<ApiClient> {
-  /// Shared gateway client — one connection pool for the whole session.
-  const ApiClientProvider._()
-    : super(
-        from: null,
-        argument: null,
-        retry: null,
-        name: r'apiClientProvider',
-        isAutoDispose: false,
-        dependencies: null,
-        $allTransitiveDependencies: null,
-      );
-
-  @override
-  String debugGetCreateSourceHash() => _$apiClientHash();
-
-  @$internal
-  @override
-  $ProviderElement<ApiClient> $createElement($ProviderPointer pointer) =>
-      $ProviderElement(pointer);
-
-  @override
-  ApiClient create(Ref ref) {
-    return apiClient(ref);
-  }
-
-  /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(ApiClient value) {
-    return $ProviderOverride(
-      origin: this,
-      providerOverride: $SyncValueProvider<ApiClient>(value),
-    );
-  }
-}
-
-String _$apiClientHash() => r'ae260c7f226d26b4d11723fe2ce5925a588d90aa';
-
 /// Auth state — true once the user has tapped through passkey or magic link.
 ///
 /// keepAlive: the router only ever `ref.read`s this, so the default
@@ -328,7 +282,7 @@ const agentThreadProvider = AgentThreadFamily._();
 /// Chat thread per agent. Threads live for the whole session so switching
 /// agents (or tabs) never wipes a conversation.
 final class AgentThreadProvider
-    extends $NotifierProvider<AgentThread, List<Message>> {
+    extends $AsyncNotifierProvider<AgentThread, List<Message>> {
   /// Chat thread per agent. Threads live for the whole session so switching
   /// agents (or tabs) never wipes a conversation.
   const AgentThreadProvider._({
@@ -356,14 +310,6 @@ final class AgentThreadProvider
   @override
   AgentThread create() => AgentThread();
 
-  /// {@macro riverpod.override_with_value}
-  Override overrideWithValue(List<Message> value) {
-    return $ProviderOverride(
-      origin: this,
-      providerOverride: $SyncValueProvider<List<Message>>(value),
-    );
-  }
-
   @override
   bool operator ==(Object other) {
     return other is AgentThreadProvider && other.argument == argument;
@@ -375,7 +321,7 @@ final class AgentThreadProvider
   }
 }
 
-String _$agentThreadHash() => r'4153d32eee852bea9f2fb3715afb17afd7596b98';
+String _$agentThreadHash() => r'1b050d48634ad55eb415a3c887b322a58828fab5';
 
 /// Chat thread per agent. Threads live for the whole session so switching
 /// agents (or tabs) never wipes a conversation.
@@ -384,9 +330,9 @@ final class AgentThreadFamily extends $Family
     with
         $ClassFamilyOverride<
           AgentThread,
+          AsyncValue<List<Message>>,
           List<Message>,
-          List<Message>,
-          List<Message>,
+          FutureOr<List<Message>>,
           String
         > {
   const AgentThreadFamily._()
@@ -411,21 +357,21 @@ final class AgentThreadFamily extends $Family
 /// Chat thread per agent. Threads live for the whole session so switching
 /// agents (or tabs) never wipes a conversation.
 
-abstract class _$AgentThread extends $Notifier<List<Message>> {
+abstract class _$AgentThread extends $AsyncNotifier<List<Message>> {
   late final _$args = ref.$arg as String;
   String get agentId => _$args;
 
-  List<Message> build(String agentId);
+  FutureOr<List<Message>> build(String agentId);
   @$mustCallSuper
   @override
   void runBuild() {
     final created = build(_$args);
-    final ref = this.ref as $Ref<List<Message>, List<Message>>;
+    final ref = this.ref as $Ref<AsyncValue<List<Message>>, List<Message>>;
     final element =
         ref.element
             as $ClassProviderElement<
-              AnyNotifier<List<Message>, List<Message>>,
-              List<Message>,
+              AnyNotifier<AsyncValue<List<Message>>, List<Message>>,
+              AsyncValue<List<Message>>,
               Object?,
               Object?
             >;

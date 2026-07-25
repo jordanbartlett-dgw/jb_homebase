@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from jordan_claw.db.conversations import get_or_create_conversation
+from jordan_claw.db.conversations import (
+    archive_active_conversation,
+    get_active_conversation,
+    get_or_create_conversation,
+)
 
 ORG_ID = "org-001"
 CHANNEL = "telegram"
@@ -100,4 +104,38 @@ async def test_stale_conversation_is_closed_and_new_created():
     result = await get_or_create_conversation(db, ORG_ID, CHANNEL, THREAD_ID)
     assert result["id"] == "new-conv"
     # Verify the old conversation was closed
+    update_mock.update.assert_called_once_with({"status": "archived"})
+
+
+@pytest.mark.asyncio
+async def test_active_read_archives_expired_session_without_creating_one():
+    stale = (datetime.now(UTC) - timedelta(minutes=45)).isoformat()
+    existing = {"id": "conv-stale", "status": "active"}
+    db, update_mock = _mock_db(conversation_data=[existing], last_message_time=stale)
+
+    result = await get_active_conversation(
+        db,
+        org_id=ORG_ID,
+        channel=CHANNEL,
+        channel_thread_id=THREAD_ID,
+    )
+
+    assert result is None
+    update_mock.update.assert_called_once_with({"status": "archived"})
+
+
+@pytest.mark.asyncio
+async def test_new_chat_archives_current_session():
+    recent = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
+    existing = {"id": "conv-existing", "status": "active"}
+    db, update_mock = _mock_db(conversation_data=[existing], last_message_time=recent)
+
+    result = await archive_active_conversation(
+        db,
+        org_id=ORG_ID,
+        channel=CHANNEL,
+        channel_thread_id=THREAD_ID,
+    )
+
+    assert result == "conv-existing"
     update_mock.update.assert_called_once_with({"status": "archived"})

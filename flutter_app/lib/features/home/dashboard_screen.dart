@@ -7,15 +7,13 @@ import '../../routing/routes.dart';
 import '../../shared/models/agent.dart';
 import '../../shared/widgets/bouncy_button.dart';
 import '../../shared/widgets/fade_slide_in.dart';
-import '../../shared/widgets/sparkline_card.dart';
-import '../../shared/widgets/week_stripe.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/colors.dart';
 
 /// DashboardScreen — the Homebase landing view.
-/// Layout: eyebrow date → Playfair greeting → inverse digest card →
-/// agent dock → insights row. Every block staggers in via FadeSlideIn.
+/// Layout: eyebrow date → Playfair greeting → honest digest placeholder →
+/// agent dock. Every block staggers in via FadeSlideIn.
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
@@ -81,31 +79,13 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ),
           ),
-          const SizedBox(height: 32),
-
-          // ---- Insights ------------------------------------------------
-          FadeSlideIn(
-            delay: const Duration(milliseconds: 380),
-            child: Text('THIS WEEK', style: theme.textTheme.titleSmall),
-          ),
-          const SizedBox(height: 12),
-          const FadeSlideIn(
-            delay: Duration(milliseconds: 440),
-            child: WeekStripe(),
-          ),
-          const SizedBox(height: 16),
-          const FadeSlideIn(
-            delay: Duration(milliseconds: 500),
-            child: SparklineCard(),
-          ),
         ],
       ),
     );
   }
 }
 
-/// The one loud element on the page: an inverse monochrome card with a
-/// cobalt live-state detail. Later this renders the real Daily Digest payload.
+/// Truthful placeholder until phase 2 connects the real morning briefing.
 class _DigestCard extends StatelessWidget {
   const _DigestCard();
 
@@ -116,69 +96,47 @@ class _DigestCard extends StatelessWidget {
     final heroInk = theme.colorScheme.onInverseSurface;
     final heroAccent = isDark ? AppColors.cobalt : AppColors.cobaltBright;
 
-    return BouncyButton(
-      onTap: () {}, // TODO(backend): full digest detail screen
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.inverseSurface,
-          borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-          border: Border.all(color: heroAccent.withValues(alpha: 0.7)),
-          boxShadow: AppTheme.softShadow(context),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: heroAccent,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'DAILY DIGEST',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: heroInk.withValues(alpha: 0.65),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              // TODO(backend): real digest from /api/today/cards
-              '3 things need your attention',
-              style: theme.textTheme.headlineSmall?.copyWith(color: heroInk),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Zone 2 session scheduled, two agent tasks completed '
-              'overnight, and your weekly review is ready.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: heroInk.withValues(alpha: 0.78),
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.inverseSurface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        border: Border.all(color: heroAccent.withValues(alpha: 0.7)),
+        boxShadow: AppTheme.softShadow(context),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.upcoming_outlined,
+                size: 18,
+                color: heroAccent,
               ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Text(
-                  'Read digest',
-                  style: theme.textTheme.labelLarge?.copyWith(color: heroAccent),
+              const SizedBox(width: 10),
+              Text(
+                'DAILY DIGEST',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: heroInk.withValues(alpha: 0.65),
                 ),
-                const SizedBox(width: 6),
-                Icon(
-                  Icons.arrow_forward_rounded,
-                  size: 18,
-                  color: heroAccent,
-                ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Your real briefing is coming next',
+            style: theme.textTheme.headlineSmall?.copyWith(color: heroInk),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'We’re connecting your morning briefing and calendar here. '
+            'Until then, this card won’t invent activity.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: heroInk.withValues(alpha: 0.78),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -5,12 +5,13 @@ import contextlib
 import logging
 import secrets
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 import logfire
 import structlog
 from aiogram import Bot
 from anthropic import AsyncAnthropic
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from jordan_claw.analytics import emitter
@@ -23,6 +24,7 @@ from jordan_claw.channels.telegram import (
 )
 from jordan_claw.config import get_settings
 from jordan_claw.db.client import close_supabase_client, get_supabase_client
+from jordan_claw.db.conversations import archive_active_conversation
 from jordan_claw.db.messages import get_message_by_channel_id
 from jordan_claw.events.pipeline import process_event
 from jordan_claw.gateway.analytics_proxy import build_analytics_router
@@ -34,6 +36,15 @@ from jordan_claw.gateway.app_chat import (
 )
 from jordan_claw.gateway.app_chat import (
     channel_message_id as app_channel_message_id,
+)
+from jordan_claw.gateway.app_history import (
+    ConversationDetail,
+    ConversationPage,
+    NewConversationRequest,
+    NewConversationResponse,
+    get_app_history_detail,
+    get_current_app_conversation,
+    list_app_history,
 )
 from jordan_claw.gateway.classifier import classify
 from jordan_claw.gateway.voice import (
@@ -254,7 +265,7 @@ async def receive_webhook(source: str, request: Request):
 
 
 def _require_app_token(request: Request, *, surface: str) -> None:
-    """Bearer auth against CLAW_APP_TOKEN for app-facing surfaces (/voice, /app/messages)."""
+    """Bearer auth against CLAW_APP_TOKEN for every app-facing surface."""
     settings = request.app.state.settings
     if not settings.claw_app_token:
         # Unconfigured token means the surface is disabled, never open.
@@ -307,6 +318,71 @@ async def app_text_message(body: AppMessageRequest, request: Request) -> AppMess
         reply=response.content,
         conversation_id=response.conversation_id,
     )
+
+
+@app.get("/app/conversations", response_model=ConversationPage)
+async def app_conversations(
+    request: Request,
+    agent_slug: str | None = Query(default=None, min_length=1, max_length=64),
+    before: datetime | None = None,
+    limit: int = Query(default=20, ge=1, le=50),
+) -> ConversationPage:
+    """List app conversations for History, newest session first."""
+    _require_app_token(request, surface="app conversations")
+    return await list_app_history(
+        request.app.state.db,
+        org_id=request.app.state.settings.default_org_id,
+        limit=limit,
+        before=before,
+        agent_slug=agent_slug,
+    )
+
+
+@app.get("/app/conversations/current", response_model=ConversationDetail | None)
+async def app_current_conversation(
+    request: Request,
+    agent_slug: str = Query(min_length=1, max_length=64),
+) -> ConversationDetail | None:
+    """Return the active transcript for an agent so app relaunches hydrate."""
+    _require_app_token(request, surface="app conversations")
+    return await get_current_app_conversation(
+        request.app.state.db,
+        org_id=request.app.state.settings.default_org_id,
+        agent_slug=agent_slug,
+    )
+
+
+@app.post("/app/conversations/new", response_model=NewConversationResponse)
+async def app_new_conversation(
+    body: NewConversationRequest,
+    request: Request,
+) -> NewConversationResponse:
+    """Archive an agent's active app session; the next send starts clean."""
+    _require_app_token(request, surface="app conversations")
+    archived_id = await archive_active_conversation(
+        request.app.state.db,
+        org_id=request.app.state.settings.default_org_id,
+        channel=APP_CHANNEL,
+        channel_thread_id=body.agent_slug,
+    )
+    return NewConversationResponse(archived_conversation_id=archived_id)
+
+
+@app.get("/app/conversations/{conversation_id}", response_model=ConversationDetail)
+async def app_conversation_detail(
+    conversation_id: str,
+    request: Request,
+) -> ConversationDetail:
+    """Return an org-scoped, read-only app transcript."""
+    _require_app_token(request, surface="app conversations")
+    detail = await get_app_history_detail(
+        request.app.state.db,
+        org_id=request.app.state.settings.default_org_id,
+        conversation_id=conversation_id,
+    )
+    if detail is None:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    return detail
 
 
 @app.post("/voice", response_model=VoiceResponse)

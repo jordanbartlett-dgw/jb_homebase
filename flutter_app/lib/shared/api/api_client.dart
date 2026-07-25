@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'conversation_api_models.dart';
 import 'gateway_config.dart';
 
 /// Reply from the gateway for one sent message (text or voice).
@@ -54,8 +55,7 @@ class ApiClient {
 
   /// One key per utterance; a Railway edge replay of the same request
   /// carries the same key and converges on the original reply.
-  String _idempotencyKey() =>
-      '${DateTime.now().microsecondsSinceEpoch}-${_keySeq++}';
+  String _idempotencyKey() => '${DateTime.now().microsecondsSinceEpoch}-${_keySeq++}';
 
   /// POST /app/messages — text chat with an explicit agent.
   Future<AgentReply> sendMessage({
@@ -109,6 +109,73 @@ class ApiClient {
       reply: body['reply'] as String,
       transcript: body['transcript'] as String?,
     );
+  }
+
+  /// GET /app/conversations — one cursor-paginated history page.
+  Future<ConversationPagePayload> listConversations({String? before}) async {
+    final query = <String, String>{'limit': '20'};
+    if (before != null) query['before'] = before;
+    final uri = Uri.parse(
+      '$baseUrl/app/conversations',
+    ).replace(queryParameters: query);
+    final resp = await _inner.get(uri, headers: _authorizationHeaders()).timeout(_timeout);
+    return ConversationPagePayload.fromJson(_decode(resp));
+  }
+
+  /// GET /app/conversations/current — active transcript for app hydration.
+  Future<ConversationDetailPayload?> currentConversation(
+    String agentSlug,
+  ) async {
+    final uri = Uri.parse('$baseUrl/app/conversations/current').replace(
+      queryParameters: {'agent_slug': agentSlug},
+    );
+    final resp = await _inner.get(uri, headers: _authorizationHeaders()).timeout(_timeout);
+    final decoded = _decodeNullable(resp);
+    return decoded == null ? null : ConversationDetailPayload.fromJson(decoded);
+  }
+
+  /// GET /app/conversations/{id} — read-only transcript from History.
+  Future<ConversationDetailPayload> conversation(
+    String conversationId,
+  ) async {
+    final encodedId = Uri.encodeComponent(conversationId);
+    final resp = await _inner
+        .get(
+          Uri.parse('$baseUrl/app/conversations/$encodedId'),
+          headers: _authorizationHeaders(),
+        )
+        .timeout(_timeout);
+    return ConversationDetailPayload.fromJson(_decode(resp));
+  }
+
+  /// POST /app/conversations/new — archive current; next send starts clean.
+  Future<void> startNewConversation(String agentSlug) async {
+    final resp = await _inner
+        .post(
+          Uri.parse('$baseUrl/app/conversations/new'),
+          headers: {
+            ..._authorizationHeaders(),
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'agent_slug': agentSlug}),
+        )
+        .timeout(_timeout);
+    _decode(resp);
+  }
+
+  Map<String, String> _authorizationHeaders() {
+    return {'Authorization': 'Bearer $appToken'};
+  }
+
+  Map<String, dynamic>? _decodeNullable(http.Response resp) {
+    if (resp.statusCode != 200) {
+      throw ApiException(
+        resp.statusCode,
+        resp.body.isEmpty ? 'HTTP ${resp.statusCode}' : resp.body,
+      );
+    }
+    final decoded = jsonDecode(resp.body);
+    return decoded == null ? null : decoded as Map<String, dynamic>;
   }
 
   Map<String, dynamic> _decode(http.Response resp) {
