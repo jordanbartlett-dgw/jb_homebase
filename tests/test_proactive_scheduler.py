@@ -11,21 +11,25 @@ from jordan_claw.proactive.models import ProactiveSchedule
 
 def _make_schedule(
     task_type: str = "morning_briefing",
-    cron: str = "0 7 * * *",
+    cron: str | None = "0 7 * * *",
     last_run: datetime | None = None,
     schedule_id: str = "s1",
     timezone: str = "America/Chicago",
     config: dict | None = None,
+    run_at: datetime | None = None,
+    source: str = "system",
 ) -> ProactiveSchedule:
     return ProactiveSchedule(
         id=schedule_id,
         org_id="org-1",
         name=task_type,
         cron_expression=cron,
+        run_at=run_at,
         timezone=timezone,
         enabled=True,
         task_type=task_type,
         config=config or {"agent_slug": "claw-main"},
+        source=source,
         last_run_at=last_run,
         created_at="2026-04-05T00:00:00+00:00",
     )
@@ -82,6 +86,95 @@ def test_should_run_weekly_wrong_day():
     # 2026-04-05 is a Saturday
     now = datetime(2026, 4, 5, 14, 0, 0, tzinfo=UTC)
     assert should_run(schedule, now) is False
+
+
+def test_should_run_one_shot_due():
+    from jordan_claw.proactive.scheduler import should_run
+
+    run_at = datetime(2026, 7, 25, 15, 0, 0, tzinfo=UTC)
+    schedule = _make_schedule(task_type="reminder", cron=None, run_at=run_at, source="reminder")
+    assert should_run(schedule, datetime(2026, 7, 25, 15, 1, 0, tzinfo=UTC)) is True
+
+
+def test_should_run_one_shot_not_yet_due():
+    from jordan_claw.proactive.scheduler import should_run
+
+    run_at = datetime(2026, 7, 25, 15, 0, 0, tzinfo=UTC)
+    schedule = _make_schedule(task_type="reminder", cron=None, run_at=run_at, source="reminder")
+    assert should_run(schedule, datetime(2026, 7, 25, 14, 59, 0, tzinfo=UTC)) is False
+
+
+def test_should_run_one_shot_never_refires():
+    from jordan_claw.proactive.scheduler import should_run
+
+    run_at = datetime(2026, 7, 25, 15, 0, 0, tzinfo=UTC)
+    schedule = _make_schedule(
+        task_type="reminder",
+        cron=None,
+        run_at=run_at,
+        source="reminder",
+        last_run=datetime(2026, 7, 25, 15, 1, 0, tzinfo=UTC),
+    )
+    assert should_run(schedule, datetime(2026, 7, 25, 18, 0, 0, tzinfo=UTC)) is False
+
+
+def test_should_run_false_when_neither_cron_nor_run_at():
+    from jordan_claw.proactive.scheduler import should_run
+
+    schedule = _make_schedule(cron=None, run_at=None)
+    assert should_run(schedule, datetime(2026, 7, 25, 15, 0, 0, tzinfo=UTC)) is False
+
+
+@pytest.mark.asyncio
+async def test_dispatch_one_shot_disables_schedule():
+    from jordan_claw.proactive.scheduler import dispatch_task
+
+    schedule = _make_schedule(
+        task_type="reminder",
+        cron=None,
+        run_at=datetime(2026, 7, 25, 15, 0, 0, tzinfo=UTC),
+        source="reminder",
+        config={"agent_slug": "claw-main", "message": "Call the accountant"},
+    )
+    bots = {"claw-main": AsyncMock()}
+    settings = MagicMock(default_agent_slug="claw-main")
+    mock_disable = AsyncMock()
+
+    with (
+        patch.dict(
+            "jordan_claw.proactive.scheduler.EXECUTOR_MAP",
+            {"reminder": AsyncMock(return_value="Call the accountant")},
+        ),
+        patch("jordan_claw.proactive.scheduler.send_proactive_message"),
+        patch("jordan_claw.proactive.scheduler.update_last_run", new=AsyncMock()),
+        patch("jordan_claw.proactive.scheduler.disable_schedule", new=mock_disable),
+    ):
+        await dispatch_task(schedule, MagicMock(), bots, settings)
+
+    mock_disable.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_cron_schedule_stays_enabled():
+    from jordan_claw.proactive.scheduler import dispatch_task
+
+    schedule = _make_schedule(task_type="reminder", cron="0 9 * * *", source="reminder")
+    bots = {"claw-main": AsyncMock()}
+    settings = MagicMock(default_agent_slug="claw-main")
+    mock_disable = AsyncMock()
+
+    with (
+        patch.dict(
+            "jordan_claw.proactive.scheduler.EXECUTOR_MAP",
+            {"reminder": AsyncMock(return_value="Drink water")},
+        ),
+        patch("jordan_claw.proactive.scheduler.send_proactive_message"),
+        patch("jordan_claw.proactive.scheduler.update_last_run", new=AsyncMock()),
+        patch("jordan_claw.proactive.scheduler.disable_schedule", new=mock_disable),
+    ):
+        await dispatch_task(schedule, MagicMock(), bots, settings)
+
+    mock_disable.assert_not_awaited()
 
 
 @pytest.mark.asyncio

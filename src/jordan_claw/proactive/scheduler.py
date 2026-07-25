@@ -10,7 +10,7 @@ from croniter import croniter
 from supabase._async.client import AsyncClient
 
 from jordan_claw.config import Settings
-from jordan_claw.db.proactive import get_enabled_schedules, update_last_run
+from jordan_claw.db.proactive import disable_schedule, get_enabled_schedules, update_last_run
 from jordan_claw.events.fastmail import poll_fastmail
 from jordan_claw.proactive.delivery import send_proactive_message
 from jordan_claw.proactive.executors import (
@@ -19,8 +19,10 @@ from jordan_claw.proactive.executors import (
     execute_daily_scan,
     execute_daily_workout,
     execute_morning_briefing,
+    execute_reminder,
     execute_weekly_feedback_request,
     execute_weekly_review,
+    execute_weekly_training_review,
 )
 from jordan_claw.proactive.models import ProactiveSchedule
 from jordan_claw.tools.calendar import get_calendar_events
@@ -33,13 +35,25 @@ EXECUTOR_MAP = {
     "daily_scan": execute_daily_scan,
     "weekly_feedback_request": execute_weekly_feedback_request,
     "daily_workout": execute_daily_workout,
+    "reminder": execute_reminder,
+    "weekly_training_review": execute_weekly_training_review,
 }
 
 CHECK_INTERVAL_SECONDS = 60
 
 
 def should_run(schedule: ProactiveSchedule, now: datetime) -> bool:
-    """Determine if a schedule should fire based on its cron expression and last run."""
+    """Determine if a schedule should fire based on its cron expression and last run.
+
+    One-shot schedules (run_at set, no cron) fire once when due; dispatch_task
+    disables them after firing, and last_run_at guards against a re-fire in the
+    window before that lands.
+    """
+    if schedule.run_at is not None:
+        return schedule.last_run_at is None and now >= schedule.run_at
+    if schedule.cron_expression is None:
+        return False
+
     tz = ZoneInfo(schedule.timezone)
     now_local = now.astimezone(tz)
 
@@ -107,6 +121,10 @@ async def dispatch_task(
         )
 
         await update_last_run(db, schedule.id)
+
+        # One-shot schedules fire exactly once.
+        if schedule.run_at is not None:
+            await disable_schedule(db, schedule.id)
 
         # After morning briefing, schedule calendar reminders for today
         if schedule.task_type == "morning_briefing":

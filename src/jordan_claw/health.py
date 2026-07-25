@@ -7,6 +7,8 @@ from anthropic import AsyncAnthropic, NotFoundError
 from pydantic import BaseModel
 from supabase._async.client import AsyncClient
 
+from jordan_claw.db.agents import get_org_default_model, resolve_model
+
 log = structlog.get_logger()
 
 # Definitive verdicts only; transient API failures are never cached so they
@@ -61,16 +63,28 @@ async def build_health_report(
     going silent.
     """
     result = (
-        await db.table("agents").select("slug, model, is_active").eq("is_active", True).execute()
+        await db.table("agents")
+        .select("slug, org_id, model, is_active")
+        .eq("is_active", True)
+        .execute()
     )
 
     agents: list[AgentHealth] = []
     missing_bots: list[str] = []
     invalid_models: list[str] = []
+    org_defaults: dict[str, str | None] = {}
     for row in result.data:
-        slug, model = row["slug"], row["model"]
+        slug, org_id = row["slug"], row["org_id"]
+        if org_id not in org_defaults:
+            org_defaults[org_id] = await get_org_default_model(db, org_id)
+        # Validate the RESOLVED model — a NULL row inherits the org default,
+        # and an unresolvable model must gate the deploy like an invalid one.
+        try:
+            model = resolve_model(row["model"], org_defaults[org_id])
+        except ValueError:
+            model = "(unset)"
         bot_running = slug in running_bots
-        model_ok = await _validate_model(anthropic_client, model)
+        model_ok = False if model == "(unset)" else await _validate_model(anthropic_client, model)
         if not bot_running:
             missing_bots.append(slug)
         if model_ok is False:

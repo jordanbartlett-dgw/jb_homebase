@@ -10,6 +10,7 @@ from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.tools.calendar import check_calendar, schedule_event
 from jordan_claw.tools.memory import forget_memory, recall_memory
 from jordan_claw.tools.obsidian import create_source_note, fetch_article, read_note, search_notes
+from jordan_claw.tools.reminders import cancel_reminder, list_reminders, set_reminder
 from jordan_claw.tools.time import current_datetime
 from jordan_claw.tools.web_search import search_web
 from jordan_claw.tools.workout import (
@@ -91,6 +92,38 @@ CAPABILITY_REGISTRY: dict[str, ToolGroup] = {
             (log_workout, "log_workout"),
             (amend_last_workout, "amend_last_workout"),
             (get_recent_workouts, "get_recent_workouts"),
+        ),
+    ),
+    "reminders": ToolGroup(
+        id="reminders",
+        description="Set, list, and cancel one-off or recurring Telegram reminders for Jordan.",
+        toolset=_toolset(
+            (set_reminder, "set_reminder"),
+            (list_reminders, "list_reminders"),
+            (cancel_reminder, "cancel_reminder"),
+        ),
+    ),
+    # Read-only cross-agent views. Same tool fns as the full groups — never
+    # grant a *_readonly group alongside its full group (duplicate tool names).
+    # TODO(phase-2): agent-to-agent delegation would supersede these mirrors.
+    "workout_readonly": ToolGroup(
+        id="workout_readonly",
+        description=(
+            "Read-only view of Jordan's training: profile, active plan, recent logs. "
+            "No logging, no plan changes."
+        ),
+        toolset=_toolset(
+            (get_workout_profile_tool, "get_workout_profile"),
+            (get_workout_plan, "get_workout_plan"),
+            (get_recent_workouts, "get_recent_workouts"),
+        ),
+    ),
+    "obsidian_readonly": ToolGroup(
+        id="obsidian_readonly",
+        description="Read-only search and reading of Jordan's Obsidian notes. No note creation.",
+        toolset=_toolset(
+            (search_notes, "search_notes"),
+            (read_note, "read_note"),
         ),
     ),
 }

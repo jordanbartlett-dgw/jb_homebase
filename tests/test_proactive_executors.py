@@ -264,3 +264,78 @@ async def test_daily_workout_sentinel_suppresses_send(reply):
             MagicMock(), "org-1", {"agent_slug": "workout-coach"}, MagicMock()
         )
     assert result == ""
+
+
+def _log(logged_date: str, activity: str = "run", notes: str | None = None):
+    from jordan_claw.workout.models import WorkoutLog
+
+    return WorkoutLog(
+        id=f"l-{logged_date}-{activity}",
+        org_id="org-1",
+        logged_date=logged_date,
+        activity=activity,
+        notes=notes,
+    )
+
+
+@pytest.mark.asyncio
+async def test_weekly_training_review_no_plan_one_liner():
+    from jordan_claw.proactive.executors import execute_weekly_training_review
+
+    with (
+        patch("jordan_claw.proactive.executors.get_active_plan", return_value=None),
+        patch("jordan_claw.proactive.executors._run_agent_prompt") as mock_run,
+    ):
+        result = await execute_weekly_training_review(
+            MagicMock(), "org-1", {"agent_slug": "workout-coach"}, MagicMock()
+        )
+
+    assert result == "No active training plan this week. Want me to draft one?"
+    mock_run.assert_not_called()  # never compose a fake review
+
+
+@pytest.mark.asyncio
+async def test_weekly_training_review_no_logs_this_week_one_liner():
+    from jordan_claw.proactive.executors import execute_weekly_training_review
+
+    # Logs exist but all predate this week's Monday.
+    old_logs = [_log("2020-01-01"), _log("2020-01-03", "strength")]
+    with (
+        patch("jordan_claw.proactive.executors.get_active_plan", return_value=_plan()),
+        patch("jordan_claw.proactive.executors.get_recent_workout_logs", return_value=old_logs),
+        patch("jordan_claw.proactive.executors._run_agent_prompt") as mock_run,
+    ):
+        result = await execute_weekly_training_review(
+            MagicMock(), "org-1", {"agent_slug": "workout-coach"}, MagicMock()
+        )
+
+    assert result.startswith("No workouts logged this week.")
+    assert "?" in result  # one question, not a fake review
+    mock_run.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_weekly_training_review_composes_via_coach():
+    from jordan_claw.proactive.executors import execute_weekly_training_review
+
+    today = datetime.now(CHICAGO).date().isoformat()
+    logs = [_log(today, "run", "felt good"), _log("2020-01-01", "strength", "ancient")]
+    with (
+        patch("jordan_claw.proactive.executors.get_active_plan", return_value=_plan()),
+        patch("jordan_claw.proactive.executors.get_recent_workout_logs", return_value=logs),
+        patch(
+            "jordan_claw.proactive.executors._run_agent_prompt",
+            return_value="Solid week. Move the strength session to Tuesday.",
+        ) as mock_run,
+    ):
+        result = await execute_weekly_training_review(
+            MagicMock(), "org-1", {"agent_slug": "workout-coach"}, MagicMock()
+        )
+
+    assert result == "Solid week. Move the strength session to Tuesday."
+    assert mock_run.call_args.kwargs["schedule_name"] == "weekly_training_review"
+    assert mock_run.call_args[0][2] == "workout-coach"  # agent_slug positional
+    prompt = mock_run.call_args[0][4]
+    assert "felt good" in prompt  # this week's log is in the prompt
+    assert "ancient" not in prompt  # out-of-week log filtered out
+    assert "Easy 4mi" in prompt  # plan content present

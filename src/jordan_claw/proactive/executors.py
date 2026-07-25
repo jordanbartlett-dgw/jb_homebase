@@ -242,6 +242,16 @@ async def execute_daily_scan(
     return "Calendar conflicts detected:\n" + "\n".join(conflicts)
 
 
+async def execute_reminder(
+    db: AsyncClient,
+    org_id: str,
+    config: dict,
+    settings: Settings,
+) -> str:
+    """Deliver the stored reminder text verbatim. No agent run, no LLM call."""
+    return config.get("message", "")
+
+
 async def execute_weekly_feedback_request(
     db: AsyncClient,
     org_id: str,
@@ -334,6 +344,69 @@ async def execute_daily_workout(
     if "NOTHING_TO_SEND" in content:
         return ""
     return content
+
+
+WEEKLY_TRAINING_REVIEW_PROMPT = """\
+Compose the Sunday training review for Jordan. Compare this week's logs
+against what the plan scheduled for the week.
+
+Cover: what got done, what was missed, and one or two specific adjustments
+for next week. If the same session was missed twice or more, propose moving
+it to a different day instead of repeating it. Under 10 short sentences.
+No motivational filler. No em dashes. Never invent workouts that are not
+in the logs.
+
+## Week
+{week_start} to {week_end}
+
+## Active Plan
+{plan}
+
+## This Week's Logs
+{logs}
+"""
+
+
+async def execute_weekly_training_review(
+    db: AsyncClient,
+    org_id: str,
+    config: dict,
+    settings: Settings,
+) -> str:
+    """Sunday review: compare the week's logs against the plan via the coach.
+
+    No plan or no logs this week short-circuits to a one-liner plus one
+    question — deterministic, so a fake review can never be composed.
+    """
+    tz_name = config.get("timezone", "America/Chicago")
+    today = datetime.now(ZoneInfo(tz_name))
+    monday = (today - timedelta(days=today.weekday())).date()
+
+    plan = await get_active_plan(db, org_id)
+    if plan is None:
+        return "No active training plan this week. Want me to draft one?"
+
+    logs = await get_recent_workout_logs(db, org_id, limit=14)
+    week_logs = [log for log in logs if log.logged_date >= monday.isoformat()]
+    if not week_logs:
+        return (
+            "No workouts logged this week. "
+            "Did you train without logging, or was it a full week off?"
+        )
+
+    logs_text = "\n".join(
+        f"- [{log.logged_date}] {log.activity}: {log.notes or ''}" for log in week_logs
+    )
+    prompt = WEEKLY_TRAINING_REVIEW_PROMPT.format(
+        week_start=monday.isoformat(),
+        week_end=today.date().isoformat(),
+        plan=plan.model_dump_json(exclude={"org_id"}),
+        logs=logs_text,
+    )
+    agent_slug = config.get("agent_slug", "workout-coach")
+    return await _run_agent_prompt(
+        db, org_id, agent_slug, settings, prompt, schedule_name="weekly_training_review"
+    )
 
 
 def format_memory_flag(old_content: str, new_content: str) -> str:
