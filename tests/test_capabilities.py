@@ -18,7 +18,7 @@ def test_registry_covers_all_tools():
     tool_names = set()
     for group in CAPABILITY_REGISTRY.values():
         tool_names.update(group.toolset.tools)
-    assert len(tool_names) == 24
+    assert len(tool_names) == 29
 
 
 def test_expected_groups_exist():
@@ -127,6 +127,11 @@ async def test_med_check_capabilities_reach_the_model():
         "fetch_fda_label",
         "get_medication_profile",
         "save_medication_profile",
+        "log_health_event",
+        "amend_last_health_event",
+        "get_health_events",
+        "get_last_visit_date",
+        "create_timeline_note",
         "current_datetime",
     } <= sent
 

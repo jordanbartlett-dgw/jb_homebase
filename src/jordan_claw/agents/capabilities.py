@@ -9,8 +9,13 @@ from pydantic_ai.toolsets import FunctionToolset
 from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.tools.calendar import check_calendar, schedule_event
 from jordan_claw.tools.meds import (
+    amend_last_health_event,
+    create_timeline_note,
     fetch_fda_label,
+    get_health_events,
+    get_last_visit_date,
     get_medication_profile_tool,
+    log_health_event,
     normalize_medication,
     save_medication_profile,
 )
@@ -113,14 +118,19 @@ CAPABILITY_REGISTRY: dict[str, ToolGroup] = {
         id="meds",
         description=(
             "Medication safety pre-screening for Jordan's daughter: RxNorm drug "
-            "identity, FDA label warnings with QT extraction, and her current "
-            "medication profile."
+            "identity, FDA label warnings with QT extraction, her current "
+            "medication profile, health event log, and doctor timelines."
         ),
         toolset=_toolset(
             (normalize_medication, "normalize_medication"),
             (fetch_fda_label, "fetch_fda_label"),
             (get_medication_profile_tool, "get_medication_profile"),
             (save_medication_profile, "save_medication_profile"),
+            (log_health_event, "log_health_event"),
+            (amend_last_health_event, "amend_last_health_event"),
+            (get_health_events, "get_health_events"),
+            (get_last_visit_date, "get_last_visit_date"),
+            (create_timeline_note, "create_timeline_note"),
         ),
     ),
     # Read-only cross-agent views. Same tool fns as the full groups — never

@@ -58,3 +58,12 @@ class MedCheckInputs(BaseModel):
 class MedCheckExpected(BaseModel):
     required_phrases: list[str] = Field(default_factory=list)
     forbidden_phrases: list[str] = Field(default_factory=list)
+    forbidden_in_note: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Phrases checked case-insensitively ONLY against the text after the "
+            '"===NOTE===" marker (see evals/tasks/med_check.py::_compose_reply). '
+            "If declared and the output has no note marker, scores 0.0 — a "
+            "timeline case that produced no note is a failure."
+        ),
+    )

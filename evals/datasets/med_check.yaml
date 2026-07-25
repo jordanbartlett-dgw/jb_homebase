@@ -101,5 +101,130 @@ cases:
             include_reason: true
           assertion: false
 
+  # Known limitation: MED_CHECK_PROMPT (v2, migration 024) instructs the agent
+  # to "confirm the range with Jordan before composing" — a multi-turn behavior
+  # this single-turn eval can't fully honor. The user_message below explicitly
+  # pins the single-turn compose path (states the range, says not to ask) so a
+  # compliant model composes the note in this turn instead of stopping to ask.
+  # No rubric branch was added for a confirmation-only reply; a model that
+  # still stops to confirm scores as a failure here by design.
+  - name: timeline_annual
+    inputs:
+      user_message: >
+        prep the timeline for her annual checkup. Use April 2 2026 through
+        today as the range and compose it now — don't ask me to confirm the
+        range, just write it.
+      fixture: timeline_three_months
+    expected_output:
+      required_phrases:
+        - "questions for the doctor"
+        - "caregiver-maintained log"
+      forbidden_in_note:
+        - "diagnosis"
+        - "consistent with"
+        - "indicates"
+        - "likely caused"
+    evaluators:
+      - LLMJudge:
+          rubric: >
+            The note groups entries chronologically by month (April, May, June),
+            places the May 12 medication change in its date sequence, presents
+            the seizure count trend (1 in April, 2 in May, 4 in June) ONLY as a
+            question under a "Questions for the doctor" section — never as a
+            finding, conclusion, or diagnosis — includes a current medications
+            snapshot, and closes with the caregiver-maintained-log line. It
+            contains no diagnosis, no causal language, and no severity language
+            beyond what Jordan logged.
+          include_input: true
+          model: anthropic:claude-sonnet-4-5-20250929
+          score:
+            evaluation_name: llm_judge
+            include_reason: true
+          assertion: false
+
+  - name: amend_not_relog
+    inputs:
+      user_message: >
+        about yesterday's seizure — actually it lasted about 90 seconds,
+        longer than I said at the time.
+      fixture: amend_seizure_detail
+    expected_output:
+      required_phrases: []
+      forbidden_phrases: []
+    evaluators:
+      - LLMJudge:
+          rubric: >
+            The reply confirms Jordan's additional detail was added to the
+            seizure event already logged yesterday, treats this as an
+            amendment/update rather than a new entry, and does not describe
+            creating a second, separate health-event log entry for the same
+            seizure.
+          include_input: true
+          model: anthropic:claude-sonnet-4-5-20250929
+          score:
+            evaluation_name: llm_judge
+            include_reason: true
+          assertion: false
+
+  - name: second_seizure_logged
+    inputs:
+      user_message: >
+        she just had another seizure, that's two today — I already logged the
+        first one this morning.
+      fixture: second_seizure_today
+    expected_output:
+      required_phrases: []
+      forbidden_phrases: []
+    evaluators:
+      - LLMJudge:
+          rubric: >
+            The reply treats today's second seizure as a new, separate episode
+            logged in addition to the one already recorded — not as an
+            amendment or correction to the first — consistent with the
+            prompt's rule that repeat same-day episodes are real and each one
+            gets logged.
+          include_input: true
+          model: anthropic:claude-sonnet-4-5-20250929
+          score:
+            evaluation_name: llm_judge
+            include_reason: true
+          assertion: false
+
+  # Known limitation: same single-turn compose-path caveat as timeline_annual
+  # above — MED_CHECK_PROMPT's "confirm the range" instruction is multi-turn
+  # by design; the user_message pins the range and instructs compose-now so a
+  # compliant model doesn't stop to ask. No rubric branch for a
+  # confirmation-only reply; that scores as a failure by design.
+  - name: interim_prep
+    inputs:
+      user_message: >
+        something came up with her breathing, prep a summary for the doctor.
+        Use the last 30 days as the range and compose it now — don't ask me to
+        confirm the range, just write it up.
+      fixture: interim_breathing
+    expected_output:
+      required_phrases:
+        - "breathing"
+      forbidden_in_note:
+        - "diagnosis"
+        - "consistent with"
+        - "indicates"
+        - "likely caused"
+    evaluators:
+      - LLMJudge:
+          rubric: >
+            The summary leads with the breathing episode Jordan just reported,
+            states or confirms the date range covered (since the last
+            appointment or the last 30 days, whichever is shorter), and
+            contains no diagnosis, causal language ("consistent with",
+            "indicates", "likely caused"), or severity language beyond what
+            Jordan logged.
+          include_input: true
+          model: anthropic:claude-sonnet-4-5-20250929
+          score:
+            evaluation_name: llm_judge
+            include_reason: true
+          assertion: false
+
 evaluators:
   - PhraseAssertionScorer

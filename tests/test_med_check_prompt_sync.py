@@ -1,5 +1,5 @@
 """Byte-compare the three in-repo copies of the med-check system prompt: the
-SQL literal in migration 022, MED_CHECK_PROMPT in evals/tasks/med_check.py,
+SQL literal in migration 024, MED_CHECK_PROMPT in evals/tasks/med_check.py,
 and the fenced "deployed system prompt" block in docs/med-check-agent.md.
 
 No API, no network — pure text extraction and comparison. Catches drift
@@ -15,13 +15,12 @@ from pathlib import Path
 from evals.tasks.med_check import MED_CHECK_PROMPT
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-MIGRATION_PATH = REPO_ROOT / "supabase/migrations/022_med_check_agent.sql"
+MIGRATION_PATH = REPO_ROOT / "supabase/migrations/024_med_check_prompt_v2.sql"
 DOC_PATH = REPO_ROOT / "docs/med-check-agent.md"
 
-# Matches the system_prompt string literal: it immediately follows the
-# 'med-check' slug literal and is immediately followed by the NULL model
-# literal. SQL '' is the escaped single quote and gets unescaped to '.
-_SQL_PROMPT_RE = re.compile(r"'med-check',\s*\n\s*'(.*?)',\s*\n\s*NULL,", re.DOTALL)
+# Matches the system_prompt string literal in the UPDATE statement. SQL ''
+# is the escaped single quote and gets unescaped to '.
+_SQL_PROMPT_RE = re.compile(r"UPDATE agents SET system_prompt = '(.*?)'\nWHERE slug", re.DOTALL)
 
 # The doc has exactly one fenced block: the "Deployed system prompt" section.
 _DOC_FENCE_RE = re.compile(r"```\n(.*?)\n```", re.DOTALL)
@@ -30,7 +29,7 @@ _DOC_FENCE_RE = re.compile(r"```\n(.*?)\n```", re.DOTALL)
 def _extract_sql_prompt() -> str:
     sql = MIGRATION_PATH.read_text()
     match = _SQL_PROMPT_RE.search(sql)
-    assert match, "could not locate system_prompt literal in migration 022 SQL"
+    assert match, "could not locate system_prompt literal in migration 024 SQL"
     return match.group(1).replace("''", "'")
 
 

@@ -36,6 +36,11 @@ EXPECTED_TOOLS = [
     "fetch_fda_label",
     "get_medication_profile",
     "save_medication_profile",
+    "log_health_event",
+    "amend_last_health_event",
+    "get_health_events",
+    "get_last_visit_date",
+    "create_timeline_note",
 ]
 
 
@@ -86,6 +91,11 @@ def test_deps_tools_have_ctx_param():
         "fetch_fda_label",
         "get_medication_profile",
         "save_medication_profile",
+        "log_health_event",
+        "amend_last_health_event",
+        "get_health_events",
+        "get_last_visit_date",
+        "create_timeline_note",
     ]
     for name in deps_tools:
         sig = inspect.signature(ALL_TOOLS[name].function)

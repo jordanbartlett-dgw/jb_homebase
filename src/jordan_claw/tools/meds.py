@@ -1,14 +1,29 @@
 from __future__ import annotations
 
+import hashlib
 import re
+from datetime import UTC, datetime
+from typing import Literal
 
 import httpx
 import structlog
+import yaml
 from pydantic_ai import RunContext
 
 from jordan_claw.agents.deps import AgentDeps
+from jordan_claw.db.health_log import (
+    get_events_for_date,
+    get_health_events_range,
+    get_last_appointment_date,
+    get_latest_health_event,
+    insert_health_event,
+    update_health_event,
+)
 from jordan_claw.db.meds import get_medication_profile, upsert_medication_profile
-from jordan_claw.meds.models import MedicationEntry
+from jordan_claw.db.obsidian import insert_chunks, insert_note
+from jordan_claw.meds.models import HealthCategory, MedicationEntry
+from jordan_claw.obsidian.embeddings import chunk_text, generate_embeddings
+from jordan_claw.tools.calendar import CENTRAL_TZ
 
 log = structlog.get_logger()
 
@@ -235,17 +250,288 @@ async def save_medication_profile(
     medications: list[MedicationEntry] | None = None,
     allergies: str | None = None,
     notes: str | None = None,
+    timeline_display_name: str | None = None,
 ) -> str:
     """Save medication profile fields when Jordan reports a change (started,
     stopped, or changed a med; new allergy; updated contacts). Partial saves are
     fine: only pass the fields being changed. medications REPLACES the whole
     list — read the profile first and pass the full updated list.
+    timeline_display_name controls the name shown on shared documents; set it
+    when Jordan says what name to use.
     NOT for logging symptoms or events, and never invent doses or prescribers."""
+    med_change_details: dict = {}
+    if medications is not None:
+        existing = await get_medication_profile(ctx.deps.supabase_client, ctx.deps.org_id)
+        old_by_name = {m.name: m for m in (existing.medications if existing is not None else [])}
+        new_by_name = {m.name: m for m in medications}
+
+        added = [name for name in new_by_name if name not in old_by_name]
+        removed = [name for name in old_by_name if name not in new_by_name]
+        changed = [
+            {"name": name, "dose_from": old_by_name[name].dose, "dose_to": new_by_name[name].dose}
+            for name in new_by_name
+            if name in old_by_name and old_by_name[name].dose != new_by_name[name].dose
+        ]
+        if added:
+            med_change_details["added"] = added
+        if removed:
+            med_change_details["removed"] = removed
+        if changed:
+            med_change_details["changed"] = changed
+
     await upsert_medication_profile(
         ctx.deps.supabase_client,
         ctx.deps.org_id,
         medications=[m.model_dump() for m in medications] if medications is not None else None,
         allergies=allergies,
         notes=notes,
+        timeline_display_name=timeline_display_name,
     )
-    return "Medication profile saved."
+
+    if not med_change_details:
+        return "Medication profile saved."
+
+    try:
+        await insert_health_event(
+            ctx.deps.supabase_client,
+            ctx.deps.org_id,
+            event_date=datetime.now(CENTRAL_TZ).strftime("%Y-%m-%d"),
+            category="medication_change",
+            title="Medication change",
+            details=med_change_details,
+        )
+    except Exception:
+        log.warning("med_change_autolog_failed", details=med_change_details, exc_info=True)
+        return (
+            "Medication profile saved. Could not auto-log the medication_change "
+            "event - tell Jordan the timeline is missing this change."
+        )
+
+    summary_parts = []
+    if "added" in med_change_details:
+        summary_parts.append(f"added {', '.join(med_change_details['added'])}")
+    if "removed" in med_change_details:
+        summary_parts.append(f"removed {', '.join(med_change_details['removed'])}")
+    if "changed" in med_change_details:
+        summary_parts.append(
+            "; ".join(
+                f"changed {c['name']} from {c['dose_from']} to {c['dose_to']}"
+                for c in med_change_details["changed"]
+            )
+        )
+    return (
+        "Medication profile saved. Logged a medication_change event: "
+        + "; ".join(summary_parts)
+        + "."
+    )
+
+
+async def log_health_event(
+    ctx: RunContext[AgentDeps],
+    event_date: str,
+    category: HealthCategory,
+    title: str,
+    details: dict | None = None,
+    notes: str | None = None,
+    severity: Literal["mild", "moderate", "severe", "er_visit"] | None = None,
+    allow_duplicate: bool = False,
+) -> str:
+    """Record ONE health event for Jordan's daughter when he reports something
+    that happened: a milestone, seizure, breathing episode, measurement,
+    illness, or appointment. event_date is when it HAPPENED
+    (resolve relative dates with current_datetime first), which is often not
+    today. notes hold Jordan's exact words.
+    NOT for adding detail to an event already logged — use
+    amend_last_health_event for that. NOT for medication changes -
+    save_medication_profile auto-logs those when the med list changes.
+    A same-day event of the same category is refused unless allow_duplicate=true;
+    repeat episodes on the same day (a second seizure) are real and expected —
+    pass allow_duplicate=true and log each one."""
+    if not allow_duplicate:
+        same_day = await get_events_for_date(ctx.deps.supabase_client, ctx.deps.org_id, event_date)
+        clashes = [event for event in same_day if event.category == category]
+        if clashes:
+            existing = clashes[0]
+            detail = ", ".join(f"{k}={v}" for k, v in existing.details.items())
+            summary = " — ".join(p for p in (detail, existing.notes) if p)
+            existing_desc = f'"{existing.title}"' + (f" — {summary}" if summary else "")
+            return (
+                f"Not logged: a {category} event for {event_date} already exists "
+                f"({existing_desc}). If Jordan is adding detail about that same event, call "
+                "amend_last_health_event instead. Repeat episodes on the same day are real "
+                "and expected — if this is a genuinely separate occurrence, call "
+                "log_health_event again with allow_duplicate=true."
+            )
+
+    await insert_health_event(
+        ctx.deps.supabase_client,
+        ctx.deps.org_id,
+        event_date=event_date,
+        category=category,
+        title=title,
+        details=details,
+        notes=notes,
+        severity=severity,
+    )
+    return f"Logged {category} for {event_date}: {title}."
+
+
+async def amend_last_health_event(
+    ctx: RunContext[AgentDeps],
+    details: dict | None = None,
+    notes: str | None = None,
+    category: HealthCategory | None = None,
+    event_date: str | None = None,
+    severity: Literal["mild", "moderate", "severe", "er_visit"] | None = None,
+    match_category: HealthCategory | None = None,
+) -> str:
+    """Add detail or corrections to the MOST RECENTLY LOGGED health event, when
+    Jordan follows up about something already logged. details keys merge into
+    existing ones; notes append on a new line; category/event_date/severity
+    replace if given. Pass match_category to target the most recent event of
+    that category - use it whenever the follow-up names a specific kind of
+    event (a seizure, an appointment), so the amendment cannot land on a
+    different event logged since. NOT for logging a new event — use
+    log_health_event."""
+    latest = await get_latest_health_event(
+        ctx.deps.supabase_client, ctx.deps.org_id, category=match_category
+    )
+    if latest is None:
+        if match_category is not None:
+            return f"No {match_category} event logged yet. Use log_health_event to record one."
+        return "No health event logged yet. Use log_health_event to record one."
+
+    merged_details = {**latest.details, **(details or {})} if details else None
+    merged_notes = None
+    if notes:
+        merged_notes = f"{latest.notes}\n{notes}" if latest.notes else notes
+
+    await update_health_event(
+        ctx.deps.supabase_client,
+        ctx.deps.org_id,
+        latest.id,
+        details=merged_details,
+        notes=merged_notes,
+        category=category,
+        event_date=event_date,
+        severity=severity,
+    )
+    return f"Updated the {category or latest.category} event for {event_date or latest.event_date}."
+
+
+async def get_health_events(
+    ctx: RunContext[AgentDeps],
+    start_date: str,
+    end_date: str,
+    category: str | None = None,
+) -> str:
+    """Read logged health events in a date range, oldest first, for composing
+    timelines or answering questions about what happened. Includes a
+    '(logged N days later)' marker when an event was recorded more than a day
+    after it happened — the recall gap itself is useful for the timeline.
+    NOT for the medication list — use get_medication_profile."""
+    events = await get_health_events_range(
+        ctx.deps.supabase_client, ctx.deps.org_id, start_date, end_date, category=category
+    )
+    if not events:
+        return "No health events logged in that range."
+
+    lines = []
+    for event in events:
+        detail = ", ".join(f"{k}={v}" for k, v in event.details.items())
+        parts = [f"- [{event.event_date}] {event.category}: {event.title}"]
+        if detail:
+            parts.append(f"({detail})")
+        if event.notes:
+            parts.append(f"— {event.notes}")
+        line = " ".join(parts)
+
+        event_date_obj = datetime.strptime(event.event_date, "%Y-%m-%d").date()
+        logged_date_obj = datetime.fromisoformat(event.logged_at).date()
+        gap_days = (logged_date_obj - event_date_obj).days
+        if gap_days > 1:
+            line += f" (logged {gap_days} days later)"
+
+        lines.append(line)
+    return "\n".join(lines)
+
+
+async def get_last_visit_date(ctx: RunContext[AgentDeps]) -> str:
+    """Most recent logged appointment date. Use to default the range for a
+    doctor timeline ('since her last visit'). Returns a clear no-appointments
+    message when none is logged — then ask Jordan for the range instead of
+    guessing. NOT for general events — use get_health_events."""
+    last_date = await get_last_appointment_date(ctx.deps.supabase_client, ctx.deps.org_id)
+    if last_date is None:
+        return "No appointments logged yet. Ask Jordan for the range instead of guessing."
+    return f"Most recent logged appointment: {last_date}."
+
+
+async def create_timeline_note(
+    ctx: RunContext[AgentDeps],
+    title: str,
+    markdown_body: str,
+) -> str:
+    """Write a doctor-facing health timeline note into the Obsidian vault
+    (folder Health/Timelines/). The body you compose must follow this shape:
+    header with the display name from the medication profile
+    (timeline_display_name — if unset, ask Jordan first), the date range
+    covered, and the generation date; then chronological entries grouped by
+    month; then a current-medications snapshot from the profile; then a
+    'Questions for the doctor' section. Returns the note title for
+    confirmation; it appears in the vault after the next sync.
+    NOT for general notes or web sources — use create_source_note (claw-main)
+    for those."""
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+
+    frontmatter = {
+        "type": "health-timeline",
+        "title": title,
+        "generated": today,
+        "tags": ["health", "timeline"],
+        "status": "generated",
+    }
+
+    vault_path = f"Health/Timelines/{title}.md"
+
+    # Build the full file content for hashing (frontmatter + body)
+    full_file = f"---\n{yaml.dump(frontmatter, default_flow_style=False)}---\n\n{markdown_body}"
+    content_hash = hashlib.sha256(full_file.encode()).hexdigest()
+
+    note_row = await insert_note(
+        ctx.deps.supabase_client,
+        org_id=ctx.deps.org_id,
+        vault_path=vault_path,
+        title=title,
+        note_type="health_timeline",
+        content=markdown_body,
+        frontmatter=frontmatter,
+        tags=["health", "timeline"],
+        wiki_links=[],
+        content_hash=content_hash,
+        source_origin="claw",
+        sync_status="pending_export",
+    )
+
+    # Generate chunks and embeddings
+    chunks = chunk_text(markdown_body)
+    embeddings = await generate_embeddings(
+        [c["content"] for c in chunks],
+        api_key=ctx.deps.openai_api_key,
+    )
+
+    note_id = note_row.get("id", "")
+    chunk_rows = [
+        {
+            "note_id": note_id,
+            "chunk_index": c["chunk_index"],
+            "content": c["content"],
+            "embedding": embeddings[i],
+            "token_count": c["token_count"],
+        }
+        for i, c in enumerate(chunks)
+    ]
+    await insert_chunks(ctx.deps.supabase_client, chunk_rows)
+
+    # TODO(phase-2-followup): PDF export would hook here — compose once, render twice.
+    return f"Timeline note '{title}' created. It will appear in your vault after the next sync."

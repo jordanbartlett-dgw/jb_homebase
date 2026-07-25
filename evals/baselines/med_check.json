@@ -1,8 +1,8 @@
 {
   "dataset": "med_check",
-  "score": 1.0,
-  "ran_at": "2026-07-25T19:12:51.873756+00:00",
-  "git_sha": "51f07ac",
-  "cases_total": 4,
-  "cases_passed": 4
+  "score": 0.934375,
+  "ran_at": "2026-07-25T21:04:52.052221+00:00",
+  "git_sha": "a070976",
+  "cases_total": 8,
+  "cases_passed": 8
 }
