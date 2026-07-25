@@ -19,6 +19,7 @@ from jordan_claw.db.health_log import (
 )
 from jordan_claw.db.meds import get_medication_profile, upsert_medication_profile
 from jordan_claw.meds.models import HealthCategory, MedicationEntry
+from jordan_claw.tools.calendar import CENTRAL_TZ
 
 log = structlog.get_logger()
 
@@ -245,20 +246,72 @@ async def save_medication_profile(
     medications: list[MedicationEntry] | None = None,
     allergies: str | None = None,
     notes: str | None = None,
+    timeline_display_name: str | None = None,
 ) -> str:
     """Save medication profile fields when Jordan reports a change (started,
     stopped, or changed a med; new allergy; updated contacts). Partial saves are
     fine: only pass the fields being changed. medications REPLACES the whole
     list — read the profile first and pass the full updated list.
+    timeline_display_name controls the name shown on shared documents; set it
+    when Jordan says what name to use.
     NOT for logging symptoms or events, and never invent doses or prescribers."""
+    med_change_details: dict = {}
+    if medications is not None:
+        existing = await get_medication_profile(ctx.deps.supabase_client, ctx.deps.org_id)
+        old_by_name = {m.name: m for m in (existing.medications if existing is not None else [])}
+        new_by_name = {m.name: m for m in medications}
+
+        added = [name for name in new_by_name if name not in old_by_name]
+        removed = [name for name in old_by_name if name not in new_by_name]
+        changed = [
+            {"name": name, "dose_from": old_by_name[name].dose, "dose_to": new_by_name[name].dose}
+            for name in new_by_name
+            if name in old_by_name and old_by_name[name].dose != new_by_name[name].dose
+        ]
+        if added:
+            med_change_details["added"] = added
+        if removed:
+            med_change_details["removed"] = removed
+        if changed:
+            med_change_details["changed"] = changed
+
     await upsert_medication_profile(
         ctx.deps.supabase_client,
         ctx.deps.org_id,
         medications=[m.model_dump() for m in medications] if medications is not None else None,
         allergies=allergies,
         notes=notes,
+        timeline_display_name=timeline_display_name,
     )
-    return "Medication profile saved."
+
+    if not med_change_details:
+        return "Medication profile saved."
+
+    await insert_health_event(
+        ctx.deps.supabase_client,
+        ctx.deps.org_id,
+        event_date=datetime.now(CENTRAL_TZ).strftime("%Y-%m-%d"),
+        category="medication_change",
+        title="Medication change",
+        details=med_change_details,
+    )
+    summary_parts = []
+    if "added" in med_change_details:
+        summary_parts.append(f"added {', '.join(med_change_details['added'])}")
+    if "removed" in med_change_details:
+        summary_parts.append(f"removed {', '.join(med_change_details['removed'])}")
+    if "changed" in med_change_details:
+        summary_parts.append(
+            "; ".join(
+                f"changed {c['name']} from {c['dose_from']} to {c['dose_to']}"
+                for c in med_change_details["changed"]
+            )
+        )
+    return (
+        "Medication profile saved. Logged a medication_change event: "
+        + "; ".join(summary_parts)
+        + "."
+    )
 
 
 async def log_health_event(

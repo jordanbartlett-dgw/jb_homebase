@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jordan_claw.meds.models import HealthEvent
+from jordan_claw.meds.models import HealthEvent, MedicationEntry, MedicationProfile
 from jordan_claw.tools.meds import (
     amend_last_health_event,
     get_health_events,
     get_last_visit_date,
     log_health_event,
+    save_medication_profile,
 )
 
 
@@ -227,3 +229,111 @@ async def test_get_last_visit_date_returns_date():
     with patch("jordan_claw.tools.meds.get_last_appointment_date", return_value="2026-06-01"):
         result = await get_last_visit_date(ctx)
     assert "2026-06-01" in result
+
+
+@pytest.mark.asyncio
+async def test_save_medication_profile_logs_change_event_with_full_diff():
+    """Added, removed, and changed-dose meds in one save produce one event
+    with all three diff keys populated."""
+    ctx = _make_ctx()
+    old_profile = MedicationProfile(
+        org_id="org-001",
+        medications=[
+            MedicationEntry(name="lamotrigine", dose="25 mg"),
+            MedicationEntry(name="ondansetron", dose="4 mg PRN"),
+        ],
+    )
+    new_meds = [
+        MedicationEntry(name="lamotrigine", dose="50 mg"),  # dose changed
+        MedicationEntry(name="melatonin", dose="3 mg"),  # added
+        # ondansetron dropped -> removed
+    ]
+    with (
+        patch("jordan_claw.tools.meds.get_medication_profile", return_value=old_profile),
+        patch("jordan_claw.tools.meds.upsert_medication_profile", return_value=None),
+        patch(
+            "jordan_claw.tools.meds.insert_health_event", return_value={"id": "e1"}
+        ) as mock_insert,
+    ):
+        result = await save_medication_profile(ctx, medications=new_meds)
+
+    mock_insert.assert_called_once()
+    kwargs = mock_insert.call_args.kwargs
+    assert kwargs["category"] == "medication_change"
+    assert kwargs["title"] == "Medication change"
+    assert kwargs["details"] == {
+        "added": ["melatonin"],
+        "removed": ["ondansetron"],
+        "changed": [{"name": "lamotrigine", "dose_from": "25 mg", "dose_to": "50 mg"}],
+    }
+    assert re.match(r"^\d{4}-\d{2}-\d{2}$", kwargs["event_date"])
+    assert "medication_change" in result
+
+
+@pytest.mark.asyncio
+async def test_save_medication_profile_no_event_when_med_list_unchanged():
+    """Re-saving the identical medications list must not log a duplicate event."""
+    ctx = _make_ctx()
+    profile = MedicationProfile(
+        org_id="org-001",
+        medications=[MedicationEntry(name="lamotrigine", dose="25 mg")],
+    )
+    same_meds = [MedicationEntry(name="lamotrigine", dose="25 mg")]
+    with (
+        patch("jordan_claw.tools.meds.get_medication_profile", return_value=profile),
+        patch("jordan_claw.tools.meds.upsert_medication_profile", return_value=None),
+        patch("jordan_claw.tools.meds.insert_health_event") as mock_insert,
+    ):
+        result = await save_medication_profile(ctx, medications=same_meds)
+    mock_insert.assert_not_called()
+    assert result == "Medication profile saved."
+
+
+@pytest.mark.asyncio
+async def test_save_medication_profile_allergies_only_no_event():
+    """A field-only save (no medications arg) never touches the med diff at all."""
+    ctx = _make_ctx()
+    with (
+        patch("jordan_claw.tools.meds.get_medication_profile") as mock_get,
+        patch("jordan_claw.tools.meds.upsert_medication_profile", return_value=None),
+        patch("jordan_claw.tools.meds.insert_health_event") as mock_insert,
+    ):
+        result = await save_medication_profile(ctx, allergies="penicillin")
+    mock_get.assert_not_called()
+    mock_insert.assert_not_called()
+    assert result == "Medication profile saved."
+
+
+@pytest.mark.asyncio
+async def test_save_medication_profile_no_prior_profile_all_added():
+    """First-ever med save (no existing profile row) logs every med as added."""
+    ctx = _make_ctx()
+    new_meds = [
+        MedicationEntry(name="lamotrigine", dose="25 mg"),
+        MedicationEntry(name="melatonin", dose="3 mg"),
+    ]
+    with (
+        patch("jordan_claw.tools.meds.get_medication_profile", return_value=None),
+        patch("jordan_claw.tools.meds.upsert_medication_profile", return_value=None),
+        patch(
+            "jordan_claw.tools.meds.insert_health_event", return_value={"id": "e1"}
+        ) as mock_insert,
+    ):
+        await save_medication_profile(ctx, medications=new_meds)
+    mock_insert.assert_called_once()
+    kwargs = mock_insert.call_args.kwargs
+    assert kwargs["details"] == {"added": ["lamotrigine", "melatonin"]}
+    assert "removed" not in kwargs["details"]
+    assert "changed" not in kwargs["details"]
+
+
+@pytest.mark.asyncio
+async def test_save_medication_profile_passes_timeline_display_name():
+    """timeline_display_name is forwarded to the DB-layer upsert."""
+    ctx = _make_ctx()
+    with patch(
+        "jordan_claw.tools.meds.upsert_medication_profile", return_value=None
+    ) as mock_upsert:
+        await save_medication_profile(ctx, timeline_display_name="Grandma J.")
+    kwargs = mock_upsert.call_args.kwargs
+    assert kwargs["timeline_display_name"] == "Grandma J."
