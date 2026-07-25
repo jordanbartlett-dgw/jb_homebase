@@ -48,3 +48,13 @@ class RetrievalOutput(BaseModel):
     """Output of the obsidian_retrieval task fn — returned slugs in rank order."""
 
     returned_slugs: list[str]
+
+
+class MedCheckInputs(BaseModel):
+    user_message: str
+    fixture: str  # key into evals.fixtures.med_check.FIXTURES
+
+
+class MedCheckExpected(BaseModel):
+    required_phrases: list[str] = Field(default_factory=list)
+    forbidden_phrases: list[str] = Field(default_factory=list)

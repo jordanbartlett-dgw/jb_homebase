@@ -13,10 +13,13 @@ from typing import Any
 
 from pydantic_evals.evaluators import Evaluator
 
-from evals.scorers import RequiredFactsScorer, TopKMembershipScorer
+from evals.scorers import PhraseAssertionScorer, RequiredFactsScorer, TopKMembershipScorer
+from evals.tasks.med_check import med_check_task
 from evals.tasks.memory_recall import memory_recall_task
 from evals.tasks.obsidian_retrieval import obsidian_retrieval_task
 from evals.types import (
+    MedCheckExpected,
+    MedCheckInputs,
     MemoryRecallExpected,
     MemoryRecallInputs,
     ObsidianRetrievalExpected,
@@ -58,5 +61,14 @@ REGISTRY: dict[str, EvalSpec] = {
         expected_type=ObsidianRetrievalExpected,
         output_type=RetrievalOutput,
         custom_evaluators=(TopKMembershipScorer,),
+    ),
+    "med_check": EvalSpec(
+        name="med_check",
+        yaml_path=DATASETS_DIR / "med_check.yaml",
+        task_fn=med_check_task,
+        inputs_type=MedCheckInputs,
+        expected_type=MedCheckExpected,
+        output_type=str,
+        custom_evaluators=(PhraseAssertionScorer,),
     ),
 }
