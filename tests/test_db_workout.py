@@ -6,10 +6,13 @@ import pytest
 
 from jordan_claw.db.workout import (
     get_active_plan,
+    get_latest_workout_log,
+    get_logs_for_date,
     get_recent_workout_logs,
     get_workout_profile,
     insert_workout_log,
     save_workout_plan,
+    update_workout_log,
     upsert_workout_profile,
 )
 from jordan_claw.workout.models import PlanDay, PlanWeek
@@ -130,3 +133,45 @@ async def test_get_recent_workout_logs_ordered_desc():
     logs = await get_recent_workout_logs(db, ORG_ID, limit=7)
     assert logs[0].activity == "run"
     query.order.assert_called_once_with("logged_date", desc=True)
+
+
+_LOG_ROW = {
+    "id": "l1",
+    "org_id": ORG_ID,
+    "logged_date": "2026-07-25",
+    "activity": "run",
+    "details": {"distance_mi": 2},
+    "notes": "easy",
+}
+
+
+@pytest.mark.asyncio
+async def test_get_logs_for_date_filters_by_date():
+    db, query = _mock_db(select_data=[_LOG_ROW])
+    logs = await get_logs_for_date(db, ORG_ID, "2026-07-25")
+    assert logs[0].id == "l1"
+    query.eq.assert_any_call("logged_date", "2026-07-25")
+
+
+@pytest.mark.asyncio
+async def test_get_latest_workout_log_orders_by_created_at():
+    db, query = _mock_db(select_data=[_LOG_ROW])
+    log = await get_latest_workout_log(db, ORG_ID)
+    assert log is not None and log.id == "l1"
+    query.order.assert_called_once_with("created_at", desc=True)
+
+
+@pytest.mark.asyncio
+async def test_get_latest_workout_log_none_when_empty():
+    db, _ = _mock_db(select_data=[])
+    assert await get_latest_workout_log(db, ORG_ID) is None
+
+
+@pytest.mark.asyncio
+async def test_update_workout_log_sends_only_provided_fields():
+    db, query = _mock_db(select_data=[_LOG_ROW])
+    await update_workout_log(db, ORG_ID, "l1", details={"distance_mi": 3})
+    sent = query.update.call_args.args[0]
+    assert sent == {"details": {"distance_mi": 3}}
+    query.eq.assert_any_call("id", "l1")
+    query.eq.assert_any_call("org_id", ORG_ID)

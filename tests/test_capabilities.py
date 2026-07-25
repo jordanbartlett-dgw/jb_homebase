@@ -13,11 +13,11 @@ from jordan_claw.agents.factory import create_agent
 from jordan_claw.db.agents import AgentConfig
 
 
-def test_registry_covers_all_sixteen_tools():
+def test_registry_covers_all_seventeen_tools():
     tool_names = set()
     for group in CAPABILITY_REGISTRY.values():
         tool_names.update(group.toolset.tools)
-    assert len(tool_names) == 16
+    assert len(tool_names) == 17
 
 
 def test_expected_groups_exist():

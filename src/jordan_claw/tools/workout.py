@@ -8,10 +8,13 @@ from pydantic_ai import RunContext
 from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.db.workout import (
     get_active_plan,
+    get_latest_workout_log,
+    get_logs_for_date,
     get_recent_workout_logs,
     get_workout_profile,
     insert_workout_log,
     save_workout_plan,
+    update_workout_log,
     upsert_workout_profile,
 )
 from jordan_claw.tools.calendar import CENTRAL_TZ
@@ -100,10 +103,29 @@ async def log_workout(
     details: dict | None = None,
     notes: str | None = None,
     logged_date: str | None = None,
+    allow_duplicate: bool = False,
 ) -> str:
-    """Record a completed workout when Jordan reports one. details holds numbers
-    (distance_mi, duration_min, exercises). logged_date defaults to today."""
+    """Record a NEW completed workout when Jordan reports one. details holds numbers
+    (distance_mi, duration_min, exercises). logged_date defaults to today.
+    NOT for adding detail or corrections to a session already logged in this
+    conversation — use amend_last_workout for that. If Jordan genuinely did two
+    separate sessions of the same activity on one day, pass allow_duplicate=true."""
     date_str = logged_date or datetime.now(CENTRAL_TZ).strftime("%Y-%m-%d")
+
+    if not allow_duplicate:
+        same_day = await get_logs_for_date(ctx.deps.supabase_client, ctx.deps.org_id, date_str)
+        clashes = [log for log in same_day if log.activity == activity]
+        if clashes:
+            existing = clashes[0]
+            detail = ", ".join(f"{k}={v}" for k, v in existing.details.items())
+            summary = " — ".join(p for p in (detail, existing.notes) if p)
+            return (
+                f"Not logged: a {activity} session for {date_str} already exists "
+                f"({summary or 'no details'}). If Jordan is adding detail about that same "
+                "session, call amend_last_workout instead. Only if this is a genuinely "
+                "separate second session, call log_workout again with allow_duplicate=true."
+            )
+
     await insert_workout_log(
         ctx.deps.supabase_client,
         ctx.deps.org_id,
@@ -113,6 +135,36 @@ async def log_workout(
         notes=notes,
     )
     return f"Logged {activity} for {date_str}."
+
+
+async def amend_last_workout(
+    ctx: RunContext[AgentDeps],
+    details: dict | None = None,
+    notes: str | None = None,
+    activity: Literal["run", "strength", "mobility", "rest", "other"] | None = None,
+) -> str:
+    """Add detail or corrections to the most recently logged workout, when Jordan
+    follows up about a session that is already logged. New details keys merge into
+    the existing ones; notes are appended; activity replaces if given.
+    NOT for logging a new session — use log_workout for that."""
+    latest = await get_latest_workout_log(ctx.deps.supabase_client, ctx.deps.org_id)
+    if latest is None:
+        return "No workout logged yet. Use log_workout to record one."
+
+    merged_details = {**latest.details, **(details or {})} if details else None
+    merged_notes = None
+    if notes:
+        merged_notes = f"{latest.notes}\n{notes}" if latest.notes else notes
+
+    await update_workout_log(
+        ctx.deps.supabase_client,
+        ctx.deps.org_id,
+        latest.id,
+        details=merged_details,
+        notes=merged_notes,
+        activity=activity,
+    )
+    return f"Updated the {activity or latest.activity} log for {latest.logged_date}."
 
 
 async def get_recent_workouts(ctx: RunContext[AgentDeps], limit: int = 7) -> str:

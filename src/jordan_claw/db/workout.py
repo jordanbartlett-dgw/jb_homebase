@@ -108,6 +108,63 @@ async def insert_workout_log(
     return result.data[0]
 
 
+async def get_logs_for_date(
+    client: AsyncClient,
+    org_id: str,
+    logged_date: str,
+) -> list[WorkoutLog]:
+    result = (
+        await client.table("workout_logs")
+        .select("*")
+        .eq("org_id", org_id)
+        .eq("logged_date", logged_date)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return [WorkoutLog.model_validate(row) for row in result.data]
+
+
+async def get_latest_workout_log(client: AsyncClient, org_id: str) -> WorkoutLog | None:
+    """Most recently inserted log (by created_at, not logged_date)."""
+    result = (
+        await client.table("workout_logs")
+        .select("*")
+        .eq("org_id", org_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        return None
+    return WorkoutLog.model_validate(result.data[0])
+
+
+async def update_workout_log(
+    client: AsyncClient,
+    org_id: str,
+    log_id: str,
+    *,
+    details: dict | None = None,
+    notes: str | None = None,
+    activity: str | None = None,
+) -> dict:
+    data: dict = {}
+    if details is not None:
+        data["details"] = details
+    if notes is not None:
+        data["notes"] = notes
+    if activity is not None:
+        data["activity"] = activity
+    result = (
+        await client.table("workout_logs")
+        .update(data)
+        .eq("id", log_id)
+        .eq("org_id", org_id)
+        .execute()
+    )
+    return result.data[0] if result.data else {}
+
+
 async def get_recent_workout_logs(
     client: AsyncClient,
     org_id: str,

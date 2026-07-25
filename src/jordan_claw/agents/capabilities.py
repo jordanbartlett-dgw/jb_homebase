@@ -13,6 +13,7 @@ from jordan_claw.tools.obsidian import create_source_note, fetch_article, read_n
 from jordan_claw.tools.time import current_datetime
 from jordan_claw.tools.web_search import search_web
 from jordan_claw.tools.workout import (
+    amend_last_workout,
     get_recent_workouts,
     get_workout_plan,
     get_workout_profile_tool,
@@ -88,6 +89,7 @@ CAPABILITY_REGISTRY: dict[str, ToolGroup] = {
             (get_workout_plan, "get_workout_plan"),
             (save_workout_plan_tool, "save_workout_plan"),
             (log_workout, "log_workout"),
+            (amend_last_workout, "amend_last_workout"),
             (get_recent_workouts, "get_recent_workouts"),
         ),
     ),
