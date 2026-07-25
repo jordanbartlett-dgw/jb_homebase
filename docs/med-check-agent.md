@@ -21,10 +21,15 @@ makes that non-optional, not a courtesy line.
   `properties` + `related?tty=IN`) — identity only. It resolves a name
   (including misspellings and brand names) to an rxcui, canonical name,
   brand/generic, and active ingredients. It says nothing about safety.
-  Distinct outcomes the tool reports differently: a network/API failure
-  ("could not verify ingredients") vs. a genuine no-match ("no RxNorm match")
-  vs. an ingredient-lookup failure after a name resolves. Multiple distinct
-  candidates always stop the check — the agent asks which one, never guesses.
+  Distinct outcomes the tool reports differently, never conflated: an
+  approximateTerm network/API failure ("RxNorm lookup failed... report that
+  drug identity could not be verified; do not guess"), a genuine no-match
+  ("No RxNorm match for... check the spelling or the packaging"), a
+  detail-lookup failure after a name resolves ("matched... but detail lookups
+  failed... do not guess"), and a per-candidate ingredient-lookup failure
+  flagged inline ("ingredient lookup FAILED — could not verify ingredients,
+  report the check as incomplete"). Multiple distinct candidates always stop
+  the check — the agent asks which one, never guesses.
 
 - **openFDA** (`fetch_fda_label`, generic-name search falling back to
   brand-name) — labels can lag real-world data and don't cover every product.
@@ -123,12 +128,18 @@ Dataset `med_check` (`evals/datasets/med_check.yaml`), 4 cases, run via
 - `additive_risk_flagged` — a new QT-flagged drug on top of an existing
   QT-flagged med; expects the additive risk called out explicitly.
 
-Scoring is `PhraseAssertionScorer`: required phrases must all appear,
-per-case forbidden phrases plus the global forbidden list ("safe to take",
-"cleared", "no risk") must not. Tool outputs are fixtures
-(`evals/fixtures/med_check.py`), not live RxNav/openFDA/web calls — the eval
-question is whether the model composes a correct, asymmetry-respecting
-report from known inputs, not whether the upstream APIs are up.
+Each case scores on two evaluators: `PhraseAssertionScorer` (required phrases
+must all appear, per-case forbidden phrases plus the global forbidden list —
+"safe to take", "cleared", "no risk" — must not) and a per-case pinned
+`LLMJudge` (`anthropic:claude-sonnet-4-5-20250929`) with a rubric checking the
+report's substance (correct QT identification, additive-risk callout, the
+not-a-doctor disclaimer, the pharmacist/cardiology close). This is not a
+free, deterministic check — it costs a live sonnet-5 agent run plus a judge
+call per case, same pattern as `memory_recall`'s pinned judge. Tool outputs
+are fixtures (`evals/fixtures/med_check.py`), not live RxNav/openFDA/web
+calls — the eval question is whether the model composes a correct,
+asymmetry-respecting report from known inputs, not whether the upstream APIs
+are up.
 
 ## Operational facts
 

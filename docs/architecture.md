@@ -180,15 +180,17 @@ disabled), `CLAW_APP_TOKEN` ("" = app/voice endpoints disabled),
 LLMJudge), `obsidian_retrieval` (20 cases, TopKMembershipScorer, no LLM —
 embeddings + RPC against the eval org), and `med_check` (4 cases,
 PhraseAssertionScorer — required/forbidden phrases plus a global forbidden
-list enforcing the asymmetry rule; fixture-backed stub tools, live model).
-Task model pinned in `evals/tasks/memory_recall.py` deliberately — evals stay
-green independent of DB agent config; `evals/tasks/med_check.py::MED_CHECK_PROMPT`
-is a second copy of the deployed med-check prompt and must be kept in sync by
-hand (`docs/med-check-agent.md` has the drift note). Baselines committed in
+list enforcing the asymmetry rule — plus a per-case pinned LLMJudge rubric;
+fixture-backed stub tools, live model). Task model pinned in
+`evals/tasks/memory_recall.py` deliberately — evals stay green independent of
+DB agent config; `evals/tasks/med_check.py::MED_CHECK_PROMPT` is a second
+copy of the deployed med-check prompt and must be kept in sync by hand
+(`docs/med-check-agent.md` has the drift note). Baselines committed in
 `evals/baselines/`; regression = score < baseline − 0.05 → exit 2 → Railway
 cron reports failure; PostHog `eval_run_completed` carries the flag. Fail-fast
 settings guard exists because pydantic-evals silently swallows task-fn
-exceptions. Costs: memory_recall ~$0.10/run, obsidian_retrieval ~$0.001. Full
+exceptions. Costs: memory_recall ~$0.10/run, obsidian_retrieval ~$0.001,
+med_check ~$0.20/run (5 sonnet-5 agent runs incl. smoke + 4 judge calls). Full
 runbook: `docs/evals.md`.
 
 ## Flutter app (thin client)
