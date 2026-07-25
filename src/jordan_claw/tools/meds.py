@@ -7,6 +7,8 @@ import structlog
 from pydantic_ai import RunContext
 
 from jordan_claw.agents.deps import AgentDeps
+from jordan_claw.db.meds import get_medication_profile, upsert_medication_profile
+from jordan_claw.meds.models import MedicationEntry
 
 log = structlog.get_logger()
 
@@ -203,3 +205,45 @@ async def fetch_fda_label(ctx: RunContext[AgentDeps], drug_name: str) -> str:
     if len(parts) == 1:
         parts.append("(No safety sections present in this label.)")
     return f"FDA label for '{drug_name}':\n\n" + "\n\n".join(parts)
+
+
+async def get_medication_profile_tool(ctx: RunContext[AgentDeps]) -> str:
+    """Read her current medication profile: medications (name, rxcui, dose,
+    prescriber), known allergies, and notes (cardiology contact, baseline QTc).
+    Call this at the start of every medication check so new drugs are assessed
+    against what she already takes. Reports which fields are still empty.
+    NOT for drug safety data — use fetch_fda_label and web search for that."""
+    profile = await get_medication_profile(ctx.deps.supabase_client, ctx.deps.org_id)
+    if profile is None:
+        return (
+            "No medication profile exists yet. Fields to collect: current medications "
+            "(name, dose, prescriber), known allergies, notes (cardiology contact, baseline QTc)."
+        )
+    missing = profile.missing_fields()
+    status = (
+        "Profile is complete."
+        if not missing
+        else f"Profile incomplete. Empty fields: {', '.join(missing)}."
+    )
+    return f"{status}\n\n{profile.model_dump_json(exclude={'org_id'}, indent=2)}"
+
+
+async def save_medication_profile(
+    ctx: RunContext[AgentDeps],
+    medications: list[MedicationEntry] | None = None,
+    allergies: str | None = None,
+    notes: str | None = None,
+) -> str:
+    """Save medication profile fields when Jordan reports a change (started,
+    stopped, or changed a med; new allergy; updated contacts). Partial saves are
+    fine: only pass the fields being changed. medications REPLACES the whole
+    list — read the profile first and pass the full updated list.
+    NOT for logging symptoms or events, and never invent doses or prescribers."""
+    await upsert_medication_profile(
+        ctx.deps.supabase_client,
+        ctx.deps.org_id,
+        medications=[m.model_dump() for m in medications] if medications is not None else None,
+        allergies=allergies,
+        notes=notes,
+    )
+    return "Medication profile saved."
