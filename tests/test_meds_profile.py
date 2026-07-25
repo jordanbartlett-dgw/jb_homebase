@@ -34,6 +34,24 @@ def test_missing_fields_reports_empty_sections():
     assert "notes" in missing
 
 
+def test_missing_fields_ignores_timeline_display_name():
+    """timeline_display_name is optional display config, not a core field —
+    it must never appear in missing_fields(), whether set or unset."""
+    profile = MedicationProfile(org_id="org-1")
+    assert "timeline_display_name" not in profile.missing_fields()
+
+    profile_with_name = MedicationProfile(
+        org_id="org-1",
+        medications=[
+            MedicationEntry(name="ondansetron", rxcui="26225", dose="4 mg PRN", prescriber="Dr. A")
+        ],
+        allergies="none known",
+        notes="cardiology: Dr. B, baseline QTc 470ms",
+        timeline_display_name=None,
+    )
+    assert profile_with_name.missing_fields() == []
+
+
 def test_missing_fields_empty_when_populated():
     profile = MedicationProfile(
         org_id="org-1",
