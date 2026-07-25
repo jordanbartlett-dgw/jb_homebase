@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import httpx
 import structlog
 from pydantic_ai import RunContext
@@ -115,3 +117,89 @@ async def normalize_medication(ctx: RunContext[AgentDeps], name: str) -> str:
     if len(lines) > 1:
         header += " MULTIPLE distinct candidates — ask Jordan which one before checking."
     return header + "\n" + "\n".join(lines)
+
+
+OPENFDA_LABEL_URL = "https://api.fda.gov/drug/label.json"
+SECTION_CHAR_BUDGET = 1500
+LABEL_SECTIONS = (
+    "boxed_warning",
+    "contraindications",
+    "warnings",
+    "warnings_and_cautions",
+    "drug_interactions",
+    "adverse_reactions",
+)
+QT_PATTERN = re.compile(r"\bQTc?\b|torsade|arrhythmi|proarrhythmic|sudden death", re.IGNORECASE)
+
+
+def _qt_sentences(text: str) -> list[str]:
+    return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if QT_PATTERN.search(s)]
+
+
+def _clip(text: str, budget: int = SECTION_CHAR_BUDGET) -> str:
+    return text if len(text) <= budget else text[:budget] + " [truncated]"
+
+
+async def fetch_fda_label(ctx: RunContext[AgentDeps], drug_name: str) -> str:
+    """Fetch the FDA prescribing label for a drug from openFDA and return the
+    safety-relevant sections (boxed warning, contraindications, warnings,
+    interactions, adverse reactions) plus every QT/torsades/arrhythmia sentence
+    extracted verbatim. Call with the GENERIC name from normalize_medication;
+    it falls back to brand-name search automatically.
+    NOT for drug identity (use normalize_medication) and NOT a CredibleMeds
+    category (use web search for that)."""
+    result: dict | None = None
+    failed = False
+    for field in ("openfda.generic_name", "openfda.brand_name"):
+        status, data = await _get_json(
+            OPENFDA_LABEL_URL, {"search": f'{field}:"{drug_name}"', "limit": 1}
+        )
+        if status == 200 and data and data.get("results"):
+            result = data["results"][0]
+            break
+        if status in (0,) or status >= 500:
+            failed = True
+    if result is None:
+        if failed:
+            return (
+                f"openFDA query failed for '{drug_name}' (network or API error). "
+                "The FDA-label check did NOT complete — report it as incomplete."
+            )
+        return (
+            f"No FDA label found for '{drug_name}' (searched generic and brand name). "
+            "This is a definitive no-result, not an error."
+        )
+
+    parts: list[str] = []
+    qt_hits: list[str] = []
+    for section in LABEL_SECTIONS:
+        values = result.get(section)
+        if not values:
+            continue
+        text = "\n".join(values) if isinstance(values, list) else str(values)
+        qt_hits.extend(_qt_sentences(text))
+        parts.append(f"## {section}\n{_clip(text)}")
+
+    pharm = result.get("clinical_pharmacology")
+    if pharm:
+        text = "\n".join(pharm) if isinstance(pharm, list) else str(pharm)
+        hits = _qt_sentences(text)
+        if hits:  # only include this section when it mentions QT
+            qt_hits.extend(hits)
+            parts.append(f"## clinical_pharmacology\n{_clip(text)}")
+
+    deduped: list[str] = []
+    for hit in qt_hits:
+        if hit not in deduped:
+            deduped.append(hit)
+    if deduped:
+        qt_block = "## QT-RELATED SENTENCES (verbatim, never truncated)\n" + "\n".join(
+            f"- {h}" for h in deduped
+        )
+        parts.insert(0, qt_block)
+    else:
+        parts.insert(0, "## QT-RELATED SENTENCES\nNone found in the label sections returned.")
+
+    if len(parts) == 1:
+        parts.append("(No safety sections present in this label.)")
+    return f"FDA label for '{drug_name}':\n\n" + "\n\n".join(parts)

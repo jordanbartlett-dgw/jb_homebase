@@ -145,3 +145,49 @@ async def test_normalize_network_failure_is_distinct_from_no_match(monkeypatch):
     out = await meds.normalize_medication(FakeCtx(), "ibuprofen")
     assert "failed" in out.lower()
     assert "No RxNorm match" not in out
+
+
+LABEL_TORSADES = {
+    "results": [
+        {
+            "boxed_warning": [
+                "QT prolongation has been reported. "
+                "Cases of torsades de pointes occurred in postmarketing use."
+            ],
+            "warnings": ["Use caution in hepatic impairment. " + "Filler sentence. " * 200],
+            "drug_interactions": ["Avoid concomitant apomorphine."],
+        }
+    ]
+}
+
+
+@pytest.mark.asyncio
+async def test_fda_label_torsades_lands_in_qt_hits(monkeypatch):
+    async def fake_get_json(url, params=None):
+        return 200, LABEL_TORSADES
+
+    monkeypatch.setattr(meds, "_get_json", fake_get_json)
+    out = await meds.fetch_fda_label(FakeCtx(), "ondansetron")
+    assert "QT-RELATED SENTENCES" in out
+    assert "torsades de pointes" in out
+    # long section is truncated, but qt_hits sentences are never truncated
+    assert "[truncated]" in out
+    assert "Cases of torsades de pointes occurred in postmarketing use." in out
+
+
+@pytest.mark.asyncio
+async def test_fda_label_no_result_distinct_from_error(monkeypatch):
+    async def fake_404(url, params=None):
+        return 404, {"error": {"code": "NOT_FOUND"}}
+
+    monkeypatch.setattr(meds, "_get_json", fake_404)
+    out = await meds.fetch_fda_label(FakeCtx(), "notadrug")
+    assert "No FDA label found" in out
+
+    async def fake_down(url, params=None):
+        return 0, None
+
+    monkeypatch.setattr(meds, "_get_json", fake_down)
+    out = await meds.fetch_fda_label(FakeCtx(), "ibuprofen")
+    assert "openFDA query failed" in out
+    assert "No FDA label found" not in out
