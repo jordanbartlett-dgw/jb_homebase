@@ -149,22 +149,22 @@ appointments, and so on).
 
 Table `health_events` (migration 023). One row per event:
 
-- `event_date` (date) — when the event happened, not when it was logged.
+- `event_date` (date): when the event happened, not when it was logged.
   Jordan often reports things a day or more late; `event_date` and
   `logged_at` (timestamptz, defaults to now) are tracked separately on
   purpose so the gap itself is visible.
-- `category` (text, CHECK-constrained) — one of 13 values: `milestone`,
+- `category` (text, CHECK-constrained): one of 13 values: `milestone`,
   `seizure`, `breathing_episode`, `gi`, `sleep`, `motor`, `communication`,
   `scoliosis_orthopedic`, `growth_measurement`, `medication_change`,
   `appointment`, `illness`, `other`.
-- `title` (text, required) — short label.
-- `details` (jsonb, default `{}`) — structured fields (counts, durations,
+- `title` (text, required): short label.
+- `details` (jsonb, default `{}`): structured fields (counts, durations,
   measurements).
-- `notes` (text, nullable) — Jordan's own words, captured verbatim, not
+- `notes` (text, nullable): Jordan's own words, captured verbatim, not
   rephrased into clinical language he didn't use.
-- `severity` (text, nullable, CHECK-constrained) — `mild`, `moderate`,
+- `severity` (text, nullable, CHECK-constrained): `mild`, `moderate`,
   `severe`, or `er_visit`.
-- `logged_at` (timestamptz, default now) — when the row was written.
+- `logged_at` (timestamptz, default now): when the row was written.
 
 `get_health_events` flags any event where `logged_at` is more than a day
 after `event_date` with a `(logged N days later)` marker in its output. The
@@ -185,7 +185,7 @@ row. The refusal message states this explicitly so the model doesn't try to
 route a real repeat episode into `amend_last_health_event` instead.
 `amend_last_health_event` remains the tool for adding detail to an event
 already logged (merges `details`, appends to `notes`, can correct
-`category`/`event_date`/`severity`) — never for a new occurrence.
+`category`/`event_date`/`severity`). It is never for a new occurrence.
 
 ### Auto medication_change logging
 
@@ -339,11 +339,11 @@ gate. Real regressions still fire at score < baseline minus 0.05.
     whose `meds` capability the running code doesn't yet know, and
     `resolve_capabilities` would skip it with a warning until the deploy
     catches up.
-  - `023_health_events.sql` — schema (phase 2: new `health_events` table,
+  - `023_health_events.sql`: schema (phase 2: new `health_events` table,
     `medication_profiles.timeline_display_name` column). Additive. Run in the
     Supabase SQL Editor **before** merging the phase-2 code, same reasoning
     as 021.
-  - `024_med_check_prompt_v2.sql` — data (phase 2: replaces the agent's
+  - `024_med_check_prompt_v2.sql`: data (phase 2: replaces the agent's
     `system_prompt` with v2, adding the health-log and timeline rules). Run
     **after** the phase-2 code deploy is live, and applied via `supabase-py`
     rather than pasted into the SQL Editor. The literal is long enough that

@@ -147,12 +147,12 @@ Observability details, event catalogue, dashboard ids: `docs/observability.md`.
 ## Database (Supabase, hosted)
 
 Migrations `001`–`024` (005 removed as a no-op), applied by hand in the SQL
-Editor — 016/019/021/023 are schema (run before their code deploy),
+Editor. 016/019/021/023 are schema (run before their code deploy),
 015/017/018/020/022/024 are data grants/seeds (015 applied 2026-07-25;
-017/018/020/022/024 run only after deploy — headers state the ordering; 024
+017/018/020/022/024 run only after deploy; headers state the ordering). 024
 is applied via `supabase-py`, not pasted into the SQL Editor, because the
 system-prompt literal is long enough that clipboard quote conversion mangles
-it). Tables:
+it. Tables:
 organizations, agents, conversations, messages, memory_facts /
 memory_events / memory_context, obsidian_notes / obsidian_note_chunks
 (pgvector, 512-dim text-embedding-3-small, RPC `search_obsidian_notes`),
@@ -184,13 +184,14 @@ disabled), `CLAW_APP_TOKEN` ("" = app/voice endpoints disabled),
 `evals/registry.py`: `memory_recall` (20 cases, RequiredFactsScorer + pinned
 LLMJudge), `obsidian_retrieval` (20 cases, TopKMembershipScorer, no LLM —
 embeddings + RPC against the eval org), and `med_check` (8 cases: 4
-medication-check, 4 phase-2 health-log/timeline, PhraseAssertionScorer —
-required/forbidden phrases plus a global forbidden list enforcing the
-asymmetry rule — plus a per-case pinned LLMJudge rubric; timeline cases are
-graded on reply + note body via a `forbidden_in_note` scoping list, since the
-generated note and the chat reply need separate checks; fixture-backed stub
-tools, live model). Task model pinned in `evals/tasks/memory_recall.py`
-deliberately — evals stay green independent of DB agent config;
+medication-check, 4 phase-2 health-log/timeline). Scored with
+PhraseAssertionScorer (required/forbidden phrases plus a global forbidden
+list enforcing the asymmetry rule) plus a per-case pinned LLMJudge rubric.
+Timeline cases are graded on reply + note body via a `forbidden_in_note`
+scoping list, since the generated note and the chat reply need separate
+checks. Fixture-backed stub tools, live model. Task model pinned in
+`evals/tasks/memory_recall.py` deliberately, so evals stay green independent
+of DB agent config;
 `evals/tasks/med_check.py::MED_CHECK_PROMPT` is a second copy of the deployed
 med-check prompt and must be kept in sync by hand (`docs/med-check-agent.md`
 has the drift note). Baselines committed in `evals/baselines/`; regression =
