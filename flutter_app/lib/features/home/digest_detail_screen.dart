@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../state/today_state.dart';
+import '../../shared/widgets/app_markdown.dart';
 import '../../theme/app_theme.dart';
 
 class DigestDetailScreen extends ConsumerWidget {
@@ -71,9 +72,8 @@ class DigestDetailScreen extends ConsumerWidget {
                       style: theme.textTheme.bodySmall,
                     ),
                     const SizedBox(height: 28),
-                    SelectableText(
-                      digest.content,
-                      style: theme.textTheme.bodyLarge?.copyWith(height: 1.6),
+                    AppMarkdown(
+                      data: digest.content,
                     ),
                   ],
                 );

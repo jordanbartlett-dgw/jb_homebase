@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 import '../models/message.dart';
+import 'app_markdown.dart';
 
 /// Shared user/assistant bubble used by live chat and read-only history.
 class MessageBubble extends StatelessWidget {
@@ -34,12 +35,18 @@ class MessageBubble extends StatelessWidget {
           ),
           border: fromUser ? null : Border.all(color: theme.colorScheme.outlineVariant),
         ),
-        child: Text(
-          message.body,
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: fromUser ? theme.colorScheme.onInverseSurface : theme.colorScheme.onSurface,
-          ),
-        ),
+        child: fromUser
+            ? Text(
+                message.body,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onInverseSurface,
+                ),
+              )
+            : AppMarkdown(
+                data: message.body,
+                color: theme.colorScheme.onSurface,
+                compact: true,
+              ),
       ),
     );
   }

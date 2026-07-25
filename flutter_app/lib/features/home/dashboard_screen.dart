@@ -8,6 +8,7 @@ import '../../shared/models/agent.dart';
 import '../../shared/models/today.dart';
 import '../../shared/widgets/bouncy_button.dart';
 import '../../shared/widgets/calendar_event_tile.dart';
+import '../../shared/widgets/app_markdown.dart';
 import '../../shared/widgets/fade_slide_in.dart';
 import '../../state/app_state.dart';
 import '../../state/today_state.dart';
@@ -194,7 +195,9 @@ class _DigestCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                digest?.content ?? 'The briefing will appear here after its scheduled run.',
+                digest == null
+                    ? 'The briefing will appear here after its scheduled run.'
+                    : markdownPlainText(digest!.content),
                 maxLines: digest == null ? 2 : 4,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodyMedium?.copyWith(
