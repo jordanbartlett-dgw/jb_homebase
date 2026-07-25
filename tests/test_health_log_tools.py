@@ -328,6 +328,26 @@ async def test_save_medication_profile_no_prior_profile_all_added():
 
 
 @pytest.mark.asyncio
+async def test_save_medication_profile_event_insert_failure_does_not_break_save():
+    """The profile save is the thing Jordan asked for; a failed autolog of the
+    bonus medication_change event must not raise or mask the successful save."""
+    ctx = _make_ctx()
+    with (
+        patch("jordan_claw.tools.meds.get_medication_profile", return_value=None),
+        patch("jordan_claw.tools.meds.upsert_medication_profile", return_value=None) as mock_upsert,
+        patch(
+            "jordan_claw.tools.meds.insert_health_event",
+            side_effect=RuntimeError("db down"),
+        ),
+    ):
+        result = await save_medication_profile(
+            ctx, medications=[MedicationEntry(name="lamotrigine", dose="25 mg")]
+        )
+    mock_upsert.assert_called_once()
+    assert "Could not auto-log" in result
+
+
+@pytest.mark.asyncio
 async def test_save_medication_profile_passes_timeline_display_name():
     """timeline_display_name is forwarded to the DB-layer upsert."""
     ctx = _make_ctx()

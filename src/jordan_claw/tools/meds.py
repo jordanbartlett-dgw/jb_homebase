@@ -287,14 +287,22 @@ async def save_medication_profile(
     if not med_change_details:
         return "Medication profile saved."
 
-    await insert_health_event(
-        ctx.deps.supabase_client,
-        ctx.deps.org_id,
-        event_date=datetime.now(CENTRAL_TZ).strftime("%Y-%m-%d"),
-        category="medication_change",
-        title="Medication change",
-        details=med_change_details,
-    )
+    try:
+        await insert_health_event(
+            ctx.deps.supabase_client,
+            ctx.deps.org_id,
+            event_date=datetime.now(CENTRAL_TZ).strftime("%Y-%m-%d"),
+            category="medication_change",
+            title="Medication change",
+            details=med_change_details,
+        )
+    except Exception:
+        log.warning("med_change_autolog_failed", details=med_change_details, exc_info=True)
+        return (
+            "Medication profile saved. Could not auto-log the medication_change "
+            "event - tell Jordan the timeline is missing this change."
+        )
+
     summary_parts = []
     if "added" in med_change_details:
         summary_parts.append(f"added {', '.join(med_change_details['added'])}")
