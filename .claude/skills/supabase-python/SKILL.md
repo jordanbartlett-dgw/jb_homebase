@@ -6,7 +6,7 @@ description: Use when working with Supabase in jb_homebase — writing queries w
 # Supabase in the Claw
 
 Data layer: hosted Supabase, async supabase-py, service key server-side.
-Schema truth is `supabase/migrations/` (001–014, 005 removed). Table inventory
+Schema truth is `supabase/migrations/` (001–020, 005 removed). Table inventory
 and column ownership: `docs/architecture.md`. Never assume a table or column —
 read the migration DDL first (the `orgs` vs `organizations` bug shipped once).
 
@@ -29,7 +29,7 @@ read the migration DDL first (the `orgs` vs `organizations` bug shipped once).
 
 ## Migration procedure (manual by design — no CLI runner)
 
-1. New file `supabase/migrations/NNN_short_name.sql`, next number (015+).
+1. New file `supabase/migrations/NNN_short_name.sql`, next number (021+).
 2. Header comment: what it does + **deploy ordering** ("run before/after code
    deploy X") — Railway auto-deploys on merge, so ordering is load-bearing.
    Expand schema BEFORE merging code that reads it.
@@ -44,9 +44,10 @@ read the migration DDL first (the `orgs` vs `organizations` bug shipped once).
 6. Idempotent SQL where possible (`IF NOT EXISTS`, guarded `array_append`) —
    these get re-run by hand.
 
-Agents schema (current, post-014): `slug`, `system_prompt`, `model`
-(provider-prefixed, e.g. `anthropic:claude-sonnet-5`), `capabilities text[]`,
-`is_active`. There is NO `tools` column.
+Agents schema (current, post-020): `slug`, `system_prompt`, `model`
+(provider-prefixed, NULLABLE — NULL inherits `organizations.default_model`),
+`capabilities text[]`, `is_active`. There is NO `tools` column. Both prod
+agents have model NULL; resolution lives in `db/agents.py::resolve_model`.
 
 ## pgvector
 

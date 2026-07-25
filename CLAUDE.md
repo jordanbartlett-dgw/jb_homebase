@@ -26,13 +26,15 @@ idempotency patterns). Do not re-derive the architecture by walking the tree.
 - **Agents are DB rows** (`agents` table): `system_prompt`, `model`, and
   `capabilities text[]` live in the DB, not code. The `tools` column is GONE
   (migration 014). Model names are provider-prefixed: `anthropic:claude-sonnet-5`.
+  A NULL `model` inherits `organizations.default_model` (migration 019/020) —
+  both prod agents run on the org default; a per-agent pin is one UPDATE away.
   Granting a tool = appending its capability id to the array (data migration).
 - **Never `maybe_single()`** — supabase-py returns `None`, not a result object.
   Use `.limit(1).execute()` and check `result.data`.
 - **Check CHECK constraints before writing a new enum-like value.** The
   conversations `status` constraint broke prod once already. Read the actual
   DDL in `supabase/migrations/` first; the table is `organizations`, not `orgs`.
-- **Migrations are manual**: next number (015+), run by hand in the Supabase SQL
+- **Migrations are manual**: next number (021+), run by hand in the Supabase SQL
   Editor, header comment states deploy-order. After any schema change PostgREST
   needs `SELECT pg_notify('pgrst', 'reload schema');` (the function form —
   `NOTIFY` fails in the SQL Editor). Expand schema BEFORE merging code that

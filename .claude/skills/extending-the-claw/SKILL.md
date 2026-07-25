@@ -39,7 +39,7 @@ bundle them; the `agents.capabilities text[]` DB column grants them. There is no
    - Bump the exact-count assertions: N-tools test in
      `tests/test_capabilities.py` and `EXPECTED_TOOLS` in
      `tests/test_tool_registry.py`.
-6. Grant it: data migration (next number, 015+) appending the capability id to
+6. Grant it: data migration (next number, 021+) appending the capability id to
    the agent row's array, idempotent:
    ```sql
    UPDATE agents SET capabilities = array_append(capabilities, 'email')
