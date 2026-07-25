@@ -37,6 +37,14 @@ class Agent {
       icon: Icons.directions_run_outlined,
       tint: Color(0xFF7188E8), // cobalt tint
     ),
+    Agent(
+      // Gateway slug — must match the agents.slug DB row exactly.
+      id: 'med-check',
+      name: 'Med Check',
+      tagline: 'Medication screening',
+      icon: Icons.medication_outlined,
+      tint: Color(0xFF4A6BE0), // cobalt family, between the two existing tints
+    ),
   ];
 
   static Agent byId(String id) => roster.firstWhere((a) => a.id == id, orElse: () => roster.first);

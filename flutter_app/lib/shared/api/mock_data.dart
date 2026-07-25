@@ -70,6 +70,14 @@ class MockData {
         timestamp: _now.subtract(const Duration(minutes: 40)),
       ),
     ],
+    'med-check' => [
+      Message(
+        id: 'med-check-1',
+        role: MessageRole.assistant,
+        body: 'No interactions flagged for your current medication list. Anything new to add?',
+        timestamp: _now.subtract(const Duration(minutes: 30)),
+      ),
+    ],
     _ => [
       Message(
         id: 'main-1',
