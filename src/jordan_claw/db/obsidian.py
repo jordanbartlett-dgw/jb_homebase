@@ -144,6 +144,23 @@ async def delete_chunks_for_note(client: AsyncClient, note_id: str) -> None:
     await client.table("obsidian_note_chunks").delete().eq("note_id", note_id).execute()
 
 
+async def get_vault_paths_with_prefix(client: AsyncClient, org_id: str, prefix: str) -> list[str]:
+    """List vault_paths for an org starting with prefix, regardless of archive
+    or sync status. The (org_id, vault_path) unique constraint applies to
+    archived rows too, so callers that need to avoid a collision before
+    insert_note (e.g. same-day regenerated documents) must not filter on
+    is_archived here.
+    """
+    result = await (
+        client.table("obsidian_notes")
+        .select("vault_path")
+        .eq("org_id", org_id)
+        .like("vault_path", f"{prefix}%")
+        .execute()
+    )
+    return [row["vault_path"] for row in result.data]
+
+
 async def get_pending_exports(
     client: AsyncClient,
     org_id: str,

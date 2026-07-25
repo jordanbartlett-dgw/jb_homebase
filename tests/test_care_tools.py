@@ -154,6 +154,33 @@ async def test_check_care_docs_names_changed_section(monkeypatch):
             assert "diagnoses" not in line
 
 
+@pytest.mark.asyncio
+async def test_check_care_docs_unreadable_stored_hash_is_explicit(monkeypatch):
+    """A garbage/legacy source_hash (not our {"total", "sections"} bundle)
+    must not be silently treated as if every section changed — report it as
+    unreadable instead of overclaiming specifics."""
+    care = CareProfile(org_id=ORG_ID, diagnoses=["Long QT syndrome"])
+    meds_profile = MedicationProfile(org_id=ORG_ID, timeline_display_name="Ellie")
+
+    monkeypatch.setattr(meds, "get_care_profile", lambda *a, **kw: _async_return(care))
+    monkeypatch.setattr(
+        meds, "get_medication_profile", lambda *a, **kw: _async_return(meds_profile)
+    )
+
+    async def fake_get_care_document(client, org_id, doc_type):
+        return {
+            "source_hash": "not-json-and-not-a-bundle",
+            "generated_at": "2026-07-01T00:00:00+00:00",
+        }
+
+    monkeypatch.setattr(meds, "get_care_document", fake_get_care_document)
+
+    out = await meds.check_care_docs_current(FakeCtx())
+    for line in out.splitlines():
+        assert "stored hash unreadable - regenerate to reset" in line
+        assert "changed:" not in line
+
+
 async def _async_return(value):
     return value
 
@@ -217,9 +244,12 @@ async def test_save_care_profile_dumps_contacts_before_db_boundary(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _patch_successful_write(monkeypatch, care=None, meds_profile=None):
+def _patch_successful_write(monkeypatch, care=None, meds_profile=None, existing_paths=()):
     """Wire every dependency save_care_document needs for a real write, and
-    return the captured insert_note/upsert_care_document call args."""
+    return the captured insert_note/upsert_care_document call args.
+    existing_paths simulates what get_vault_paths_with_prefix would find
+    already in obsidian_notes — pass the exact same-day path to exercise the
+    version-suffix collision handling."""
     captured: dict = {}
 
     meds_profile = meds_profile or MedicationProfile(org_id=ORG_ID, timeline_display_name="Ellie")
@@ -229,6 +259,9 @@ def _patch_successful_write(monkeypatch, care=None, meds_profile=None):
         meds, "get_medication_profile", lambda *a, **kw: _async_return(meds_profile)
     )
     monkeypatch.setattr(meds, "get_care_profile", lambda *a, **kw: _async_return(care))
+    monkeypatch.setattr(
+        meds, "get_vault_paths_with_prefix", lambda *a, **kw: _async_return(list(existing_paths))
+    )
 
     async def fake_insert_note(client, **kwargs):
         captured["insert_note"] = kwargs
@@ -339,4 +372,54 @@ async def test_save_care_document_title_uses_handoff_label(monkeypatch):
     captured = _patch_successful_write(monkeypatch)
     await meds.save_care_document(FakeCtx(), "handoff", "handoff body")
     expected_title = "Ellie - Caregiver Handoff - 2026-07-25"
+    assert captured["insert_note"]["title"] == expected_title
+
+
+@pytest.mark.asyncio
+async def test_save_care_document_first_write_gets_no_version_suffix(monkeypatch):
+    """No prior note at this same-day path — title must be the plain base
+    title, no ' - vN' suffix."""
+    captured = _patch_successful_write(monkeypatch, existing_paths=[])
+    await meds.save_care_document(FakeCtx(), "emergency", "one-page emergency body")
+    expected_title = "Ellie - Emergency One-Pager - 2026-07-25"
+    assert captured["insert_note"]["title"] == expected_title
+    assert captured["insert_note"]["vault_path"] == f"Health/Documents/{expected_title}.md"
+
+
+@pytest.mark.asyncio
+async def test_save_care_document_same_day_regeneration_gets_v2(monkeypatch):
+    """Same-day regeneration: the exact base vault_path already exists (from
+    the first generate today), so a second save must not collide with the
+    (org_id, vault_path) unique constraint — it gets ' - v2' instead, and
+    care_documents.note_title is updated to point at the v2 title."""
+    base_title = "Ellie - Emergency One-Pager - 2026-07-25"
+    captured = _patch_successful_write(
+        monkeypatch, existing_paths=[f"Health/Documents/{base_title}.md"]
+    )
+
+    out = await meds.save_care_document(FakeCtx(), "emergency", "regenerated body")
+
+    expected_title = f"{base_title} - v2"
+    assert captured["insert_note"]["title"] == expected_title
+    assert captured["insert_note"]["vault_path"] == f"Health/Documents/{expected_title}.md"
+    assert expected_title in out
+    assert captured["upsert_care_document"]["note_title"] == expected_title
+
+
+@pytest.mark.asyncio
+async def test_save_care_document_third_same_day_save_gets_v3(monkeypatch):
+    """Both the base title and ' - v2' already exist — the next free number
+    is v3."""
+    base_title = "Ellie - Emergency One-Pager - 2026-07-25"
+    captured = _patch_successful_write(
+        monkeypatch,
+        existing_paths=[
+            f"Health/Documents/{base_title}.md",
+            f"Health/Documents/{base_title} - v2.md",
+        ],
+    )
+
+    await meds.save_care_document(FakeCtx(), "emergency", "regenerated again")
+
+    expected_title = f"{base_title} - v3"
     assert captured["insert_note"]["title"] == expected_title

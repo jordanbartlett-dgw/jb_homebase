@@ -28,7 +28,7 @@ from jordan_claw.db.health_log import (
     update_health_event,
 )
 from jordan_claw.db.meds import get_medication_profile, upsert_medication_profile
-from jordan_claw.db.obsidian import insert_chunks, insert_note
+from jordan_claw.db.obsidian import get_vault_paths_with_prefix, insert_chunks, insert_note
 from jordan_claw.meds.models import (
     CareContact,
     CareProfile,
@@ -665,6 +665,9 @@ async def save_care_document(
     in over budget the tool refuses with the char count and does NOT write;
     cut routine detail, never safety content, and recompose. The handoff has
     no such gate.
+    Same-day regeneration (the profile changed, Jordan asks to regenerate
+    today) is versioned automatically — a second same-day save gets " - v2",
+    a third " - v3", and so on — it never overwrites the same vault path.
     On a successful write this records the fingerprint check_care_docs_current
     uses to detect staleness, and returns the note title.
     NOT for drafting or editing the body, and NOT for the doctor timeline —
@@ -683,7 +686,22 @@ async def save_care_document(
     care = await get_care_profile(ctx.deps.supabase_client, ctx.deps.org_id)
 
     today = datetime.now(UTC).strftime("%Y-%m-%d")
-    title = f"{display_name} - {CARE_DOC_LABELS[doc_type]} - {today}"
+    base_title = f"{display_name} - {CARE_DOC_LABELS[doc_type]} - {today}"
+    base_vault_path = f"Health/Documents/{base_title}"
+
+    existing_paths = set(
+        await get_vault_paths_with_prefix(
+            ctx.deps.supabase_client, ctx.deps.org_id, base_vault_path
+        )
+    )
+    title = base_title
+    vault_path = f"{base_vault_path}.md"
+    if vault_path in existing_paths:
+        version = 2
+        while f"{base_vault_path} - v{version}.md" in existing_paths:
+            version += 1
+        title = f"{base_title} - v{version}"
+        vault_path = f"{base_vault_path} - v{version}.md"
 
     frontmatter = {
         "type": "care-document",
@@ -693,8 +711,6 @@ async def save_care_document(
         "tags": ["health", "care-document"],
         "status": "generated",
     }
-
-    vault_path = f"Health/Documents/{title}.md"
 
     # Build the full file content for hashing (frontmatter + body)
     full_file = f"---\n{yaml.dump(frontmatter, default_flow_style=False)}---\n\n{markdown_body}"
@@ -769,15 +785,19 @@ async def check_care_docs_current(ctx: RunContext[AgentDeps]) -> str:
         except (TypeError, ValueError, KeyError):
             stored = None
 
-        if stored is not None and stored.get("total") == current["total"]:
+        if not isinstance(stored, dict):
+            lines.append(f"{doc_type}: stale (stored hash unreadable - regenerate to reset)")
+            continue
+
+        if stored.get("total") == current["total"]:
             lines.append(f"{doc_type}: current (generated {row.get('generated_at', '?')})")
             continue
 
-        stored_sections = stored.get("sections", {}) if stored else {}
+        stored_sections = stored.get("sections", {})
         changed = [
             name for name, h in current["sections"].items() if stored_sections.get(name) != h
         ]
-        changed_str = ", ".join(changed) if changed else "unknown (unreadable stored hash)"
+        changed_str = ", ".join(changed) if changed else "unknown"
         lines.append(f"{doc_type}: stale (changed: {changed_str})")
 
     return "\n".join(lines)
