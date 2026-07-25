@@ -14,7 +14,7 @@ import '../../theme/app_theme.dart';
 import '../../theme/colors.dart';
 
 /// DashboardScreen — the Homebase landing view.
-/// Layout: eyebrow date → Playfair greeting → digest gradient card →
+/// Layout: eyebrow date → Playfair greeting → inverse digest card →
 /// agent dock → insights row. Every block staggers in via FadeSlideIn.
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -104,8 +104,8 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-/// The one loud element on the page: sage gradient, soft lift, digest copy.
-/// Later this renders the real Daily Digest payload from the gateway.
+/// The one loud element on the page: an inverse monochrome card with a
+/// cobalt live-state detail. Later this renders the real Daily Digest payload.
 class _DigestCard extends StatelessWidget {
   const _DigestCard();
 
@@ -113,62 +113,68 @@ class _DigestCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final gradient = isDark
-        ? AppColors.digestGradientDark
-        : AppColors.digestGradientLight;
+    final heroInk = theme.colorScheme.onInverseSurface;
+    final heroAccent = isDark ? AppColors.cobalt : AppColors.cobaltBright;
 
     return BouncyButton(
       onTap: () {}, // TODO(backend): full digest detail screen
       child: Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: gradient,
-          ),
+          color: theme.colorScheme.inverseSurface,
           borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-          boxShadow: [
-            BoxShadow(
-              color: gradient.first.withValues(alpha: 0.35),
-              blurRadius: 28,
-              offset: const Offset(0, 14),
-            ),
-          ],
+          border: Border.all(color: heroAccent.withValues(alpha: 0.7)),
+          boxShadow: AppTheme.softShadow(context),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'DAILY DIGEST',
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(color: AppColors.cream.withValues(alpha: 0.7)),
+            Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: heroAccent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'DAILY DIGEST',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: heroInk.withValues(alpha: 0.65),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 10),
             Text(
               // TODO(backend): real digest from /api/today/cards
               '3 things need your attention',
-              style: theme.textTheme.headlineSmall
-                  ?.copyWith(color: AppColors.cream),
+              style: theme.textTheme.headlineSmall?.copyWith(color: heroInk),
             ),
             const SizedBox(height: 8),
             Text(
               'Zone 2 session scheduled, two agent tasks completed '
               'overnight, and your weekly review is ready.',
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: AppColors.cream.withValues(alpha: 0.85)),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: heroInk.withValues(alpha: 0.78),
+              ),
             ),
             const SizedBox(height: 16),
             Row(
               children: [
                 Text(
                   'Read digest',
-                  style: theme.textTheme.labelLarge
-                      ?.copyWith(color: AppColors.cream),
+                  style: theme.textTheme.labelLarge?.copyWith(color: heroAccent),
                 ),
                 const SizedBox(width: 6),
-                const Icon(Icons.arrow_forward_rounded,
-                    size: 18, color: AppColors.cream),
+                Icon(
+                  Icons.arrow_forward_rounded,
+                  size: 18,
+                  color: heroAccent,
+                ),
               ],
             ),
           ],
@@ -178,8 +184,7 @@ class _DigestCard extends StatelessWidget {
   }
 }
 
-/// Tactile dock card: agent tint at low alpha over surface, icon badge,
-/// name + tagline. BouncyButton supplies the press feel.
+/// Tactile monochrome dock card with cobalt-family identity details.
 class _AgentCard extends StatelessWidget {
   const _AgentCard({required this.agent, required this.onTap});
 
@@ -189,6 +194,8 @@ class _AgentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final accent = isDark ? AppColors.cobaltBright : agent.tint;
 
     return BouncyButton(
       onTap: onTap,
@@ -196,12 +203,9 @@ class _AgentCard extends StatelessWidget {
         width: 170,
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: Color.alphaBlend(
-            agent.tint.withValues(alpha: 0.10),
-            theme.colorScheme.surface,
-          ),
+          color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-          boxShadow: AppTheme.softShadow(context),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -210,10 +214,11 @@ class _AgentCard extends StatelessWidget {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: agent.tint.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(14),
+                color: accent.withValues(alpha: isDark ? 0.16 : 0.10),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: accent.withValues(alpha: 0.28)),
               ),
-              child: Icon(agent.icon, color: agent.tint, size: 22),
+              child: Icon(agent.icon, color: accent, size: 22),
             ),
             const Spacer(),
             Text(

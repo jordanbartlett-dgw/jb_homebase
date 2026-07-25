@@ -39,6 +39,14 @@ class HomebaseShell extends StatelessWidget {
           children: [
             NavigationRail(
               backgroundColor: Theme.of(context).colorScheme.surface,
+              indicatorColor: Theme.of(context).colorScheme.inverseSurface,
+              selectedIconTheme: IconThemeData(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              selectedLabelTextStyle: TextStyle(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
               selectedIndex: navigationShell.currentIndex,
               onDestinationSelected: _select,
               labelType: NavigationRailLabelType.all,
@@ -92,6 +100,7 @@ class _FloatingNav extends StatelessWidget {
           color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(40),
           boxShadow: AppTheme.softShadow(context),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -107,10 +116,13 @@ class _FloatingNav extends StatelessWidget {
                   vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  color: selected
-                      ? theme.colorScheme.primary
-                      : Colors.transparent,
+                  color: selected ? theme.colorScheme.inverseSurface : Colors.transparent,
                   borderRadius: BorderRadius.circular(30),
+                  border: selected
+                      ? Border.all(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.6),
+                        )
+                      : null,
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -119,7 +131,7 @@ class _FloatingNav extends StatelessWidget {
                       tabs[i].icon,
                       size: 22,
                       color: selected
-                          ? theme.colorScheme.onPrimary
+                          ? theme.colorScheme.onInverseSurface
                           : theme.colorScheme.onSurface.withValues(alpha: 0.65),
                     ),
                     // Label slides open only for the active tab.
@@ -132,12 +144,23 @@ class _FloatingNav extends StatelessWidget {
                               child: Text(
                                 tabs[i].label,
                                 style: theme.textTheme.labelLarge?.copyWith(
-                                  color: theme.colorScheme.onPrimary,
+                                  color: theme.colorScheme.onInverseSurface,
                                 ),
                               ),
                             )
                           : const SizedBox.shrink(),
                     ),
+                    if (selected) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

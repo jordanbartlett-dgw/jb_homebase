@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../routing/routes.dart';
 import '../../state/app_state.dart';
-import '../../theme/colors.dart';
 import '../../theme/spacing.dart';
 
 /// Voice preview — transcript + audio scrubber + Send/Discard/Re-record.
@@ -16,7 +15,8 @@ class VoicePreview extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
     final activeAgent = ref.watch(activeAgentProvider);
 
     const placeholderTranscript =
@@ -25,7 +25,6 @@ class VoicePreview extends ConsumerWidget {
         'morning before the FG board prep.';
 
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text('Voice preview', style: textTheme.titleMedium),
         leading: IconButton(
@@ -43,10 +42,11 @@ class VoicePreview extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(Spacing.lg),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: theme.colorScheme.surface,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.border, width: 0.5),
-                boxShadow: AppColors.cardShadow,
+                border: Border.all(
+                  color: theme.colorScheme.outlineVariant,
+                ),
               ),
               child: Text(placeholderTranscript, style: textTheme.bodyLarge),
             ),
@@ -103,23 +103,24 @@ class _AudioScrubberStub extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
     return Container(
       padding: const EdgeInsets.all(Spacing.md),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
-          const Icon(Icons.play_arrow, color: AppColors.accent),
+          Icon(Icons.play_arrow, color: theme.colorScheme.primary),
           const SizedBox(width: Spacing.sm),
           Expanded(
             child: Container(
               height: 4,
               decoration: BoxDecoration(
-                color: AppColors.surfaceVariant,
+                color: theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../routing/routes.dart';
 import '../../state/app_state.dart';
-import '../../theme/colors.dart';
 import '../../theme/spacing.dart';
 
 class MagicLinkScreen extends ConsumerStatefulWidget {
@@ -38,6 +37,7 @@ class _MagicLinkScreenState extends ConsumerState<MagicLinkScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
@@ -71,8 +71,11 @@ class _MagicLinkScreenState extends ConsumerState<MagicLinkScreen> {
                 Container(
                   padding: const EdgeInsets.all(Spacing.md),
                   decoration: BoxDecoration(
-                    color: AppColors.surfaceVariant,
+                    color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: theme.colorScheme.outlineVariant,
+                    ),
                   ),
                   child: Text(
                     'Sent. In the real app you would tap the email link to finish '

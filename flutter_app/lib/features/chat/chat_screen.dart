@@ -9,7 +9,6 @@ import '../../shared/models/message.dart';
 import '../../shared/widgets/bouncy_button.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_theme.dart';
-import '../../theme/colors.dart';
 import 'widgets/tool_call_chip.dart';
 import 'widgets/typing_indicator.dart';
 
@@ -99,16 +98,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               transitionBuilder: (child, animation) {
                 final incoming = child.key == ValueKey(agent.id);
                 final begin = Offset(
-                  incoming
-                      ? 0.15 * _slideDirection
-                      : -0.15 * _slideDirection,
+                  incoming ? 0.15 * _slideDirection : -0.15 * _slideDirection,
                   0,
                 );
                 return FadeTransition(
                   opacity: animation,
                   child: SlideTransition(
-                    position:
-                        Tween(begin: begin, end: Offset.zero).animate(animation),
+                    position: Tween(begin: begin, end: Offset.zero).animate(animation),
                     child: child,
                   ),
                 );
@@ -120,7 +116,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 itemCount: messages.length + (typing ? 1 : 0),
                 itemBuilder: (context, i) {
                   if (i == messages.length) {
-                    return TypingIndicator(tint: agent.tint);
+                    return TypingIndicator(
+                      tint: Theme.of(context).colorScheme.primary,
+                    );
                   }
                   final message = messages[i];
                   if (message.role == MessageRole.toolCall) {
@@ -147,7 +145,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 }
 
-/// Horizontal agent chips. Selected chip fills with the agent tint.
+/// Horizontal agent chips. Selection is monochrome with a cobalt state dot.
 class _AgentPicker extends StatelessWidget {
   const _AgentPicker({required this.selected, required this.onSelect});
 
@@ -167,6 +165,7 @@ class _AgentPicker extends StatelessWidget {
         itemBuilder: (context, i) {
           final agent = Agent.roster[i];
           final isSelected = agent.id == selected.id;
+          final selectedInk = theme.colorScheme.onInverseSurface;
           return BouncyButton(
             onTap: () => onSelect(agent),
             child: AnimatedContainer(
@@ -176,29 +175,40 @@ class _AgentPicker extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: isSelected
-                    ? agent.tint
-                    : theme.colorScheme.surfaceContainerHighest
-                        .withValues(alpha: 0.6),
+                    ? theme.colorScheme.inverseSurface
+                    : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: isSelected
+                      ? theme.colorScheme.primary.withValues(alpha: 0.65)
+                      : theme.colorScheme.outlineVariant,
+                ),
               ),
               child: Row(
                 children: [
                   Icon(
                     agent.icon,
                     size: 16,
-                    color: isSelected
-                        ? AppColors.cream
-                        : theme.colorScheme.onSurface,
+                    color: isSelected ? selectedInk : theme.colorScheme.onSurface,
                   ),
                   const SizedBox(width: 8),
                   Text(
                     agent.name,
                     style: theme.textTheme.labelLarge?.copyWith(
-                      color: isSelected
-                          ? AppColors.cream
-                          : theme.colorScheme.onSurface,
+                      color: isSelected ? selectedInk : theme.colorScheme.onSurface,
                     ),
                   ),
+                  if (isSelected) ...[
+                    const SizedBox(width: 9),
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -233,22 +243,19 @@ class _ChatBubble extends StatelessWidget {
           maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
         decoration: BoxDecoration(
-          color:
-              fromUser ? theme.colorScheme.primary : theme.colorScheme.surface,
+          color: fromUser ? theme.colorScheme.inverseSurface : theme.colorScheme.surface,
           borderRadius: BorderRadius.only(
             topLeft: r,
             topRight: r,
             bottomLeft: fromUser ? r : sharp,
             bottomRight: fromUser ? sharp : r,
           ),
-          boxShadow: fromUser ? null : AppTheme.softShadow(context),
+          border: fromUser ? null : Border.all(color: theme.colorScheme.outlineVariant),
         ),
         child: Text(
           message.body,
           style: theme.textTheme.bodyLarge?.copyWith(
-            color: fromUser
-                ? theme.colorScheme.onPrimary
-                : theme.colorScheme.onSurface,
+            color: fromUser ? theme.colorScheme.onInverseSurface : theme.colorScheme.onSurface,
           ),
         ),
       ),
@@ -286,10 +293,9 @@ class _Composer extends StatelessWidget {
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
                 shape: BoxShape.circle,
-                boxShadow: AppTheme.softShadow(context),
+                border: Border.all(color: theme.colorScheme.outlineVariant),
               ),
-              child: Icon(Icons.mic_none_rounded,
-                  color: theme.colorScheme.primary),
+              child: Icon(Icons.mic_none_rounded, color: theme.colorScheme.primary),
             ),
           ),
           const SizedBox(width: 10),
@@ -299,7 +305,7 @@ class _Composer extends StatelessWidget {
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
                 borderRadius: BorderRadius.circular(26),
-                boxShadow: AppTheme.softShadow(context),
+                border: Border.all(color: theme.colorScheme.outlineVariant),
               ),
               child: TextField(
                 controller: controller,
@@ -308,8 +314,7 @@ class _Composer extends StatelessWidget {
                 style: theme.textTheme.bodyLarge,
                 decoration: InputDecoration(
                   hintText: 'Message $hint',
-                  hintStyle: theme.textTheme.bodyMedium
-                      ?.copyWith(color: theme.colorScheme.outline),
+                  hintStyle: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
                   border: InputBorder.none,
                 ),
               ),
@@ -325,8 +330,7 @@ class _Composer extends StatelessWidget {
                 color: theme.colorScheme.primary,
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.arrow_upward_rounded,
-                  color: theme.colorScheme.onPrimary),
+              child: Icon(Icons.arrow_upward_rounded, color: theme.colorScheme.onPrimary),
             ),
           ),
         ],
