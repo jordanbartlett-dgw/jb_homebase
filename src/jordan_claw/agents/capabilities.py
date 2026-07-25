@@ -105,6 +105,7 @@ CAPABILITY_REGISTRY: dict[str, ToolGroup] = {
     ),
     # Read-only cross-agent views. Same tool fns as the full groups — never
     # grant a *_readonly group alongside its full group (duplicate tool names).
+    # TODO(phase-2): agent-to-agent delegation would supersede these mirrors.
     "workout_readonly": ToolGroup(
         id="workout_readonly",
         description=(

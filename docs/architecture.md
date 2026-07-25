@@ -59,18 +59,28 @@ Every inbound message, regardless of channel, funnels into
 ### Proactive flow
 
 `proactive/scheduler.py::scheduler_loop` wakes every 60s, evaluates each enabled
-`proactive_schedules` row's cron expression (croniter, per-schedule timezone)
-against `last_run_at`, dispatches to `EXECUTOR_MAP` (`proactive/executors.py`):
-morning_briefing, weekly_review, daily_scan, weekly_feedback_request,
-calendar_reminder, daily_workout, plus fastmail_watch. Delivery is
-Telegram-only with same-day dedup (`was_sent_today`). Morning briefing also
-seeds in-process `loop.call_later` timers for 30-min-before calendar reminders.
+`proactive_schedules` row — cron expression (croniter, per-schedule timezone) or
+one-shot `run_at` timestamp — against `last_run_at`, dispatches to `EXECUTOR_MAP`
+(`proactive/executors.py`): morning_briefing, weekly_review, daily_scan,
+weekly_feedback_request, calendar_reminder, daily_workout, reminder (delivers
+`config.message` verbatim, no LLM), weekly_training_review (Sunday 6pm coach
+review of the week's logs vs plan; deterministic one-liner when there's no plan
+or no logs), plus fastmail_watch. One-shots are disabled by `dispatch_task`
+after firing. Delivery is Telegram-only with same-day dedup (`was_sent_today`)
+— except task_type `reminder`, which dedups on a 5-min `was_sent_within` window
+so sub-daily recurring reminders can fire. Morning briefing also seeds
+in-process `loop.call_later` timers for 30-min-before calendar reminders.
+Schedule rows carry `source` ('system' vs 'reminder'); the reminders tools only
+ever list/cancel `source='reminder'` rows.
 
 ## Agent construction
 
 - Config source of truth: `agents` DB row (`db/agents.py::AgentConfig`) —
-  `slug`, `system_prompt`, `model` (provider-prefixed), `capabilities text[]`,
-  `is_active`. Two agents: `claw-main`, `workout-coach`.
+  `slug`, `system_prompt`, `model` (provider-prefixed, nullable), `capabilities
+  text[]`, `is_active`. Two agents: `claw-main`, `workout-coach`. A NULL model
+  inherits `organizations.default_model` (`db/agents.py::resolve_model` — row
+  override wins); `/health` validates the RESOLVED model and degrades when
+  neither is set.
 - `agents/factory.py::create_agent`: `Agent(config.model, instructions=memory
   block + system_prompt, capabilities=[*resolve_capabilities(config.capabilities),
   ProcessHistory(trim_history_processor)], deps_type=AgentDeps)`.
@@ -78,10 +88,15 @@ seeds in-process `loop.call_later` timers for 30-min-before calendar reminders.
   (a `FunctionToolset`): **core** (current_datetime), **web** (search_web,
   fetch_article), **calendar** (check_calendar, schedule_event), **memory**
   (recall_memory, forget_memory), **obsidian** (search_notes, read_note,
-  create_source_note), **workout** (7 tools). 17 tools total. Unknown ids are
-  skipped with a warning (safe deploy ordering). log_workout refuses same-day
-  same-activity duplicates unless allow_duplicate=true; amend_last_workout
-  updates the latest log (follow-up detail was double-logging sessions).
+  create_source_note), **workout** (7 tools), **reminders** (set_reminder,
+  list_reminders, cancel_reminder), plus read-only cross-agent views
+  **workout_readonly** (3 read tools, on claw-main) and **obsidian_readonly**
+  (search_notes + read_note, on workout-coach) that reuse the same tool fns —
+  never grant a *_readonly group alongside its full group (duplicate names).
+  20 distinct tools total. Unknown ids are skipped with a warning (safe deploy
+  ordering). log_workout refuses same-day same-activity duplicates unless
+  allow_duplicate=true; amend_last_workout updates the latest log (follow-up
+  detail was double-logging sessions).
 - Tools are plain async fns taking `ctx: RunContext[AgentDeps]`
   (`agents/deps.py`: org_id, tavily key, fastmail creds, supabase client,
   openai key). Registered via `ts.add_function(fn, name=...)`.
@@ -128,8 +143,10 @@ evict.
 
 ## Database (Supabase, hosted)
 
-Migrations `001`–`014` (005 removed as a no-op), applied by hand in the SQL
-Editor. Tables: organizations, agents, conversations, messages, memory_facts /
+Migrations `001`–`020` (005 removed as a no-op), applied by hand in the SQL
+Editor — 016/019 are schema (run before their code deploy), 015/017/018/020 are
+data grants/seeds (015 applied 2026-07-25; 017/018/020 run only after deploy —
+headers state the ordering). Tables: organizations, agents, conversations, messages, memory_facts /
 memory_events / memory_context, obsidian_notes / obsidian_note_chunks
 (pgvector, 512-dim text-embedding-3-small, RPC `search_obsidian_notes`),
 proactive_schedules, proactive_messages, usage_events (cost ledger), feedback,

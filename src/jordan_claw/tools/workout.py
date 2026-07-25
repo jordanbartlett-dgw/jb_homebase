@@ -97,6 +97,7 @@ async def save_workout_plan_tool(
     return f"Plan saved (id {row['id']}). It replaces any previous plan."
 
 
+# TODO(phase-2): HealthKit/Strava ingestion would land logs here without Jordan typing them.
 async def log_workout(
     ctx: RunContext[AgentDeps],
     activity: Literal["run", "strength", "mobility", "rest", "other"],
