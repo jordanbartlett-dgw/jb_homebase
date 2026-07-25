@@ -18,8 +18,8 @@ Special UI/data requirements:
 - On ambiguous drug names the agent asks which one before checking. Expect mid-check clarification turns.
 - Checks make several tool calls (RxNorm, openFDA, web); replies can take noticeably longer than claw-main. Existing 120s /app/messages timeout is sufficient.
 - Profile updates are conversational (no form needed); one medication_profiles row per org.
-Commit SHA: <fill at commit>
-Production deployed: no (deploys on merge to main)
-Database row created and active: no (migration 022 runs by hand after deploy)
-Verified through POST /app/messages using this slug: no
-Conversation history verified: no
+Commit SHA: bf209b7 (main; includes the agent, the Flutter roster entry, and the history-trim fix)
+Production deployed: yes (deploy 80cd3981, commit bf209b7, /health green with three agents)
+Database row created and active: yes (agents row read back, prompt byte-identical to migration 022, model resolves to org default sonnet-5)
+Verified through POST /app/messages using this slug: yes (2026-07-25, full ondansetron check round-tripped: flagged with FDA label + CredibleMeds sources, no forbidden phrases, $0.28/run in usage_events)
+Conversation history verified: yes (GET /app/conversations?agent_slug=med-check returns the conversation with derived title)
