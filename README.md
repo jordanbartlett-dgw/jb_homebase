@@ -119,7 +119,7 @@ tests/                   # 307 unit and integration tests
 scripts/
   obsidian_sync/         # CLI for vault ingest/export
 supabase/migrations/     # 001-014 schema migrations (005 removed as a no-op)
-docs/plans/              # Implementation plans (analytics-observability.md)
+docs/plans/              # Implementation plans (Flutter PRD, locked decisions)
 Dockerfile
 pyproject.toml
 ```
@@ -233,7 +233,6 @@ A separate Railway service (`evals-cron`) runs the Pydantic Evals suite nightly 
 
 ## Docs
 
-- `docs/plans/analytics-observability.md` — 5-PR analytics + observability rollout (all shipped)
 - `docs/observability.md` — Logfire / `usage_events` / PostHog signal map
 - `docs/evals.md` — Pydantic Evals harness and dataset authoring guide
 - `docs/claw-main-prompt-reference.md` — agent prompt reference

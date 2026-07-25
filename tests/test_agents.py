@@ -149,52 +149,6 @@ async def test_build_agent_uses_db_config():
     assert sent_tools == {"current_datetime", "search_web", "fetch_article"}
 
 
-def test_history_budget_truncates_oldest_messages():
-    """When messages exceed token budget, oldest are dropped."""
-    db_rows = [
-        {"role": "user", "content": "A" * 4000},  # ~1000 tokens
-        {"role": "assistant", "content": "B" * 4000},  # ~1000 tokens
-        {"role": "user", "content": "C" * 4000},  # ~1000 tokens
-        {"role": "assistant", "content": "D" * 4000},  # ~1000 tokens
-        {"role": "user", "content": "E" * 400},  # ~100 tokens
-        {"role": "assistant", "content": "F" * 400},  # ~100 tokens
-    ]
-    # Budget of 2200 tokens (~8800 chars) should keep the last 2 exchanges
-    result = db_messages_to_history(db_rows, max_tokens=2200)
-
-    assert len(result) == 4  # messages 3-6 kept
-    assert isinstance(result[0], ModelRequest)
-    assert result[0].parts[0].content == "C" * 4000
-    assert isinstance(result[-1], ModelResponse)
-    assert result[-1].parts[0].content == "F" * 400
-
-
-def test_history_budget_preserves_most_recent_exchange():
-    """Even with a tiny budget, the most recent user+assistant pair is kept."""
-    db_rows = [
-        {"role": "user", "content": "A" * 40000},  # ~10000 tokens, way over budget
-        {"role": "assistant", "content": "B" * 40000},  # ~10000 tokens
-    ]
-    result = db_messages_to_history(db_rows, max_tokens=100)
-
-    # Must keep at least the most recent exchange regardless of budget
-    assert len(result) == 2
-    assert isinstance(result[0], ModelRequest)
-    assert isinstance(result[1], ModelResponse)
-
-
-def test_history_no_budget_returns_all():
-    """When max_tokens is 0 (disabled), all messages are returned."""
-    db_rows = [
-        {"role": "user", "content": "A" * 40000},
-        {"role": "assistant", "content": "B" * 40000},
-        {"role": "user", "content": "C" * 40000},
-        {"role": "assistant", "content": "D" * 40000},
-    ]
-    result = db_messages_to_history(db_rows, max_tokens=0)
-    assert len(result) == 4
-
-
 @pytest.mark.asyncio
 async def test_build_agent_skips_unknown_capabilities():
     fake_config = AgentConfig(
@@ -228,20 +182,6 @@ async def test_build_agent_skips_unknown_capabilities():
     # "nonexistent" is not in CAPABILITY_REGISTRY, so only core's tool reaches the model.
     # resolve_capabilities logs a warning for unknown capability ids.
     assert sent_tools == {"current_datetime"}
-
-
-def test_history_budget_no_orphan_response_at_start():
-    """History should never start with an assistant message (ModelResponse)."""
-    db_rows = [
-        {"role": "user", "content": "A" * 4000},
-        {"role": "assistant", "content": "B" * 4000},
-        {"role": "user", "content": "C" * 400},  # current unanswered turn
-    ]
-    result = db_messages_to_history(db_rows, max_tokens=300)
-
-    # First message must always be a user message (ModelRequest)
-    assert len(result) >= 1
-    assert isinstance(result[0], ModelRequest)
 
 
 def test_trim_history_processor_strips_orphaned_tool_results():

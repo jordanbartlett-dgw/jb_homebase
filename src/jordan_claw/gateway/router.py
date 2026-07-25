@@ -97,7 +97,7 @@ async def handle_message(
             supabase_client=db,
             openai_api_key=openai_api_key,
         )
-        history = db_messages_to_history(db_messages, max_tokens=0)
+        history = db_messages_to_history(db_messages)
 
         result = await run_agent_instrumented(
             agent=agent,
