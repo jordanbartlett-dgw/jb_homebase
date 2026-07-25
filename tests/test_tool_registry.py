@@ -29,6 +29,9 @@ EXPECTED_TOOLS = [
     "log_workout",
     "amend_last_workout",
     "get_recent_workouts",
+    "set_reminder",
+    "list_reminders",
+    "cancel_reminder",
 ]
 
 
@@ -72,6 +75,9 @@ def test_deps_tools_have_ctx_param():
         "log_workout",
         "amend_last_workout",
         "get_recent_workouts",
+        "set_reminder",
+        "list_reminders",
+        "cancel_reminder",
     ]
     for name in deps_tools:
         sig = inspect.signature(ALL_TOOLS[name].function)

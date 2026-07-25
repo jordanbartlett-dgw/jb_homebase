@@ -242,6 +242,16 @@ async def execute_daily_scan(
     return "Calendar conflicts detected:\n" + "\n".join(conflicts)
 
 
+async def execute_reminder(
+    db: AsyncClient,
+    org_id: str,
+    config: dict,
+    settings: Settings,
+) -> str:
+    """Deliver the stored reminder text verbatim. No agent run, no LLM call."""
+    return config.get("message", "")
+
+
 async def execute_weekly_feedback_request(
     db: AsyncClient,
     org_id: str,

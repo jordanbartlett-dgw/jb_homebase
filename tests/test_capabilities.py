@@ -14,11 +14,11 @@ from jordan_claw.agents.factory import create_agent
 from jordan_claw.db.agents import AgentConfig
 
 
-def test_registry_covers_all_seventeen_tools():
+def test_registry_covers_all_twenty_tools():
     tool_names = set()
     for group in CAPABILITY_REGISTRY.values():
         tool_names.update(group.toolset.tools)
-    assert len(tool_names) == 17
+    assert len(tool_names) == 20
 
 
 def test_expected_groups_exist():
@@ -31,6 +31,7 @@ def test_expected_groups_exist():
         "workout",
         "workout_readonly",
         "obsidian_readonly",
+        "reminders",
     }
 
 
@@ -89,13 +90,15 @@ async def _sent_tools(config: AgentConfig) -> set[str]:
 @pytest.mark.asyncio
 async def test_claw_main_gets_workout_reads_but_no_workout_writes():
     """Wiring proof for the prod claw-main capability list after the
-    workout_readonly grant (migration 015)."""
+    workout_readonly (015) and reminders (017) grants."""
     sent = await _sent_tools(
         _prod_shaped_config(
-            "claw-main", ["core", "web", "calendar", "memory", "obsidian", "workout_readonly"]
+            "claw-main",
+            ["core", "web", "calendar", "memory", "obsidian", "workout_readonly", "reminders"],
         )
     )
     assert {"get_workout_profile", "get_workout_plan", "get_recent_workouts"} <= sent
+    assert {"set_reminder", "list_reminders", "cancel_reminder"} <= sent
     writes = {"log_workout", "amend_last_workout", "save_workout_plan", "save_workout_profile"}
     assert not sent & writes
 

@@ -9,6 +9,7 @@ from jordan_claw.db.proactive import (
     get_telegram_chat_id,
     insert_proactive_message,
     was_sent_today,
+    was_sent_within,
 )
 
 log = structlog.get_logger()
@@ -36,10 +37,17 @@ async def send_proactive_message(
         log.warning("proactive.no_chat_id", org_id=org_id, task_type=task_type)
         return
 
-    # Dedup: only check for scheduled messages (those with a schedule_id)
-    if schedule_id and await was_sent_today(db, schedule_id, timezone):
-        log.info("proactive.dedup_skipped", schedule_id=schedule_id, task_type=task_type)
-        return
+    # Dedup: only check for scheduled messages (those with a schedule_id).
+    # Reminders may legitimately recur more than once a day, so they only
+    # guard the scheduler's dispatch race window instead of the whole day.
+    if schedule_id:
+        if task_type == "reminder":
+            duplicate = await was_sent_within(db, schedule_id, minutes=5)
+        else:
+            duplicate = await was_sent_today(db, schedule_id, timezone)
+        if duplicate:
+            log.info("proactive.dedup_skipped", schedule_id=schedule_id, task_type=task_type)
+            return
 
     try:
         await bot.send_message(chat_id, content)
