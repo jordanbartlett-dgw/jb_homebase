@@ -41,6 +41,7 @@ async def get_events_for_date(
         .select("*")
         .eq("org_id", org_id)
         .eq("event_date", event_date)
+        .order("logged_at", desc=False)
         .execute()
     )
     return [HealthEvent.model_validate(row) for row in result.data]

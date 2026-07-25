@@ -97,6 +97,7 @@ async def test_get_events_for_date_filters_by_date():
     assert events[0].id == "e1"
     query.eq.assert_any_call("event_date", "2026-07-25")
     query.eq.assert_any_call("org_id", ORG_ID)
+    query.order.assert_called_once_with("logged_at", desc=False)
 
 
 @pytest.mark.asyncio
