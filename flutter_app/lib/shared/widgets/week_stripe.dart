@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 
-/// Compact horizontal weekly calendar: seven day chips, today highlighted
-/// with the accent, days with activity marked by a dot. The seed of the
+/// Compact horizontal weekly calendar: today is high-contrast monochrome,
+/// while cobalt activity dots carry the live state. The seed of the
 /// future full calendar view.
 class WeekStripe extends StatelessWidget {
   const WeekStripe({super.key, this.activeDays = const {1, 3, 5}});
@@ -43,8 +43,7 @@ class WeekStripe extends StatelessWidget {
                 height: 36,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color:
-                      isToday ? theme.colorScheme.primary : Colors.transparent,
+                  color: isToday ? theme.colorScheme.inverseSurface : Colors.transparent,
                   shape: BoxShape.circle,
                 ),
                 child: Text(
@@ -52,7 +51,7 @@ class WeekStripe extends StatelessWidget {
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
                     color: isToday
-                        ? theme.colorScheme.onPrimary
+                        ? theme.colorScheme.onInverseSurface
                         : theme.colorScheme.onSurface,
                   ),
                 ),
@@ -64,9 +63,7 @@ class WeekStripe extends StatelessWidget {
                 height: 5,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: hasActivity
-                      ? theme.colorScheme.primary
-                      : Colors.transparent,
+                  color: hasActivity ? theme.colorScheme.primary : Colors.transparent,
                 ),
               ),
             ],

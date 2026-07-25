@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../routing/routes.dart';
 import '../../shared/widgets/entrance.dart';
 import '../../state/app_state.dart';
-import '../../theme/colors.dart';
 import '../../theme/spacing.dart';
 
 /// Passkey is the primary sign-in across all devices. Magic-link recovery
@@ -15,6 +14,7 @@ class PasskeyScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
@@ -33,15 +33,18 @@ class PasskeyScreen extends ConsumerWidget {
                       width: 56,
                       height: 56,
                       decoration: BoxDecoration(
-                        color: AppColors.accent,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: AppColors.cardShadow,
+                        color: theme.colorScheme.inverseSurface,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: theme.colorScheme.primary,
+                          width: 1.5,
+                        ),
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Text(
                           'JC',
                           style: TextStyle(
-                            color: AppColors.onAccent,
+                            color: theme.colorScheme.onInverseSurface,
                             fontWeight: FontWeight.w700,
                             fontSize: 20,
                             letterSpacing: 0.5,
@@ -81,7 +84,7 @@ class PasskeyScreen extends ConsumerWidget {
                       child: TextButton(
                         onPressed: () => context.go(Routes.authMagicLink),
                         style: TextButton.styleFrom(
-                          foregroundColor: AppColors.textMuted,
+                          foregroundColor: theme.colorScheme.outline,
                         ),
                         child: const Text('Having trouble?'),
                       ),

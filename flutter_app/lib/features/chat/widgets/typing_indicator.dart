@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/app_theme.dart';
 
-/// Three-dot typing indicator with a gentle staggered pulse, tinted per
-/// agent so the "thinking" state carries the agent's identity.
+/// Three-dot typing indicator with a gentle cobalt staggered pulse.
 class TypingIndicator extends StatefulWidget {
   const TypingIndicator({super.key, required this.tint});
 
@@ -13,8 +12,7 @@ class TypingIndicator extends StatefulWidget {
   State<TypingIndicator> createState() => _TypingIndicatorState();
 }
 
-class _TypingIndicatorState extends State<TypingIndicator>
-    with SingleTickerProviderStateMixin {
+class _TypingIndicatorState extends State<TypingIndicator> with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 900),
@@ -35,6 +33,9 @@ class _TypingIndicatorState extends State<TypingIndicator>
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(AppTheme.radiusBubble),
             topRight: Radius.circular(AppTheme.radiusBubble),

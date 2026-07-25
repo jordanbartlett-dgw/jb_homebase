@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../shared/widgets/bouncy_button.dart';
-import '../../theme/colors.dart';
+import '../../theme/app_theme.dart';
 import '../../theme/spacing.dart';
 import 'voice_preview.dart';
 
@@ -57,10 +57,10 @@ class _VoiceOverlayState extends State<VoiceOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -71,7 +71,10 @@ class _VoiceOverlayState extends State<VoiceOverlay> {
                 children: [
                   IconButton(
                     onPressed: () => context.pop(),
-                    icon: const Icon(Icons.close, color: AppColors.textPrimary),
+                    icon: Icon(
+                      Icons.close,
+                      color: theme.colorScheme.onSurface,
+                    ),
                   ),
                   const _RecordingBadge(),
                   const SizedBox(width: 48),
@@ -83,8 +86,7 @@ class _VoiceOverlayState extends State<VoiceOverlay> {
             const SizedBox(height: Spacing.xl),
             Text(_elapsed, style: textTheme.displaySmall),
             const SizedBox(height: Spacing.xs),
-            Text('Say everything. Claw sorts it out.',
-                style: textTheme.bodySmall),
+            Text('Say everything. Claw sorts it out.', style: textTheme.bodySmall),
             const Spacer(),
             Padding(
               padding: const EdgeInsets.all(Spacing.xl),
@@ -94,15 +96,15 @@ class _VoiceOverlayState extends State<VoiceOverlay> {
                   _CircleButton(
                     icon: Icons.close,
                     label: 'Cancel',
-                    color: AppColors.surfaceVariant,
-                    iconColor: AppColors.textPrimary,
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    iconColor: theme.colorScheme.onSurface,
                     onTap: () => context.pop(),
                   ),
                   _CircleButton(
                     icon: Icons.stop_rounded,
                     label: 'Stop',
-                    color: AppColors.accent,
-                    iconColor: AppColors.onAccent,
+                    color: theme.colorScheme.primary,
+                    iconColor: theme.colorScheme.onPrimary,
                     size: 76,
                     onTap: () => _stopAndPreview(context),
                   ),
@@ -124,8 +126,7 @@ class _RecordingBadge extends StatefulWidget {
   State<_RecordingBadge> createState() => _RecordingBadgeState();
 }
 
-class _RecordingBadgeState extends State<_RecordingBadge>
-    with SingleTickerProviderStateMixin {
+class _RecordingBadgeState extends State<_RecordingBadge> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   @override
@@ -145,14 +146,16 @@ class _RecordingBadgeState extends State<_RecordingBadge>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: Spacing.md,
         vertical: Spacing.xs,
       ),
       decoration: BoxDecoration(
-        color: AppColors.surfaceVariant,
+        color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -162,8 +165,8 @@ class _RecordingBadgeState extends State<_RecordingBadge>
             child: Container(
               width: 8,
               height: 8,
-              decoration: const BoxDecoration(
-                color: AppColors.error,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.error,
                 shape: BoxShape.circle,
               ),
             ),
@@ -185,8 +188,7 @@ class _LiveWaveform extends StatefulWidget {
   State<_LiveWaveform> createState() => _LiveWaveformState();
 }
 
-class _LiveWaveformState extends State<_LiveWaveform>
-    with SingleTickerProviderStateMixin {
+class _LiveWaveformState extends State<_LiveWaveform> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   static const _barCount = 27;
@@ -219,6 +221,7 @@ class _LiveWaveformState extends State<_LiveWaveform>
 
   @override
   Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
     return SizedBox(
       height: 64,
       child: AnimatedBuilder(
@@ -234,7 +237,7 @@ class _LiveWaveformState extends State<_LiveWaveform>
                   width: 4,
                   height: _heightFor(i, _controller.value),
                   decoration: BoxDecoration(
-                    color: AppColors.accent,
+                    color: accent,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -278,7 +281,7 @@ class _CircleButton extends StatelessWidget {
             decoration: BoxDecoration(
               color: color,
               shape: BoxShape.circle,
-              boxShadow: AppColors.floatingShadow,
+              boxShadow: AppTheme.softShadow(context),
             ),
             child: Icon(icon, color: iconColor, size: 28),
           ),

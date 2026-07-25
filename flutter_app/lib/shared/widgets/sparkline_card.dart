@@ -47,7 +47,8 @@ class SparklineCard extends StatelessWidget {
                 painter: _SparklinePainter(
                   values: values,
                   progress: progress,
-                  lineColor: theme.colorScheme.primary,
+                  lineColor: theme.colorScheme.onSurface,
+                  endpointColor: theme.colorScheme.primary,
                 ),
               ),
             ),
@@ -63,11 +64,13 @@ class _SparklinePainter extends CustomPainter {
     required this.values,
     required this.progress,
     required this.lineColor,
+    required this.endpointColor,
   });
 
   final List<double> values;
   final double progress; // 0..1 draw progress
   final Color lineColor;
+  final Color endpointColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -78,10 +81,10 @@ class _SparklinePainter extends CustomPainter {
     final range = (max - min) == 0 ? 1 : (max - min);
 
     Offset point(int i) => Offset(
-          size.width * i / (values.length - 1),
-          // 10% vertical padding top and bottom
-          size.height * (0.9 - 0.8 * (values[i] - min) / range),
-        );
+      size.width * i / (values.length - 1),
+      // 10% vertical padding top and bottom
+      size.height * (0.9 - 0.8 * (values[i] - min) / range),
+    );
 
     // Smooth path via midpoint quadratic beziers.
     final path = Path()..moveTo(point(0).dx, point(0).dy);
@@ -126,11 +129,14 @@ class _SparklinePainter extends CustomPainter {
 
     // Endpoint dot once fully drawn.
     if (progress == 1) {
-      canvas.drawCircle(point(values.length - 1), 4, Paint()..color = lineColor);
+      canvas.drawCircle(
+        point(values.length - 1),
+        4,
+        Paint()..color = endpointColor,
+      );
     }
   }
 
   @override
-  bool shouldRepaint(_SparklinePainter old) =>
-      old.progress != progress || old.values != values;
+  bool shouldRepaint(_SparklinePainter old) => old.progress != progress || old.values != values;
 }

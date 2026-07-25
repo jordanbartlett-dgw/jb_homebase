@@ -6,15 +6,14 @@ import 'typography.dart';
 
 /// Assembles ThemeData for JB Homebase.
 ///
-/// Light and dark are built from the same recipe; sage is the single
-/// accent and everything else stays quiet. Ripple is disabled globally —
-/// press feedback comes from scale + haptics (see BouncyButton).
+/// Light and dark are built from the same monochrome recipe. Cobalt is the
+/// single brand accent; press feedback comes from scale + haptics.
 class AppTheme {
   const AppTheme._();
 
   /// Shared radii and paddings so components stay consistent.
-  static const double radiusCard = 24;
-  static const double radiusBubble = 20;
+  static const double radiusCard = 18;
+  static const double radiusBubble = 18;
   static const EdgeInsets pagePadding = EdgeInsets.symmetric(horizontal: 24);
 
   static ThemeData get light => _build(Brightness.light);
@@ -23,25 +22,30 @@ class AppTheme {
   static ThemeData _build(Brightness brightness) {
     final isDark = brightness == Brightness.dark;
 
-    final bg = isDark ? AppColors.deepSlate : AppColors.cream;
-    final surface = isDark ? AppColors.slate : AppColors.creamElevated;
-    final ink = isDark ? AppColors.cream : AppColors.deepSlate;
-    final muted = isDark ? AppColors.creamMuted : AppColors.inkMuted;
-    final accent = isDark ? AppColors.sage : AppColors.sageDeep;
+    final bg = isDark ? AppColors.nearBlack : AppColors.paper;
+    final surface = isDark ? AppColors.charcoal : AppColors.white;
+    final ink = isDark ? AppColors.white : AppColors.ink;
+    final muted = isDark ? AppColors.neutral300 : AppColors.neutral500;
+    final accent = isDark ? AppColors.cobaltBright : AppColors.cobalt;
+    final inverseSurface = isDark ? AppColors.white : AppColors.nearBlack;
+    final onInverseSurface = isDark ? AppColors.nearBlack : AppColors.white;
 
     final scheme = ColorScheme(
       brightness: brightness,
       primary: accent,
-      onPrimary: isDark ? AppColors.deepSlate : AppColors.cream,
-      secondary: AppColors.sage,
-      onSecondary: AppColors.deepSlate,
+      onPrimary: isDark ? AppColors.nearBlack : AppColors.white,
+      secondary: accent,
+      onSecondary: isDark ? AppColors.nearBlack : AppColors.white,
       surface: surface,
       onSurface: ink,
-      surfaceContainerHighest:
-          isDark ? AppColors.slateElevated : AppColors.mist,
+      surfaceContainerHighest: isDark ? AppColors.graphite : AppColors.neutral100,
       error: AppColors.error,
-      onError: AppColors.cream,
-      outline: muted.withValues(alpha: 0.4),
+      onError: AppColors.white,
+      outline: isDark ? AppColors.neutral700 : AppColors.neutral300,
+      outlineVariant: isDark ? AppColors.graphite : AppColors.neutral100,
+      inverseSurface: inverseSurface,
+      onInverseSurface: onInverseSurface,
+      inversePrimary: isDark ? AppColors.cobalt : AppColors.cobaltBright,
     );
 
     final textTheme = AppTypography.buildTextTheme(ink: ink, muted: muted);
@@ -67,6 +71,7 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radiusCard),
+          side: BorderSide(color: scheme.outlineVariant),
         ),
         margin: EdgeInsets.zero,
       ),
@@ -80,7 +85,7 @@ class AppTheme {
         iconTheme: IconThemeData(color: ink),
       ),
       dividerTheme: DividerThemeData(
-        color: scheme.outline.withValues(alpha: 0.25),
+        color: scheme.outlineVariant,
         thickness: 1,
         space: 1,
       ),
@@ -95,19 +100,44 @@ class AppTheme {
           textStyle: textTheme.labelLarge,
         ),
       ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: ink,
+          minimumSize: const Size.fromHeight(52),
+          side: BorderSide(color: scheme.outline),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          textStyle: textTheme.labelLarge,
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: surface,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: accent, width: 1.5),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+      ),
     );
   }
 
-  /// Soft, diffuse drop shadow used on elevated cards. Kept here so every
-  /// card lifts identically.
+  /// Small lift for floating controls. Most surfaces use a hairline instead.
   static List<BoxShadow> softShadow(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return [
       BoxShadow(
-        color: (isDark ? Colors.black : AppColors.deepSlate)
-            .withValues(alpha: isDark ? 0.35 : 0.08),
-        blurRadius: 30,
-        offset: const Offset(0, 12),
+        color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.07),
+        blurRadius: 14,
+        offset: const Offset(0, 5),
       ),
     ];
   }

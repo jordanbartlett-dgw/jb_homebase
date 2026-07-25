@@ -18,8 +18,7 @@ class Agent {
   final String tagline;
   final IconData icon;
 
-  /// Per-agent identity color, blended over surface at low alpha so dock
-  /// cards stay within the palette.
+  /// A restrained cobalt-family identity color used only for small states.
   final Color tint;
 
   static const roster = <Agent>[
@@ -28,7 +27,7 @@ class Agent {
       name: 'Claw Main',
       tagline: 'Anything, anytime',
       icon: Icons.auto_awesome_outlined,
-      tint: Color(0xFF64805F), // sage
+      tint: Color(0xFF3157F6), // brand cobalt
     ),
     Agent(
       // Gateway slug (settings.workout_agent_slug) — NOT "workout".
@@ -36,10 +35,9 @@ class Agent {
       name: 'Workout Coach',
       tagline: 'Training & recovery',
       icon: Icons.directions_run_outlined,
-      tint: Color(0xFF6E7F98), // slate-blue
+      tint: Color(0xFF7188E8), // cobalt tint
     ),
   ];
 
-  static Agent byId(String id) =>
-      roster.firstWhere((a) => a.id == id, orElse: () => roster.first);
+  static Agent byId(String id) => roster.firstWhere((a) => a.id == id, orElse: () => roster.first);
 }
