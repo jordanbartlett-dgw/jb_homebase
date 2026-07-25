@@ -55,5 +55,6 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
 # MED_CHECK_PROMPT must stay byte-for-byte identical to migration 022's
-# system_prompt (verified by a diff script, not eyeballed) — do not rewrap it.
+# system_prompt (verified by tests/test_med_check_prompt_sync.py, not
+# eyeballed) — do not rewrap it.
 "evals/tasks/med_check.py" = ["E501"]

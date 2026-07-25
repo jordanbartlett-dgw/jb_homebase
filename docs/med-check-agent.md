@@ -64,8 +64,8 @@ Verbatim from the deployed prompt:
 
 This is a hard invariant, not a style preference. The eval suite enforces it
 globally (`PhraseAssertionScorer`'s `GLOBAL_FORBIDDEN` list — "safe to take",
-"cleared", "no risk" — applies to every case regardless of that case's own
-`forbidden_phrases`).
+"cleared", "no risk", "fine to take" — applies to every case regardless of
+that case's own `forbidden_phrases`).
 
 ## Deployed system prompt
 
@@ -110,9 +110,13 @@ inherits `organizations.default_model`, same as the other two agents.
 `evals/tasks/med_check.py::MED_CHECK_PROMPT` is a second copy of this text,
 used to run the med-check eval against the live model with fixture-backed
 stub tools. **It must be updated by hand whenever the DB prompt (migration
-022, or any later data migration that changes it) changes.** Nothing enforces
-this in code — no test diffs the two. If you edit the deployed prompt,
-grep for `MED_CHECK_PROMPT` and update it in the same change.
+022, or any later data migration that changes it) changes.**
+`tests/test_med_check_prompt_sync.py` byte-compares this copy, the SQL
+literal in migration 022, and the fenced block above — it fails if any of
+the three in-repo copies drift apart. It cannot see the live DB row, so a
+manual read-back after applying a migration (see below) is still how you
+confirm the deployed prompt itself matches. If you edit the deployed
+prompt, grep for `MED_CHECK_PROMPT` and update it in the same change.
 
 ## Eval coverage
 
@@ -130,7 +134,7 @@ Dataset `med_check` (`evals/datasets/med_check.yaml`), 4 cases, run via
 
 Each case scores on two evaluators: `PhraseAssertionScorer` (required phrases
 must all appear, per-case forbidden phrases plus the global forbidden list —
-"safe to take", "cleared", "no risk" — must not) and a per-case pinned
+"safe to take", "cleared", "no risk", "fine to take" — must not) and a per-case pinned
 `LLMJudge` (`anthropic:claude-sonnet-4-5-20250929`) with a rubric checking the
 report's substance (correct QT identification, additive-risk callout, the
 not-a-doctor disclaimer, the pharmacist/cardiology close). This is not a
@@ -145,7 +149,10 @@ are up.
 
 - **App-served only.** No Telegram bot, no `telegram_chat_id` — Telegram was
   removed platform-wide. Reached the same way as the other two agents,
-  through `POST /app/messages` with `agent_slug: "med-check"`.
+  through `POST /app/messages` with `agent_slug: "med-check"`. The `/voice`
+  classifier (`gateway/classifier.py::_agent_catalog`) builds its routing
+  catalog from every active agent for the org, not just channel-specific
+  ones, so a spoken medication question can also route to med-check.
 - **No new env vars.** RxNav and openFDA are unauthenticated public APIs;
   CredibleMeds is reached through the existing `search_web`/`fetch_article`
   tools (Tavily). No new secret, no new `Settings` field.

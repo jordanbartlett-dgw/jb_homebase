@@ -55,6 +55,13 @@ async def test_global_forbidden_phrase_scores_zero_even_with_required_hit() -> N
 
 
 @pytest.mark.asyncio
+async def test_global_forbidden_fine_to_take_scores_zero() -> None:
+    text = "Ondansetron is fine to take. Confirm with pharmacist and cardiology."
+    expected = MedCheckExpected(required_phrases=["ondansetron"])
+    assert await _score(text, expected) == 0.0
+
+
+@pytest.mark.asyncio
 async def test_case_forbidden_phrase_scores_zero() -> None:
     text = "Which one did you mean? Flagged - raise this before she takes it."
     expected = MedCheckExpected(
