@@ -11,10 +11,13 @@ from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.agents.factory import build_agent
 from jordan_claw.analytics.types import RunKind
 from jordan_claw.config import Settings
+from jordan_claw.db.care import get_care_document, get_care_profile
+from jordan_claw.db.meds import get_medication_profile
 from jordan_claw.db.memory import get_recent_events
 from jordan_claw.db.workout import get_active_plan, get_recent_workout_logs
 from jordan_claw.memory.reader import load_memory_context
 from jordan_claw.tools.calendar import get_calendar_events
+from jordan_claw.tools.meds import DOC_TYPES, care_docs_status
 from jordan_claw.utils.agent_runner import run_agent_instrumented
 
 log = structlog.get_logger()
@@ -417,3 +420,68 @@ def format_memory_flag(old_content: str, new_content: str) -> str:
         f"Now: {new_content}\n\n"
         f"Let me know if that's wrong."
     )
+
+
+_CARE_DOC_MESSAGE_LABELS = {"emergency": "emergency one-pager", "handoff": "caregiver handoff"}
+_MED_CHANGE_SECTIONS = {"medications", "allergies"}
+
+
+def _care_docs_reason(changed_sections: list[str]) -> str:
+    """Summarize which kind of profile data drove a doc going stale."""
+    reasons: list[str] = []
+    if any(section in _MED_CHANGE_SECTIONS for section in changed_sections):
+        reasons.append("medications changed")
+    if any(section not in _MED_CHANGE_SECTIONS for section in changed_sections):
+        reasons.append("care details changed")
+    return ", ".join(reasons) if reasons else "care details changed"
+
+
+def _care_docs_message_lines(display_name: str | None, statuses: dict[str, dict]) -> list[str]:
+    """One deterministic line per non-current doc. Current docs produce nothing."""
+    lines: list[str] = []
+    for doc_type in DOC_TYPES:
+        status = statuses[doc_type]
+        if status["status"] == "current":
+            continue
+
+        label = _CARE_DOC_MESSAGE_LABELS[doc_type]
+        subject = f"{display_name}'s {label}" if display_name else f"The care docs' {label}"
+
+        if status["status"] == "never_generated":
+            lines.append(f"{subject} has not been generated yet. Ask med-check to create it.")
+            continue
+
+        reason = _care_docs_reason(status["changed_sections"])
+        lines.append(f"{subject} is out of date ({reason}). Ask med-check to regenerate it.")
+
+    return lines
+
+
+async def execute_care_docs_check(
+    db: AsyncClient,
+    org_id: str,
+    config: dict,
+    settings: Settings,
+) -> str:
+    """Weekly care-document staleness check. No agent run, no LLM call —
+    reimplements the staleness comparison directly via the db layer, reusing
+    care_docs_status (jordan_claw.tools.meds), the exact hash-diff logic
+    check_care_docs_current uses, so proactive and on-demand reporting can
+    never drift apart.
+
+    All docs current returns "" — the sentinel dispatch_task's delivery path
+    (publish_proactive_message) treats as do-not-send. Anything stale or
+    never_generated composes one short line per affected doc.
+    """
+    care = await get_care_profile(db, org_id)
+    meds_profile = await get_medication_profile(db, org_id)
+
+    rows: dict[str, dict | None] = {}
+    for doc_type in DOC_TYPES:
+        rows[doc_type] = await get_care_document(db, org_id, doc_type)
+
+    statuses = care_docs_status(care, meds_profile, rows)
+    display_name = meds_profile.timeline_display_name if meds_profile else None
+    lines = _care_docs_message_lines(display_name, statuses)
+
+    return "\n".join(lines)

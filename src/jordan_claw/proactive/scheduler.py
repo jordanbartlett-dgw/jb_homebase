@@ -15,6 +15,7 @@ from jordan_claw.proactive.delivery import publish_proactive_message
 from jordan_claw.proactive.executors import (
     _parse_event_times,
     execute_calendar_reminder,
+    execute_care_docs_check,
     execute_daily_scan,
     execute_daily_workout,
     execute_morning_briefing,
@@ -36,6 +37,7 @@ EXECUTOR_MAP = {
     "daily_workout": execute_daily_workout,
     "reminder": execute_reminder,
     "weekly_training_review": execute_weekly_training_review,
+    "care_docs_check": execute_care_docs_check,
 }
 
 CHECK_INTERVAL_SECONDS = 60

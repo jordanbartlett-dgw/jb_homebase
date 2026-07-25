@@ -553,6 +553,7 @@ async def create_timeline_note(
 
 CARE_DOC_CHAR_BUDGET = 2600  # ~2,500-char one-page target + slack
 CARE_DOC_LABELS = {"emergency": "Emergency One-Pager", "handoff": "Caregiver Handoff"}
+DOC_TYPES = ("emergency", "handoff")
 
 
 def _section_hash(value: object) -> str:
@@ -762,6 +763,69 @@ async def save_care_document(
     return f"'{title}' created. It will appear in your vault after the next sync."
 
 
+def care_docs_status(
+    care: CareProfile | None,
+    meds: MedicationProfile | None,
+    rows: dict[str, dict | None],
+) -> dict[str, dict]:
+    """Compute per-doc-type staleness from already-fetched care_documents rows.
+
+    rows is keyed by doc_type ("emergency"/"handoff"); a None value means that
+    doc has never been generated. This is the one comparison path shared by
+    check_care_docs_current (the agent tool, renders a line per doc) and the
+    weekly care_docs_check proactive executor (composes a stale-doc message) —
+    extracted so both walk the same hash-diff logic instead of duplicating it.
+
+    Returns {doc_type: {"status": "never_generated"|"current"|"stale"|
+    "unreadable", "changed_sections": [...], "generated_at": str|None}}.
+    "changed_sections" names which _care_source_hash sections flipped for a
+    stale doc; empty for every other status.
+    """
+    result: dict[str, dict] = {}
+    for doc_type in DOC_TYPES:
+        row = rows.get(doc_type)
+        if row is None:
+            result[doc_type] = {
+                "status": "never_generated",
+                "changed_sections": [],
+                "generated_at": None,
+            }
+            continue
+
+        current = json.loads(_care_source_hash(doc_type, care, meds))
+        try:
+            stored = json.loads(row["source_hash"])
+        except (TypeError, ValueError, KeyError):
+            stored = None
+
+        if not isinstance(stored, dict):
+            result[doc_type] = {
+                "status": "unreadable",
+                "changed_sections": [],
+                "generated_at": row.get("generated_at"),
+            }
+            continue
+
+        if stored.get("total") == current["total"]:
+            result[doc_type] = {
+                "status": "current",
+                "changed_sections": [],
+                "generated_at": row.get("generated_at"),
+            }
+            continue
+
+        stored_sections = stored.get("sections", {})
+        changed = [
+            name for name, h in current["sections"].items() if stored_sections.get(name) != h
+        ]
+        result[doc_type] = {
+            "status": "stale",
+            "changed_sections": changed,
+            "generated_at": row.get("generated_at"),
+        }
+    return result
+
+
 async def check_care_docs_current(ctx: RunContext[AgentDeps]) -> str:
     """Report whether the emergency one-pager and caregiver handoff are still
     current: never_generated (no document saved yet), current, or stale
@@ -772,32 +836,25 @@ async def check_care_docs_current(ctx: RunContext[AgentDeps]) -> str:
     care = await get_care_profile(ctx.deps.supabase_client, ctx.deps.org_id)
     meds_profile = await get_medication_profile(ctx.deps.supabase_client, ctx.deps.org_id)
 
+    rows: dict[str, dict | None] = {}
+    for doc_type in DOC_TYPES:
+        rows[doc_type] = await get_care_document(
+            ctx.deps.supabase_client, ctx.deps.org_id, doc_type
+        )
+
+    statuses = care_docs_status(care, meds_profile, rows)
+
     lines: list[str] = []
-    for doc_type in ("emergency", "handoff"):
-        row = await get_care_document(ctx.deps.supabase_client, ctx.deps.org_id, doc_type)
-        if row is None:
+    for doc_type in DOC_TYPES:
+        status = statuses[doc_type]
+        if status["status"] == "never_generated":
             lines.append(f"{doc_type}: never_generated")
-            continue
-
-        current = json.loads(_care_source_hash(doc_type, care, meds_profile))
-        try:
-            stored = json.loads(row["source_hash"])
-        except (TypeError, ValueError, KeyError):
-            stored = None
-
-        if not isinstance(stored, dict):
+        elif status["status"] == "unreadable":
             lines.append(f"{doc_type}: stale (stored hash unreadable - regenerate to reset)")
-            continue
-
-        if stored.get("total") == current["total"]:
-            lines.append(f"{doc_type}: current (generated {row.get('generated_at', '?')})")
-            continue
-
-        stored_sections = stored.get("sections", {})
-        changed = [
-            name for name, h in current["sections"].items() if stored_sections.get(name) != h
-        ]
-        changed_str = ", ".join(changed) if changed else "unknown"
-        lines.append(f"{doc_type}: stale (changed: {changed_str})")
+        elif status["status"] == "current":
+            lines.append(f"{doc_type}: current (generated {status['generated_at'] or '?'})")
+        else:
+            changed_str = ", ".join(status["changed_sections"]) or "unknown"
+            lines.append(f"{doc_type}: stale (changed: {changed_str})")
 
     return "\n".join(lines)
