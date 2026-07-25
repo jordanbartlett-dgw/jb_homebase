@@ -93,6 +93,28 @@ CAPABILITY_REGISTRY: dict[str, ToolGroup] = {
             (get_recent_workouts, "get_recent_workouts"),
         ),
     ),
+    # Read-only cross-agent views. Same tool fns as the full groups — never
+    # grant a *_readonly group alongside its full group (duplicate tool names).
+    "workout_readonly": ToolGroup(
+        id="workout_readonly",
+        description=(
+            "Read-only view of Jordan's training: profile, active plan, recent logs. "
+            "No logging, no plan changes."
+        ),
+        toolset=_toolset(
+            (get_workout_profile_tool, "get_workout_profile"),
+            (get_workout_plan, "get_workout_plan"),
+            (get_recent_workouts, "get_recent_workouts"),
+        ),
+    ),
+    "obsidian_readonly": ToolGroup(
+        id="obsidian_readonly",
+        description="Read-only search and reading of Jordan's Obsidian notes. No note creation.",
+        toolset=_toolset(
+            (search_notes, "search_notes"),
+            (read_note, "read_note"),
+        ),
+    ),
 }
 
 

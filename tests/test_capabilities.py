@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent, ModelResponse, TextPart
 from pydantic_ai.messages import ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.models.test import TestModel
 from pydantic_ai.toolsets import FunctionToolset
 
 from jordan_claw.agents.capabilities import CAPABILITY_REGISTRY, resolve_capabilities
@@ -21,7 +22,30 @@ def test_registry_covers_all_seventeen_tools():
 
 
 def test_expected_groups_exist():
-    assert set(CAPABILITY_REGISTRY) == {"core", "web", "calendar", "memory", "obsidian", "workout"}
+    assert set(CAPABILITY_REGISTRY) == {
+        "core",
+        "web",
+        "calendar",
+        "memory",
+        "obsidian",
+        "workout",
+        "workout_readonly",
+        "obsidian_readonly",
+    }
+
+
+def test_readonly_groups_expose_no_write_tools():
+    """workout_readonly and obsidian_readonly must stay read-only. Reads reuse
+    the same fns as the full groups; writes must never leak in."""
+    assert set(CAPABILITY_REGISTRY["workout_readonly"].toolset.tools) == {
+        "get_workout_profile",
+        "get_workout_plan",
+        "get_recent_workouts",
+    }
+    assert set(CAPABILITY_REGISTRY["obsidian_readonly"].toolset.tools) == {
+        "search_notes",
+        "read_note",
+    }
 
 
 def test_resolve_capabilities_maps_ids():
@@ -32,6 +56,62 @@ def test_resolve_capabilities_maps_ids():
 def test_resolve_capabilities_skips_unknown_with_warning():
     groups = resolve_capabilities(["core", "nonexistent"])
     assert [g.id for g in groups] == ["core"]
+
+
+def _prod_shaped_config(slug: str, capabilities: list[str]) -> AgentConfig:
+    return AgentConfig(
+        id=f"agent-{slug}",
+        org_id="org-001",
+        name=slug,
+        slug=slug,
+        system_prompt="Be helpful.",
+        model="test",
+        capabilities=capabilities,
+        is_active=True,
+    )
+
+
+_TEST_DEPS = AgentDeps(
+    org_id="org-001",
+    tavily_api_key="test-key",
+    fastmail_username="test@example.com",
+    fastmail_app_password="test-pass",
+)
+
+
+async def _sent_tools(config: AgentConfig) -> set[str]:
+    agent, _ = create_agent(config)
+    test_model = TestModel(call_tools=[])  # send tool defs to the model, invoke none
+    await agent.run("hi", deps=_TEST_DEPS, model=test_model)
+    return {t.name for t in test_model.last_model_request_parameters.function_tools}
+
+
+@pytest.mark.asyncio
+async def test_claw_main_gets_workout_reads_but_no_workout_writes():
+    """Wiring proof for the prod claw-main capability list after the
+    workout_readonly grant (migration 015)."""
+    sent = await _sent_tools(
+        _prod_shaped_config(
+            "claw-main", ["core", "web", "calendar", "memory", "obsidian", "workout_readonly"]
+        )
+    )
+    assert {"get_workout_profile", "get_workout_plan", "get_recent_workouts"} <= sent
+    writes = {"log_workout", "amend_last_workout", "save_workout_plan", "save_workout_profile"}
+    assert not sent & writes
+
+
+@pytest.mark.asyncio
+async def test_workout_coach_gets_note_reads_but_no_note_writes():
+    """Wiring proof for the prod workout-coach capability list after the
+    obsidian_readonly grant (migration 015)."""
+    sent = await _sent_tools(
+        _prod_shaped_config(
+            "workout-coach", ["core", "calendar", "memory", "workout", "obsidian_readonly"]
+        )
+    )
+    assert {"search_notes", "read_note"} <= sent
+    assert "create_source_note" not in sent
+    assert "fetch_article" not in sent
 
 
 @pytest.mark.asyncio
