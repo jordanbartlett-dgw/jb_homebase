@@ -4,30 +4,16 @@ Maintained system map. Update this file when flows or modules change; it is the
 first thing a session reads (per CLAUDE.md). Line numbers drift — treat them as
 "look here first" pointers, and trust names over numbers.
 
-Verified against main @ 59dd470 (2026-07-07).
+Verified 2026-07-25.
 
 ## One process, three inbound surfaces, one core
 
-Everything runs in a single FastAPI process (`main.py` lifespan): both Telegram
-bots (aiogram long-polling as asyncio tasks), the proactive scheduler loop, and
-the HTTP routes. There is no worker service, no queue, no webhook-mode Telegram.
+Everything runs in a single FastAPI process (`main.py` lifespan): HTTP routes,
+the proactive scheduler loop, and the Fastmail watcher dispatched by that
+scheduler. There is no worker service, queue, or outbound channel process.
 
 Every inbound message, regardless of channel, funnels into
 `gateway/router.py::handle_message` — the single agent-run lifecycle.
-
-### Message flow (Telegram)
-
-1. `channels/telegram.py::handle_text` (aiogram catch-all) → builds `IncomingMessage`
-2. `gateway/router.py::handle_message`:
-   - `db/messages.py::message_exists` — dedup on `channel_message_id`
-     (`telegram:{chat_id}:{message_id}`); duplicate → empty-content sentinel
-   - gather: `get_or_create_conversation` + `load_memory_context` + `get_agent_config`
-   - gather: `save_message`(user) + `get_recent_messages` (current msg filtered out)
-   - `agents/factory.py::create_agent` → `utils/agent_runner.py::run_agent_instrumented`
-   - `save_message`(assistant, with tokens/model/cost)
-   - fire-and-forget `memory/extractor.py::extract_memory_background`
-3. back in telegram handler: `message.answer(content, parse_mode="Markdown")`,
-   plain-text fallback on parse error. Empty content → no send.
 
 ### Message flow (app + voice)
 
@@ -49,9 +35,8 @@ Every inbound message, regardless of channel, funnels into
   during the current America/Chicago day and fetches a structured Fastmail
   agenda for the requested 1–30 day window (7 by default). It never triggers
   an agent run. Calendar failure degrades to `calendar_status="unavailable"`
-  while preserving the digest. The current digest source remains coupled to
-  successful Telegram delivery; durable channel-independent briefing storage
-  is a later migration.
+  while preserving the digest. Briefings are persisted directly as app
+  artifacts, independent of an outbound delivery channel.
 - `POST /voice` (`main.py::voice_message`): raw audio body + bearer auth →
   `gateway/voice.py::transcribe` (raw httpx to OpenAI Whisper) →
   `gateway/classifier.py::classify` (Haiku, structured `RouteDecision`, always
@@ -65,7 +50,8 @@ Every inbound message, regardless of channel, funnels into
   → fire-and-forget `events/pipeline.py::process_event` → for each enabled
   `event_triggers` row for that source: build that trigger's agent, render
   `prompt_template` against the payload (missing keys safe), run
-  (`run_kind=EVENT`), deliver via `proactive/delivery.py::send_proactive_message`
+  (`run_kind=EVENT`), persist via
+  `proactive/delivery.py::publish_proactive_message`
   unless output is `NOTHING_TO_SEND`. Per-trigger try/except isolation.
 - `events/fastmail.py::poll_fastmail`: JMAP poll on a schedule (task_type
   `fastmail_watch`), cursor in `watcher_cursors` (first poll seeds cursor, no
@@ -82,10 +68,11 @@ weekly_feedback_request, calendar_reminder, daily_workout, reminder (delivers
 `config.message` verbatim, no LLM), weekly_training_review (Sunday 6pm coach
 review of the week's logs vs plan; deterministic one-liner when there's no plan
 or no logs), plus fastmail_watch. One-shots are disabled by `dispatch_task`
-after firing. Delivery is Telegram-only with same-day dedup (`was_sent_today`)
-— except task_type `reminder`, which dedups on a 5-min `was_sent_within` window
-so sub-daily recurring reminders can fire. Morning briefing also seeds
-in-process `loop.call_later` timers for 30-min-before calendar reminders.
+after firing. Outputs are persisted as app artifacts with same-day dedup
+(`was_sent_today`) — except task_type `reminder`, which dedups on a 5-min
+`was_sent_within` window so sub-daily recurring reminders can fire. Morning
+briefing also seeds in-process `loop.call_later` timers for 30-min-before
+calendar reminder artifacts.
 Schedule rows carry `source` ('system' vs 'reminder'); the reminders tools only
 ever list/cancel `source='reminder'` rows.
 
@@ -123,7 +110,7 @@ ever list/cancel `source='reminder'` rows.
 - Memory context: `memory/reader.py::load_memory_context` — cached rendered
   block, 500-token budget, prepended to instructions. Extraction is
   fire-and-forget post-reply (`memory/extractor.py`, Haiku, structured output;
-  corrections archive the old fact and flag Jordan via Telegram).
+  corrections archive the old fact and persist an app artifact).
 
 ## The instrumentation choke point
 
@@ -142,20 +129,14 @@ Observability details, event catalogue, dashboard ids: `docs/observability.md`.
 
 | Concern | Mechanism | Where |
 |---|---|---|
-| Duplicate inbound | unique `channel_message_id` per channel (`telegram:{chat}:{msg}`, `app-{slug}-{key}`, `app-voice-{key}`) | `db/messages.py::message_exists` |
+| Duplicate inbound | stable app keys (`app-{slug}-{key}`, `app-voice-{key}`) | `db/messages.py::message_exists` |
 | Railway edge replay (>20s no response) | stable idempotency key + replay converges on original run's reply | `gateway/voice.py::await_original_reply`, `app_chat.py::replay_app_response` |
 | Fire-and-forget task GC | strong-ref sets + `drain_*` helpers | `main.py`, `agent_runner.py`, `emitter.py` |
 | Double proactive send | tz-aware `was_sent_today` | `proactive/delivery.py` |
 | Topic bleed | 30-min idle rotation (archive + fresh conversation) | `db/conversations.py` |
-| Bad config deploy | `/health` 503 gates Railway deploy: every active DB agent must have a running bot AND a model the Anthropic API serves | `health.py::build_health_report` |
+| Bad config deploy | `/health` 503 gates Railway deploy when an active DB agent has no resolvable model or Anthropic confirms the model is invalid | `health.py::build_health_report` |
 | Runaway run | 200k token budget → `TokenBudgetExceededError` | `agent_runner.py` |
-| Unset secret | empty-string sentinel = feature disabled (webhook 503, workout bot skipped, fastmail watcher off) | `config.py` |
-
-Polling liveness (gap found 2026-07-07, fixed 2026-07-08): a dying polling
-task (revoked token, auth failure) evicts its bot from `app.state.bots` via
-`watch_polling_liveness` (`channels/telegram.py`), so `/health` degrades
-instead of reporting a silent bot as running. Shutdown cancellation does not
-evict.
+| Unset secret | empty-string sentinel = feature disabled (webhook 503, app/voice 503, fastmail watcher off) | `config.py` |
 
 ## Database (Supabase, hosted)
 
@@ -173,11 +154,11 @@ Pooling: pooler port 6543 with `?pgbouncer=true`.
 ## Env vars (complete; `config.py::Settings` is authoritative)
 
 Required, no default: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_ANON_KEY`,
-`ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TAVILY_API_KEY`, `FASTMAIL_USERNAME`,
+`ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `FASTMAIL_USERNAME`,
 `FASTMAIL_APP_PASSWORD`, `OPENAI_API_KEY`, `DEFAULT_ORG_ID`.
 
-Defaulted/optional: `DEFAULT_AGENT_SLUG` (claw-main), `WORKOUT_TELEGRAM_BOT_TOKEN`
-("" = workout bot off), `WORKOUT_AGENT_SLUG` (workout-coach), `LOG_LEVEL`,
+Defaulted/optional: `DEFAULT_AGENT_SLUG` (claw-main),
+`WORKOUT_AGENT_SLUG` (workout-coach), `LOG_LEVEL`,
 `ENVIRONMENT` (development|production), `MESSAGE_HISTORY_LIMIT` (50),
 `LOGFIRE_TOKEN`, `POSTHOG_API_KEY` (project key `phc_*`, never personal `phx_*`),
 `POSTHOG_HOST`, `POSTHOG_ENABLED`, `FRONTEND_ANALYTICS_TOKEN`,
@@ -230,8 +211,7 @@ ship magic-link-only if passkeys breaks). Xcode 26.0 pin: `device_info_plus`
 Testing: `flutter test` (mock mode; flow test uses fixed-duration pumps —
 `pumpAndSettle` hangs on the typing indicator);
 `flutter test integration_test -d <udid> --dart-define=...` against a LOCAL
-STUB gateway (never the real gateway locally — Telegram 409; pattern in
-`integration_test/live_chat_test.dart`).
+STUB gateway (pattern in `integration_test/live_chat_test.dart`).
 
 ## Deploy
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 
 import structlog
-from aiogram import Bot
 from supabase._async.client import AsyncClient
 
 from jordan_claw.agents.deps import AgentDeps
@@ -34,7 +33,6 @@ async def handle_message(
     history_limit: int = 50,
     environment: str = "development",
     run_kind: RunKind = RunKind.USER_MESSAGE,
-    bot: Bot | None = None,
 ) -> GatewayResponse:
     """Process an incoming message through the full gateway lifecycle."""
     log = logger.bind(
@@ -141,7 +139,7 @@ async def handle_message(
 
     # 6. Fire-and-forget memory extraction
     asyncio.create_task(
-        extract_memory_background(db, msg.org_id, msg.content, response_text, bot=bot),
+        extract_memory_background(db, msg.org_id, msg.content, response_text),
         name=f"memory-extract-{msg.org_id}",
     )
 

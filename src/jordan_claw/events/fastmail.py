@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import httpx
 import structlog
-from aiogram import Bot
 from supabase._async.client import AsyncClient
 
 from jordan_claw.config import Settings
@@ -92,8 +91,6 @@ async def _fetch_emails(
 async def poll_fastmail(
     db: AsyncClient,
     settings: Settings,
-    *,
-    bots: dict[str, Bot],
 ) -> int:
     """Poll Fastmail via JMAP and fire process_event per new email.
 
@@ -133,7 +130,6 @@ async def poll_fastmail(
             source=SOURCE,
             payload=_to_payload(email),
             settings=settings,
-            bots=bots,
         )
         processed += 1
 

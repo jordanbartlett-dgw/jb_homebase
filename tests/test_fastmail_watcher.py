@@ -75,7 +75,7 @@ async def test_empty_token_skips_without_http(monkeypatch):
 
     calls = _install_fake_httpx(monkeypatch, _api_json([]))
     with patch("jordan_claw.events.fastmail.process_event", new=AsyncMock()) as mock_proc:
-        processed = await poll_fastmail(MagicMock(), _settings(token=""), bots={})
+        processed = await poll_fastmail(MagicMock(), _settings(token=""))
 
     assert processed == 0
     assert calls["get"] == []
@@ -94,7 +94,7 @@ async def test_first_poll_initializes_cursor_without_firing(monkeypatch):
         patch("jordan_claw.events.fastmail.save_cursor", new=AsyncMock()) as mock_save,
         patch("jordan_claw.events.fastmail.process_event", new=AsyncMock()) as mock_proc,
     ):
-        processed = await poll_fastmail(MagicMock(), _settings(), bots={})
+        processed = await poll_fastmail(MagicMock(), _settings())
 
     assert processed == 0
     mock_proc.assert_not_awaited()
@@ -134,8 +134,7 @@ async def test_two_new_emails_fire_process_event_and_advance_cursor(monkeypatch)
     ):
         db = MagicMock()
         settings = _settings()
-        bots = {"claw-main": AsyncMock()}
-        processed = await poll_fastmail(db, settings, bots=bots)
+        processed = await poll_fastmail(db, settings)
 
     assert processed == 2
     assert mock_proc.await_count == 2
@@ -151,7 +150,6 @@ async def test_two_new_emails_fire_process_event_and_advance_cursor(monkeypatch)
     second_kwargs = mock_proc.call_args_list[1].kwargs
     assert second_kwargs["payload"]["from"] == "carol@x.co"
     assert second_kwargs["settings"] is settings
-    assert second_kwargs["bots"] is bots
 
     # Cursor advances to the newest email
     _db, source, new_cursor = mock_save.call_args.args
@@ -188,7 +186,7 @@ async def test_burst_over_limit_paginates_without_loss(monkeypatch):
         patch("jordan_claw.events.fastmail.save_cursor", new=AsyncMock()) as mock_save,
         patch("jordan_claw.events.fastmail.process_event", new=AsyncMock()) as mock_proc,
     ):
-        processed = await poll_fastmail(MagicMock(), _settings(), bots={"claw-main": AsyncMock()})
+        processed = await poll_fastmail(MagicMock(), _settings())
 
     assert processed == 20
     assert mock_proc.await_count == 20

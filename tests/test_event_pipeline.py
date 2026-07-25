@@ -91,11 +91,10 @@ async def test_get_triggers_filters_by_source_and_enabled():
 # --- process_event ---
 
 
-async def test_process_event_runs_each_trigger_and_delivers():
+async def test_process_event_runs_each_trigger_and_publishes():
     from jordan_claw.events.pipeline import process_event
 
     db = _mock_db()
-    bot = AsyncMock()
     agent = MagicMock()
 
     with (
@@ -112,16 +111,15 @@ async def test_process_event_runs_each_trigger_and_delivers():
             new=AsyncMock(return_value=_run_result("Heads up: invoice due.")),
         ) as mock_run,
         patch(
-            "jordan_claw.events.pipeline.send_proactive_message",
+            "jordan_claw.events.pipeline.publish_proactive_message",
             new=AsyncMock(),
-        ) as mock_send,
+        ) as mock_publish,
     ):
         started = await process_event(
             db,
             source="fastmail-email",
             payload={"from": "a@b.co", "subject": "Invoice"},
             settings=_settings(),
-            bots={"claw-main": bot},
         )
 
     assert started == 2
@@ -131,10 +129,10 @@ async def test_process_event_runs_each_trigger_and_delivers():
     assert run_kwargs["prompt"] == "From: a@b.co. Subject: Invoice."
     assert run_kwargs["channel"] == "webhook"
     assert run_kwargs["run_kind"].value == "event"
-    assert mock_send.await_count == 2
-    send_kwargs = mock_send.call_args.kwargs
-    assert send_kwargs["content"] == "Heads up: invoice due."
-    assert send_kwargs["bot"] is bot
+    assert mock_publish.await_count == 2
+    publish_kwargs = mock_publish.call_args.kwargs
+    assert publish_kwargs["content"] == "Heads up: invoice due."
+    assert publish_kwargs["agent_slug"] == "claw-main"
 
 
 async def test_process_event_suppresses_nothing_to_send():
@@ -156,20 +154,19 @@ async def test_process_event_suppresses_nothing_to_send():
             new=AsyncMock(return_value=_run_result("NOTHING_TO_SEND")),
         ),
         patch(
-            "jordan_claw.events.pipeline.send_proactive_message",
+            "jordan_claw.events.pipeline.publish_proactive_message",
             new=AsyncMock(),
-        ) as mock_send,
+        ) as mock_publish,
     ):
         started = await process_event(
             db,
             source="fastmail-email",
             payload={"from": "noreply@spam.co", "subject": "sale"},
             settings=_settings(),
-            bots={"claw-main": AsyncMock()},
         )
 
     assert started == 1
-    mock_send.assert_not_awaited()
+    mock_publish.assert_not_awaited()
 
 
 async def test_process_event_continues_after_trigger_failure():
@@ -191,20 +188,19 @@ async def test_process_event_continues_after_trigger_failure():
             new=AsyncMock(return_value=_run_result("ok")),
         ),
         patch(
-            "jordan_claw.events.pipeline.send_proactive_message",
+            "jordan_claw.events.pipeline.publish_proactive_message",
             new=AsyncMock(),
-        ) as mock_send,
+        ) as mock_publish,
     ):
         started = await process_event(
             db,
             source="fastmail-email",
             payload={},
             settings=_settings(),
-            bots={"claw-main": AsyncMock()},
         )
 
     assert started == 1
-    assert mock_send.await_count == 1
+    assert mock_publish.await_count == 1
 
 
 def _triggers(n: int):
@@ -233,7 +229,6 @@ def _wire_app_state(secret: str) -> MagicMock:
     settings.claw_webhook_secret = secret
     app.state.settings = settings
     app.state.db = MagicMock()
-    app.state.bots = {"claw-main": AsyncMock()}
     return settings
 
 

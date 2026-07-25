@@ -263,5 +263,5 @@ async def test_extract_memory_with_correction_sends_proactive_message():
         await extract_memory_background(mock_db, "org-1", "I prefer coffee", "Noted!")
 
     mock_notify.assert_called_once_with(
-        mock_db, "org-1", "Jordan prefers tea", "Jordan prefers coffee", bot=None
+        mock_db, "org-1", "Jordan prefers tea", "Jordan prefers coffee"
     )

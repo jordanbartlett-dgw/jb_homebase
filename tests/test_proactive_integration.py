@@ -10,7 +10,7 @@ from jordan_claw.proactive.models import ProactiveSchedule
 
 @pytest.mark.asyncio
 async def test_full_scheduled_flow():
-    """Scheduler detects a due schedule, runs the executor, sends via delivery."""
+    """Scheduler detects a due schedule, runs it, and persists an app artifact."""
     from jordan_claw.proactive.scheduler import dispatch_task
 
     schedule = ProactiveSchedule(
@@ -27,8 +27,6 @@ async def test_full_scheduled_flow():
     )
 
     mock_db = AsyncMock()
-    mock_bot = AsyncMock()
-    mock_bot.send_message = AsyncMock()
     mock_settings = MagicMock()
     mock_settings.fastmail_username = "user@test.com"
     mock_settings.fastmail_app_password = "test-pass"
@@ -46,7 +44,7 @@ async def test_full_scheduled_flow():
         trigger,
         content,
         schedule_id=None,
-        channel="telegram",
+        channel="app",
     ):
         inserted_messages.append(
             {
@@ -76,10 +74,6 @@ async def test_full_scheduled_flow():
             new=AsyncMock(return_value=SimpleNamespace(output="Good morning, Jordan!")),
         ),
         patch(
-            "jordan_claw.proactive.delivery.get_telegram_chat_id",
-            new=AsyncMock(return_value=12345),
-        ),
-        patch(
             "jordan_claw.proactive.delivery.was_sent_today",
             new=AsyncMock(return_value=False),
         ),
@@ -97,13 +91,9 @@ async def test_full_scheduled_flow():
             new=AsyncMock(return_value=[]),
         ),
     ):
-        bots = {"claw-main": mock_bot}
-        await dispatch_task(schedule, mock_db, bots, mock_settings)
+        await dispatch_task(schedule, mock_db, mock_settings)
 
-    # Verify Telegram message was sent
-    mock_bot.send_message.assert_called_once_with(12345, "Good morning, Jordan!")
-
-    # Verify audit row was inserted
+    # Verify the app artifact was persisted.
     assert len(inserted_messages) == 1
     assert inserted_messages[0]["task_type"] == "morning_briefing"
     assert inserted_messages[0]["trigger"] == "scheduled"

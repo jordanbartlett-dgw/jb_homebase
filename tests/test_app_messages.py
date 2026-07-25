@@ -157,7 +157,6 @@ def _wire_app_state(app_token: str) -> MagicMock:
     settings = _settings(app_token)
     app.state.settings = settings
     app.state.db = MagicMock()
-    app.state.bots = {}
     return settings
 
 

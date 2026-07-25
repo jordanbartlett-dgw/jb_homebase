@@ -23,11 +23,11 @@ def make_agent_config() -> AgentConfig:
 
 def make_incoming(
     content: str = "Hello",
-    channel_message_id: str = "telegram:123",
+    channel_message_id: str = "app-claw-main-123",
 ) -> IncomingMessage:
     return IncomingMessage(
-        channel="telegram",
-        channel_thread_id="chat_456",
+        channel="app",
+        channel_thread_id="claw-main",
         channel_message_id=channel_message_id,
         content=content,
         org_id="1408252a-fd36-4fd3-b527-3b2f495d7b9c",
@@ -37,13 +37,6 @@ def make_incoming(
 @pytest.fixture
 def mock_db():
     return AsyncMock()
-
-
-def test_telegram_channel_message_id_is_chat_scoped():
-    from jordan_claw.channels.telegram import telegram_channel_message_id
-
-    assert telegram_channel_message_id("111", "5") != telegram_channel_message_id("222", "5")
-    assert telegram_channel_message_id("111", "5") == "telegram:111:5"
 
 
 @pytest.mark.asyncio
@@ -160,7 +153,7 @@ async def test_agent_error_returns_friendly_message(mock_db):
         ),
     ):
         result = await handle_message(
-            make_incoming(channel_message_id="telegram:999"),
+            make_incoming(channel_message_id="app-claw-main-999"),
             db=mock_db,
             agent_slug="claw-main",
             tavily_api_key="test-key",

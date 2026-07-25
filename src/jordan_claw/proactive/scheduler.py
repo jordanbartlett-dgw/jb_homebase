@@ -5,14 +5,13 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import structlog
-from aiogram import Bot
 from croniter import croniter
 from supabase._async.client import AsyncClient
 
 from jordan_claw.config import Settings
 from jordan_claw.db.proactive import disable_schedule, get_enabled_schedules, update_last_run
 from jordan_claw.events.fastmail import poll_fastmail
-from jordan_claw.proactive.delivery import send_proactive_message
+from jordan_claw.proactive.delivery import publish_proactive_message
 from jordan_claw.proactive.executors import (
     _parse_event_times,
     execute_calendar_reminder,
@@ -72,15 +71,14 @@ def should_run(schedule: ProactiveSchedule, now: datetime) -> bool:
 async def dispatch_task(
     schedule: ProactiveSchedule,
     db: AsyncClient,
-    bots: dict[str, Bot],
     settings: Settings,
 ) -> None:
-    """Execute a scheduled task and send the result via the schedule's bot."""
+    """Execute a scheduled task and persist its result for app surfaces."""
     # fastmail_watch delivers per-email through the event pipeline itself,
     # so it doesn't fit the content-returning executor signature.
     if schedule.task_type == "fastmail_watch":
         try:
-            await poll_fastmail(db, settings, bots=bots)
+            await poll_fastmail(db, settings)
             await update_last_run(db, schedule.id)
             log.info(
                 "proactive.task_complete",
@@ -101,14 +99,12 @@ async def dispatch_task(
         return
 
     agent_slug = schedule.config.get("agent_slug", settings.default_agent_slug)
-    bot = bots.get(agent_slug) or bots[settings.default_agent_slug]
 
     try:
         task_config = {**schedule.config, "timezone": schedule.timezone}
         content = await executor(db, schedule.org_id, task_config, settings)
 
-        await send_proactive_message(
-            bot=bot,
+        await publish_proactive_message(
             db=db,
             org_id=schedule.org_id,
             content=content,
@@ -134,7 +130,6 @@ async def dispatch_task(
                 schedule.org_id,
                 reminder_config,
                 settings,
-                bot,
             )
 
         log.info(
@@ -156,9 +151,8 @@ async def schedule_calendar_reminders(
     org_id: str,
     config: dict,
     settings: Settings,
-    bot: Bot,
 ) -> list[asyncio.TimerHandle]:
-    """Scan today's events and set 30-min-before reminder timers."""
+    """Scan today's events and persist 30-min-before app reminder artifacts."""
     tz_name = config.get("timezone", "America/Chicago")
     tz = ZoneInfo(tz_name)
     now = datetime.now(tz)
@@ -195,8 +189,7 @@ async def schedule_calendar_reminders(
                     event_title=t,
                     event_time=s,
                 )
-                await send_proactive_message(
-                    bot=bot,
+                await publish_proactive_message(
                     db=db,
                     org_id=org_id,
                     content=content,
@@ -216,7 +209,6 @@ async def schedule_calendar_reminders(
 
 async def scheduler_loop(
     db: AsyncClient,
-    bots: dict[str, Bot],
     settings: Settings,
 ) -> None:
     """Main scheduler loop. Runs every 60 seconds, checking for due schedules."""
@@ -230,7 +222,7 @@ async def scheduler_loop(
             for schedule in schedules:
                 if should_run(schedule, now):
                     asyncio.create_task(
-                        dispatch_task(schedule, db, bots, settings),
+                        dispatch_task(schedule, db, settings),
                         name=f"proactive-{schedule.task_type}-{schedule.id}",
                     )
         except Exception:

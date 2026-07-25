@@ -162,7 +162,7 @@ async def test_handle_app_message_runs_gateway_flow_as_voice(monkeypatch):
     assert kwargs["db"] is db
     assert kwargs["agent_slug"] == "workout-coach"
     assert kwargs["run_kind"] is RunKind.VOICE
-    assert kwargs.get("bot") is None
+    assert "bot" not in kwargs
 
 
 async def test_handle_app_message_race_window_converges_to_original(monkeypatch):
@@ -238,7 +238,6 @@ def _wire_app_state(app_token: str) -> MagicMock:
     settings = _settings(app_token)
     app.state.settings = settings
     app.state.db = MagicMock()
-    app.state.bots = {}
     return settings
 
 

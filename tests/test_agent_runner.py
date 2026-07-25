@@ -40,7 +40,7 @@ async def test_happy_path_returns_agent_run_result():
         agent_slug="claw-main",
         model="anthropic:claude-sonnet-4-5-20250929",
         run_kind=RunKind.USER_MESSAGE,
-        channel="telegram",
+        channel="app",
         conversation_id="conv-1",
     )
 
@@ -69,7 +69,7 @@ async def test_happy_path_writes_usage_event():
             agent_slug="claw-main",
             model="anthropic:claude-sonnet-4-5-20250929",
             run_kind=RunKind.USER_MESSAGE,
-            channel="telegram",
+            channel="app",
             conversation_id="conv-1",
         )
 
@@ -122,7 +122,7 @@ async def test_exception_classified_and_reraised():
             agent_slug="claw-main",
             model="anthropic:claude-sonnet-4-5-20250929",
             run_kind=RunKind.USER_MESSAGE,
-            channel="telegram",
+            channel="app",
             conversation_id="conv-1",
         )
 
@@ -153,7 +153,7 @@ async def test_token_budget_exceeded_raises_and_records_failure():
             agent_slug="claw-main",
             model="anthropic:claude-sonnet-4-5-20250929",
             run_kind=RunKind.USER_MESSAGE,
-            channel="telegram",
+            channel="app",
             conversation_id="conv-1",
             max_total_tokens=100_000,
         )
@@ -194,7 +194,7 @@ async def test_tool_call_count_extracted_from_messages():
         agent_slug="claw-main",
         model="anthropic:claude-sonnet-4-5-20250929",
         run_kind=RunKind.USER_MESSAGE,
-        channel="telegram",
+        channel="app",
         conversation_id="conv-1",
     )
 

@@ -40,7 +40,7 @@ async def test_agent_run_completed_emits_with_typed_props(mock_client):
         user_id=None,
         agent_slug="claw-main",
         run_kind=RunKind.USER_MESSAGE,
-        channel="telegram",
+        channel="app",
         conversation_id="conv-1",
         schedule_name=None,
         model="anthropic:claude-sonnet-4-5-20250929",
@@ -61,7 +61,7 @@ async def test_agent_run_completed_emits_with_typed_props(mock_client):
     props = kwargs["properties"]
     assert props["agent_slug"] == "claw-main"
     assert props["run_kind"] == "user_message"
-    assert props["channel"] == "telegram"
+    assert props["channel"] == "app"
     assert props["conversation_id"] == "conv-1"
     assert props["model"] == "anthropic:claude-sonnet-4-5-20250929"
     assert props["input_tokens"] == 100
@@ -80,7 +80,7 @@ async def test_agent_run_completed_uses_user_id_when_provided(mock_client):
         user_id="user-42",
         agent_slug="claw-main",
         run_kind=RunKind.USER_MESSAGE,
-        channel="telegram",
+        channel="app",
         conversation_id=None,
         schedule_name=None,
         model="m",
@@ -104,7 +104,7 @@ async def test_proactive_sent_emits(mock_client):
         user_id=None,
         schedule_name="morning_briefing",
         task_type="briefing",
-        channel="telegram",
+        channel="app",
         content_length=120,
         agent_slug="claw-main",
         trigger="scheduled",
@@ -117,7 +117,7 @@ async def test_proactive_sent_emits(mock_client):
     props = kwargs["properties"]
     assert props["schedule_name"] == "morning_briefing"
     assert props["task_type"] == "briefing"
-    assert props["channel"] == "telegram"
+    assert props["channel"] == "app"
     assert props["content_length"] == 120
     assert props["agent_slug"] == "claw-main"
     assert props["trigger"] == "scheduled"
@@ -128,14 +128,14 @@ async def test_agent_session_started_emits(mock_client):
     await emitter.agent_session_started(
         org_id="org-1",
         user_id=None,
-        channel="telegram",
+        channel="app",
         agent_slug="claw-main",
     )
     await _drain()
 
     kwargs = mock_client.capture.call_args.kwargs
     assert kwargs["event"] == "agent_session_started"
-    assert kwargs["properties"] == {"channel": "telegram", "agent_slug": "claw-main"}
+    assert kwargs["properties"] == {"channel": "app", "agent_slug": "claw-main"}
 
 
 @pytest.mark.asyncio
@@ -194,7 +194,7 @@ async def test_no_emit_when_client_none():
         await emitter.agent_session_started(
             org_id="org-1",
             user_id=None,
-            channel="telegram",
+            channel="app",
             agent_slug="claw-main",
         )
         await _drain()
@@ -208,7 +208,7 @@ async def test_capture_exception_swallowed(mock_client):
     await emitter.agent_session_started(
         org_id="org-1",
         user_id=None,
-        channel="telegram",
+        channel="app",
         agent_slug="claw-main",
     )
     await _drain()
@@ -225,7 +225,7 @@ async def test_pending_tasks_tracked(mock_client):
     await emitter.agent_session_started(
         org_id="org-1",
         user_id=None,
-        channel="telegram",
+        channel="app",
         agent_slug="claw-main",
     )
     assert len(emitter._pending_tasks) >= 1

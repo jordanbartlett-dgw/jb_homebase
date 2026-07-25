@@ -1,12 +1,17 @@
 # Jordan Claw
 
-A multi-tenant AI agent gateway. Receives messages from Telegram, routes them to a Pydantic AI agent, persists conversations in Supabase, and returns responses.
+A multi-tenant AI agent gateway with a Flutter iOS client. It routes app
+messages to Pydantic AI agents, persists conversations in Supabase, and returns
+responses over authenticated HTTP.
 
 This is the core delivery engine for the [jordanbartlett.co](https://jordanbartlett.co) consultancy. Every future client engagement builds on this infrastructure.
 
 ## What It Does
 
-One deployed process, two agents. Messages arrive from Telegram (one bot per agent), inbound webhooks, a Fastmail email watcher, or the `/voice` endpoint, hit a gateway that handles dedup, conversation tracking, and history, then run through a Pydantic AI (v2) agent backed by Claude Sonnet 5.
+One deployed process, two agents. Messages arrive from the Flutter app, inbound
+webhooks, a Fastmail email watcher, or the `/voice` endpoint, hit a gateway
+that handles dedup, conversation tracking, and history, then run through a
+Pydantic AI (v2) agent backed by Claude Sonnet 5.
 
 Tools are grouped into six capability bundles (`core`, `web`, `calendar`, `memory`, `obsidian`, `workout` in `agents/capabilities.py`); each agent's DB config selects which bundles it gets. The sixteen tools:
 
@@ -18,9 +23,11 @@ Tools are grouped into six capability bundles (`core`, `web`, `calendar`, `memor
 - **create_source_note** / **fetch_article** creates source notes from URLs or manual input
 - **get_workout_profile** / **save_workout_profile** / **get_workout_plan** / **save_workout_plan** / **log_workout** / **get_recent_workouts** back the workout-coach agent
 
-A second agent ("workout-coach") runs on its own Telegram bot (enabled via `WORKOUT_TELEGRAM_BOT_TOKEN`): structured intake of training/nutrition preferences, persisted training plans, chat workout logging, and a 6am daily-workout nudge.
+A second agent (`workout-coach`) is available in the app for structured intake
+of training/nutrition preferences, persisted training plans, chat workout
+logging, and scheduled workout artifacts.
 
-The agent also proactively reaches out via Telegram:
+The scheduler persists proactive artifacts for app surfaces:
 
 - **Morning briefing** (daily 7am) with calendar overview and memory context
 - **Weekly review** (Mondays 8am) summarizing the week's events and learnings
@@ -32,7 +39,9 @@ The agent also proactively reaches out via Telegram:
 
 Beyond schedules, events can trigger agents:
 
-- **`POST /webhooks/{source}`** (shared-secret auth) matches DB-configured `event_triggers` rows, runs the target agent, and delivers via Telegram; agents reply `NOTHING_TO_SEND` to stay silent on noise
+- **`POST /webhooks/{source}`** (shared-secret auth) matches DB-configured
+  `event_triggers` rows, runs the target agent, and persists an app artifact;
+  agents reply `NOTHING_TO_SEND` to stay silent on noise
 - **Fastmail watcher** polls JMAP every 5 minutes and feeds new email through the same trigger pipeline (seeded: `inbound_email_review` triages inbound mail)
 - **`POST /voice`** (bearer auth) accepts raw audio, transcribes via Whisper, routes to the best-matching agent with a Haiku classifier built from the capability catalog, and returns transcript + reply. Replays are idempotent: send one `X-Idempotency-Key` per utterance (falls back to a body hash) and duplicates converge to the original reply.
 
@@ -47,7 +56,7 @@ Conversations and messages persist in Supabase. The schema is multi-tenant from 
 | Gateway | FastAPI |
 | Agent framework | Pydantic AI |
 | Persistence | Supabase (Postgres + pgvector) |
-| Telegram | aiogram (long-polling) |
+| Client | Flutter iOS over authenticated HTTP |
 | Calendar | CalDAV via `caldav` library |
 | LLM | Claude Sonnet 4 (Anthropic) |
 | Embeddings | OpenAI text-embedding-3-small |
@@ -64,8 +73,6 @@ src/jordan_claw/
     agents/
       deps.py            # AgentDeps model (credentials for tools)
       factory.py         # DB-driven agent creation, tool registry resolution
-    channels/
-      telegram.py        # aiogram adapter, chat ID persistence
     gateway/
       models.py          # IncomingMessage, GatewayResponse
       router.py          # Message lifecycle: dedup, history, agent run, persist
@@ -87,7 +94,7 @@ src/jordan_claw/
     proactive/
       scheduler.py       # Async cron loop, calendar reminder timers
       executors.py       # Morning briefing, weekly review, daily scan, reminders
-      delivery.py        # Telegram send with dedup and audit logging
+      delivery.py        # App artifact persistence with dedup and analytics
       models.py          # ProactiveSchedule
     db/
       client.py          # Async Supabase client
@@ -131,7 +138,6 @@ pyproject.toml
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) package manager
 - Supabase project with the schema from `supabase/migrations/001_initial_schema.sql`
-- Telegram bot token (via BotFather)
 - Anthropic API key
 - Tavily API key
 - Fastmail account with an app-specific password
@@ -151,7 +157,6 @@ ANTHROPIC_API_KEY=
 SUPABASE_URL=
 SUPABASE_SERVICE_KEY=
 SUPABASE_ANON_KEY=
-TELEGRAM_BOT_TOKEN=
 TAVILY_API_KEY=
 DEFAULT_ORG_ID=
 FASTMAIL_USERNAME=your-email@fastmail.com
@@ -167,7 +172,7 @@ Secrets are managed via Infisical in production.
 uv run uvicorn jordan_claw.main:app --reload
 ```
 
-The Telegram bot starts automatically via long-polling. No webhook URL needed.
+The HTTP gateway and proactive scheduler start in one process.
 
 ### Run tests
 
@@ -185,9 +190,8 @@ on every push and pull request.
 
 ```
 Repo:   jordanbartlett-dgw/jb_homebase
-Bot:    @jb_homebase_bot
-Health: GET /health -> config-aware report (active agents vs running bots,
-        DB models validated against the Anthropic models API); degraded -> 503.
+Health: GET /health -> config-aware report (DB models validated against the
+        Anthropic models API); degraded -> 503.
         Railway healthchecks this path on deploy, so a broken config never
         replaces a healthy deployment.
 Port:   8000
@@ -226,7 +230,6 @@ A separate Railway service (`evals-cron`) runs the Pydantic Evals suite nightly 
 
 ## What's Next
 
-- **Flutter app**: Replace Telegram as Jordan's primary channel (upcoming)
 - **Slack adapter**: Second channel
 - **Sub-agent delegation**: Specialized agents for specific tasks
 - **Multi-agent routing**: Route conversations to the right agent per org

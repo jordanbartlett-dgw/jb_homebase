@@ -1,7 +1,7 @@
 # JB Homebase — Flutter app (iOS)
 
-Thin client over the FastAPI gateway. Replaces Telegram as the primary
-channel. v1 is iOS-only. Android is deferred.
+Thin client over the FastAPI gateway and the primary user channel. v1 is
+iOS-only. Android is deferred.
 
 Design direction lives in `../docs/flutter-design/` (JB Homebase prototype)
 and the PRD in `../docs/plans/flutter-app-prd.md`. Architecture decisions in
@@ -20,7 +20,7 @@ JB Homebase design pivot — this README is current).
   re-fetches without rerunning the agent. Voice upload
   (`ApiClient.sendVoice` → `POST /voice`) is built and tested but unused —
   real audio capture (`record`) is the next feature.
-- Still pending: channel-independent digest persistence, voice overlay
+- Still pending: voice overlay
   (placeholder transcript), passkey/magic-link screens (live builds skip them
   — the static token is the interim auth), and push delivery.
 - `dart analyze --fatal-infos` clean; unit + widget + flow tests pass
@@ -89,8 +89,8 @@ the gateway slugs — `claw-main`, `workout-coach`.
 
 The live-path integration test runs against a local stub of
 `/app/messages`, `/app/conversations/current`, and `/app/today` (see
-`integration_test/live_chat_test.dart`). Don't run the real gateway locally —
-it steals the prod Telegram bot's `getUpdates` polling.
+`integration_test/live_chat_test.dart`). Use the stub to avoid writing test
+conversations to production.
 
 ## File map
 

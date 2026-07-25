@@ -12,7 +12,6 @@ def test_settings_includes_fastmail_fields():
         "SUPABASE_SERVICE_KEY": "test-key",
         "SUPABASE_ANON_KEY": "test-anon",
         "ANTHROPIC_API_KEY": "test-anthropic",
-        "TELEGRAM_BOT_TOKEN": "test-bot",
         "TAVILY_API_KEY": "test-tavily",
         "DEFAULT_ORG_ID": "test-org",
         "FASTMAIL_USERNAME": "jordan@fastmail.com",
@@ -36,7 +35,6 @@ def test_settings_has_openai_api_key(monkeypatch):
     monkeypatch.setenv("SUPABASE_SERVICE_KEY", "test-key")
     monkeypatch.setenv("SUPABASE_ANON_KEY", "test-anon")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic")
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-bot")
     monkeypatch.setenv("TAVILY_API_KEY", "test-tavily")
     monkeypatch.setenv("FASTMAIL_USERNAME", "test@fastmail.com")
     monkeypatch.setenv("FASTMAIL_APP_PASSWORD", "test-pw")
@@ -46,17 +44,15 @@ def test_settings_has_openai_api_key(monkeypatch):
     assert settings.openai_api_key == "test-openai"
 
 
-def test_workout_bot_disabled_by_default(monkeypatch):
+def test_workout_agent_slug_defaults(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
     monkeypatch.setenv("SUPABASE_SERVICE_KEY", "test-key")
     monkeypatch.setenv("SUPABASE_ANON_KEY", "test-anon")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic")
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-bot")
     monkeypatch.setenv("TAVILY_API_KEY", "test-tavily")
     monkeypatch.setenv("FASTMAIL_USERNAME", "test@fastmail.com")
     monkeypatch.setenv("FASTMAIL_APP_PASSWORD", "test-pw")
     monkeypatch.setenv("DEFAULT_ORG_ID", "org-123")
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai")
     settings = get_settings()
-    assert settings.workout_telegram_bot_token == ""
     assert settings.workout_agent_slug == "workout-coach"

@@ -12,7 +12,7 @@ from jordan_claw.db.conversations import (
 )
 
 ORG_ID = "org-001"
-CHANNEL = "telegram"
+CHANNEL = "app"
 THREAD_ID = "chat_123"
 
 

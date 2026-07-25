@@ -20,14 +20,12 @@ _model_cache: dict[str, bool] = {}
 class AgentHealth(BaseModel):
     slug: str
     model: str
-    bot_running: bool
     model_ok: bool | None  # None = could not be validated (non-anthropic or API unreachable)
 
 
 class HealthReport(BaseModel):
     status: Literal["ok", "degraded"]
     agents: list[AgentHealth]
-    missing_bots: list[str]
     invalid_models: list[str]
 
 
@@ -52,16 +50,9 @@ async def _validate_model(client: AsyncAnthropic, model: str) -> bool | None:
 async def build_health_report(
     db: AsyncClient,
     *,
-    running_bots: set[str],
     anthropic_client: AsyncAnthropic,
 ) -> HealthReport:
-    """Cross-check every active agent in the DB against runtime reality.
-
-    An active agent whose bot dispatcher is not running, or whose configured
-    model the Anthropic API does not serve, degrades the report (503 at the
-    endpoint) so Railway's deploy healthcheck fails loudly instead of the bot
-    going silent.
-    """
+    """Validate that every active DB agent resolves to a served model."""
     result = (
         await db.table("agents")
         .select("slug, org_id, model, is_active")
@@ -70,7 +61,6 @@ async def build_health_report(
     )
 
     agents: list[AgentHealth] = []
-    missing_bots: list[str] = []
     invalid_models: list[str] = []
     org_defaults: dict[str, str | None] = {}
     for row in result.data:
@@ -83,22 +73,16 @@ async def build_health_report(
             model = resolve_model(row["model"], org_defaults[org_id])
         except ValueError:
             model = "(unset)"
-        bot_running = slug in running_bots
         model_ok = False if model == "(unset)" else await _validate_model(anthropic_client, model)
-        if not bot_running:
-            missing_bots.append(slug)
         if model_ok is False:
             invalid_models.append(slug)
-        agents.append(
-            AgentHealth(slug=slug, model=model, bot_running=bot_running, model_ok=model_ok)
-        )
+        agents.append(AgentHealth(slug=slug, model=model, model_ok=model_ok))
 
-    degraded = bool(missing_bots or invalid_models)
+    degraded = bool(invalid_models)
     if degraded:
-        log.warning("health.degraded", missing_bots=missing_bots, invalid_models=invalid_models)
+        log.warning("health.degraded", invalid_models=invalid_models)
     return HealthReport(
         status="degraded" if degraded else "ok",
         agents=agents,
-        missing_bots=missing_bots,
         invalid_models=invalid_models,
     )

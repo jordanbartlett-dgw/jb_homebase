@@ -136,7 +136,6 @@ async def test_dispatch_one_shot_disables_schedule():
         source="reminder",
         config={"agent_slug": "claw-main", "message": "Call the accountant"},
     )
-    bots = {"claw-main": AsyncMock()}
     settings = MagicMock(default_agent_slug="claw-main")
     mock_disable = AsyncMock()
 
@@ -145,11 +144,11 @@ async def test_dispatch_one_shot_disables_schedule():
             "jordan_claw.proactive.scheduler.EXECUTOR_MAP",
             {"reminder": AsyncMock(return_value="Call the accountant")},
         ),
-        patch("jordan_claw.proactive.scheduler.send_proactive_message"),
+        patch("jordan_claw.proactive.scheduler.publish_proactive_message"),
         patch("jordan_claw.proactive.scheduler.update_last_run", new=AsyncMock()),
         patch("jordan_claw.proactive.scheduler.disable_schedule", new=mock_disable),
     ):
-        await dispatch_task(schedule, MagicMock(), bots, settings)
+        await dispatch_task(schedule, MagicMock(), settings)
 
     mock_disable.assert_awaited_once()
 
@@ -159,7 +158,6 @@ async def test_dispatch_cron_schedule_stays_enabled():
     from jordan_claw.proactive.scheduler import dispatch_task
 
     schedule = _make_schedule(task_type="reminder", cron="0 9 * * *", source="reminder")
-    bots = {"claw-main": AsyncMock()}
     settings = MagicMock(default_agent_slug="claw-main")
     mock_disable = AsyncMock()
 
@@ -168,11 +166,11 @@ async def test_dispatch_cron_schedule_stays_enabled():
             "jordan_claw.proactive.scheduler.EXECUTOR_MAP",
             {"reminder": AsyncMock(return_value="Drink water")},
         ),
-        patch("jordan_claw.proactive.scheduler.send_proactive_message"),
+        patch("jordan_claw.proactive.scheduler.publish_proactive_message"),
         patch("jordan_claw.proactive.scheduler.update_last_run", new=AsyncMock()),
         patch("jordan_claw.proactive.scheduler.disable_schedule", new=mock_disable),
     ):
-        await dispatch_task(schedule, MagicMock(), bots, settings)
+        await dispatch_task(schedule, MagicMock(), settings)
 
     mock_disable.assert_not_awaited()
 
@@ -183,8 +181,6 @@ async def test_dispatch_task_calls_executor():
 
     schedule = _make_schedule(task_type="morning_briefing")
     mock_db = AsyncMock()
-    mock_bot = AsyncMock()
-    bots = {"claw-main": mock_bot}
     mock_settings = MagicMock(default_agent_slug="claw-main")
 
     mock_exec = AsyncMock(return_value="Good morning!")
@@ -196,7 +192,7 @@ async def test_dispatch_task_calls_executor():
             {"morning_briefing": mock_exec},
         ),
         patch(
-            "jordan_claw.proactive.scheduler.send_proactive_message",
+            "jordan_claw.proactive.scheduler.publish_proactive_message",
             new=mock_send,
         ),
         patch(
@@ -204,18 +200,16 @@ async def test_dispatch_task_calls_executor():
             new=AsyncMock(),
         ),
     ):
-        await dispatch_task(schedule, mock_db, bots, mock_settings)
+        await dispatch_task(schedule, mock_db, mock_settings)
 
     mock_exec.assert_called_once()
     mock_send.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_dispatch_picks_bot_by_agent_slug():
+async def test_dispatch_publishes_agent_slug():
     from jordan_claw.proactive.scheduler import dispatch_task
 
-    claw_bot, workout_bot = AsyncMock(), AsyncMock()
-    bots = {"claw-main": claw_bot, "workout-coach": workout_bot}
     schedule = _make_schedule(task_type="daily_workout", config={"agent_slug": "workout-coach"})
     settings = MagicMock(default_agent_slug="claw-main")
 
@@ -224,34 +218,12 @@ async def test_dispatch_picks_bot_by_agent_slug():
             "jordan_claw.proactive.scheduler.EXECUTOR_MAP",
             {"daily_workout": AsyncMock(return_value="go run")},
         ),
-        patch("jordan_claw.proactive.scheduler.send_proactive_message") as mock_send,
+        patch("jordan_claw.proactive.scheduler.publish_proactive_message") as mock_publish,
         patch("jordan_claw.proactive.scheduler.update_last_run"),
     ):
-        await dispatch_task(schedule, MagicMock(), bots, settings)
+        await dispatch_task(schedule, MagicMock(), settings)
 
-    assert mock_send.call_args.kwargs["bot"] is workout_bot
-
-
-@pytest.mark.asyncio
-async def test_dispatch_falls_back_to_default_bot():
-    from jordan_claw.proactive.scheduler import dispatch_task
-
-    claw_bot = AsyncMock()
-    bots = {"claw-main": claw_bot}
-    schedule = _make_schedule(task_type="daily_workout", config={"agent_slug": "workout-coach"})
-    settings = MagicMock(default_agent_slug="claw-main")
-
-    with (
-        patch.dict(
-            "jordan_claw.proactive.scheduler.EXECUTOR_MAP",
-            {"daily_workout": AsyncMock(return_value="go run")},
-        ),
-        patch("jordan_claw.proactive.scheduler.send_proactive_message") as mock_send,
-        patch("jordan_claw.proactive.scheduler.update_last_run"),
-    ):
-        await dispatch_task(schedule, MagicMock(), bots, settings)
-
-    assert mock_send.call_args.kwargs["bot"] is claw_bot
+    assert mock_publish.call_args.kwargs["agent_slug"] == "workout-coach"
 
 
 @pytest.mark.asyncio
@@ -261,7 +233,6 @@ async def test_schedule_calendar_reminders_sets_timers():
     from jordan_claw.proactive.scheduler import schedule_calendar_reminders
 
     mock_db = AsyncMock()
-    mock_bot = AsyncMock()
     mock_settings = MagicMock()
     mock_settings.fastmail_username = "user@test.com"
     mock_settings.fastmail_app_password = "test-pass"
@@ -290,7 +261,6 @@ async def test_schedule_calendar_reminders_sets_timers():
             "org-1",
             {"agent_slug": "claw-main"},
             mock_settings,
-            mock_bot,
         )
 
     assert len(timers) == 1

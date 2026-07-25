@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import structlog
-from aiogram import Bot
 from pydantic_ai import Agent
 from supabase._async.client import AsyncClient
 
@@ -84,37 +83,20 @@ async def notify_memory_correction(
     org_id: str,
     old_content: str,
     new_content: str,
-    bot: Bot | None = None,
 ) -> None:
-    """Send a proactive notification about a memory correction.
-
-    If a Bot instance is available, deliver via Telegram immediately.
-    Otherwise, insert an audit row for later delivery.
-    """
+    """Persist an app artifact about a corrected memory."""
     from jordan_claw.proactive.executors import format_memory_flag
 
     content = format_memory_flag(old_content, new_content)
-    if bot:
-        from jordan_claw.proactive.delivery import send_proactive_message
+    from jordan_claw.proactive.delivery import publish_proactive_message
 
-        await send_proactive_message(
-            bot=bot,
-            db=db,
-            org_id=org_id,
-            content=content,
-            task_type="memory_flag",
-            trigger="memory_flag",
-        )
-    else:
-        from jordan_claw.db.proactive import insert_proactive_message
-
-        await insert_proactive_message(
-            db,
-            org_id=org_id,
-            task_type="memory_flag",
-            trigger="memory_flag",
-            content=content,
-        )
+    await publish_proactive_message(
+        db=db,
+        org_id=org_id,
+        content=content,
+        task_type="memory_flag",
+        trigger="memory_flag",
+    )
 
 
 async def extract_memory_background(
@@ -122,7 +104,6 @@ async def extract_memory_background(
     org_id: str,
     user_message: str,
     assistant_response: str,
-    bot: Bot | None = None,
 ) -> None:
     """Fire-and-forget memory extraction from a conversation turn."""
     try:
@@ -166,9 +147,7 @@ async def extract_memory_background(
                         None,
                     )
                     if old_fact:
-                        await notify_memory_correction(
-                            db, org_id, old_fact.content, fact.content, bot=bot
-                        )
+                        await notify_memory_correction(db, org_id, old_fact.content, fact.content)
 
         await upsert_facts(db, org_id, extraction.facts, existing_facts)
         await append_events(db, org_id, extraction.events)

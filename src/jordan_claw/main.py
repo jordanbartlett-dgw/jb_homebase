@@ -9,7 +9,6 @@ from datetime import datetime
 
 import logfire
 import structlog
-from aiogram import Bot
 from anthropic import AsyncAnthropic
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -17,11 +16,6 @@ from fastapi.responses import JSONResponse
 from jordan_claw.analytics import emitter
 from jordan_claw.analytics.posthog_client import shutdown_posthog
 from jordan_claw.analytics.types import RunKind
-from jordan_claw.channels.telegram import (
-    create_telegram_dispatcher,
-    start_polling,
-    watch_polling_liveness,
-)
 from jordan_claw.config import get_settings
 from jordan_claw.db.client import close_supabase_client, get_supabase_client
 from jordan_claw.db.conversations import archive_active_conversation
@@ -116,63 +110,17 @@ async def lifespan(app: FastAPI):
     db = await get_supabase_client(settings.supabase_url, settings.supabase_service_key)
     logger.info("supabase_client_initialized")
 
-    # Initialize Telegram bot and dispatcher
-    bot = Bot(token=settings.telegram_bot_token)
-    dp = create_telegram_dispatcher(
-        bot,
-        db=db,
-        default_org_id=settings.default_org_id,
-        agent_slug=settings.default_agent_slug,
-        tavily_api_key=settings.tavily_api_key,
-        fastmail_username=settings.fastmail_username,
-        fastmail_app_password=settings.fastmail_app_password,
-        openai_api_key=settings.openai_api_key,
-        history_limit=settings.message_history_limit,
-        environment=settings.environment,
-    )
-
-    # Scheduler invariant: bots must always contain default_agent_slug
-    bots: dict[str, Bot] = {settings.default_agent_slug: bot}
-
-    # Start Telegram polling as background task; a dying polling task evicts
-    # its bot from `bots` so /health degrades instead of reporting it running
-    main_polling = asyncio.create_task(start_polling(bot, dp))
-    watch_polling_liveness(main_polling, agent_slug=settings.default_agent_slug, bots=bots)
-    polling_tasks = [main_polling]
-
-    # Optional second bot: the workout coach
-    workout_bot: Bot | None = None
-    if settings.workout_telegram_bot_token:
-        workout_bot = Bot(token=settings.workout_telegram_bot_token)
-        workout_dp = create_telegram_dispatcher(
-            workout_bot,
-            db=db,
-            default_org_id=settings.default_org_id,
-            agent_slug=settings.workout_agent_slug,
-            tavily_api_key=settings.tavily_api_key,
-            fastmail_username=settings.fastmail_username,
-            fastmail_app_password=settings.fastmail_app_password,
-            openai_api_key=settings.openai_api_key,
-            history_limit=settings.message_history_limit,
-            environment=settings.environment,
-        )
-        bots[settings.workout_agent_slug] = workout_bot
-        workout_polling = asyncio.create_task(start_polling(workout_bot, workout_dp))
-        watch_polling_liveness(workout_polling, agent_slug=settings.workout_agent_slug, bots=bots)
-        polling_tasks.append(workout_polling)
-        logger.info("workout_bot_started", agent_slug=settings.workout_agent_slug)
-
-    # Start proactive messaging scheduler
+    # Start the app-only proactive scheduler. Generated artifacts are persisted
+    # for app surfaces; no outbound channel process runs in this service.
     scheduler_task = asyncio.create_task(
-        scheduler_loop(db, bots, settings),
+        scheduler_loop(db, settings),
         name="proactive-scheduler",
     )
     logger.info("proactive_scheduler_started")
 
-    # Expose shared state for request handlers (webhook route)
+    # Expose shared state for request handlers.
     app.state.settings = settings
     app.state.db = db
-    app.state.bots = bots
     app.state.anthropic = AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     # Mount analytics proxy after settings are loaded so org_id/token are available
@@ -188,19 +136,12 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    for task in polling_tasks:
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
     scheduler_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await scheduler_task
     await emitter.drain_pending_emits()
     shutdown_posthog()
     await app.state.anthropic.close()
-    await bot.session.close()
-    if workout_bot is not None:
-        await workout_bot.session.close()
     await close_supabase_client()
     logger.info("application_stopped")
 
@@ -220,15 +161,9 @@ async def drain_pending_event_tasks() -> None:
 
 @app.get("/health")
 async def health_check(request: Request):
-    """Config-aware health: active DB agents must have a running bot and a served model.
-
-    Degraded returns 503 so Railway's deploy healthcheck fails loudly on the
-    silent failure modes (missing bot token, retired model) instead of the bot
-    going quiet for weeks.
-    """
+    """Config-aware health: every active DB agent must resolve to a served model."""
     report = await build_health_report(
         request.app.state.db,
-        running_bots=set(request.app.state.bots),
         anthropic_client=request.app.state.anthropic,
     )
     payload = report.model_dump()
@@ -256,7 +191,6 @@ async def receive_webhook(source: str, request: Request):
             source=source,
             payload=payload,
             settings=settings,
-            bots=request.app.state.bots,
         ),
         name=f"event-{source}",
     )

@@ -154,7 +154,7 @@ async def handle_app_message(
 ) -> GatewayResponse:
     """Run an app-originated utterance through the standard gateway flow.
 
-    Same lifecycle as Telegram (conversation per channel, memory context,
+    Same lifecycle as app text (conversation per channel, memory context,
     instrumented run, memory-extraction kickoff), but the reply returns over
     HTTP only — no bot delivery. channel_message_id is the stable idempotency
     key from the route, so gateway dedup fires on edge replays; agent_slug is
@@ -181,7 +181,6 @@ async def handle_app_message(
         history_limit=settings.message_history_limit,
         environment=settings.environment,
         run_kind=run_kind,
-        bot=None,
     )
     if result.conversation_id:
         return result

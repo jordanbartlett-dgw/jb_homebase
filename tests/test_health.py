@@ -1,8 +1,7 @@
-"""Health report: DB-configured agents cross-checked against running bots and live model ids.
+"""Health report: DB-configured agents cross-checked against live model ids.
 
-Guards the two prod incident classes evals can't see:
+Guards the production incident class evals can't see:
 - sonnet-4 retirement (DB model invalid, health stayed green)
-- 2026-07-05 missing WORKOUT_TELEGRAM_BOT_TOKEN (active agent, no dispatcher)
 """
 
 from __future__ import annotations
@@ -81,25 +80,11 @@ def clear_model_cache():
 async def test_all_healthy():
     report = await build_health_report(
         make_db(AGENT_ROWS),
-        running_bots={"claw-main", "workout-coach"},
         anthropic_client=make_anthropic(),
     )
     assert report.status == "ok"
-    assert report.missing_bots == []
     assert report.invalid_models == []
-    assert all(a.bot_running and a.model_ok for a in report.agents)
-
-
-@pytest.mark.asyncio
-async def test_active_agent_without_bot_degrades():
-    # The 2026-07-05 incident: workout-coach active in DB, dispatcher never started.
-    report = await build_health_report(
-        make_db(AGENT_ROWS),
-        running_bots={"claw-main"},
-        anthropic_client=make_anthropic(),
-    )
-    assert report.status == "degraded"
-    assert report.missing_bots == ["workout-coach"]
+    assert all(a.model_ok for a in report.agents)
 
 
 @pytest.mark.asyncio
@@ -107,7 +92,6 @@ async def test_invalid_model_degrades():
     # The sonnet-4 retirement incident: DB model no longer served.
     report = await build_health_report(
         make_db(AGENT_ROWS),
-        running_bots={"claw-main", "workout-coach"},
         anthropic_client=make_anthropic(retrieve_side_effect=not_found()),
     )
     assert report.status == "degraded"
@@ -119,7 +103,6 @@ async def test_api_unavailable_does_not_degrade():
     # Transient Anthropic outage must not fail deploys: model_ok is unknown, not false.
     report = await build_health_report(
         make_db(AGENT_ROWS),
-        running_bots={"claw-main", "workout-coach"},
         anthropic_client=make_anthropic(retrieve_side_effect=httpx.ConnectError("boom")),
     )
     assert report.status == "ok"
@@ -130,8 +113,8 @@ async def test_api_unavailable_does_not_degrade():
 async def test_model_validation_is_cached():
     client = make_anthropic()
     db = make_db(AGENT_ROWS)
-    await build_health_report(db, running_bots=set(), anthropic_client=client)
-    await build_health_report(db, running_bots=set(), anthropic_client=client)
+    await build_health_report(db, anthropic_client=client)
+    await build_health_report(db, anthropic_client=client)
     # Both agents share one model string; only the first report hits the API.
     assert client.models.retrieve.await_count == 1
 
@@ -140,9 +123,7 @@ async def test_model_validation_is_cached():
 async def test_non_anthropic_model_skipped():
     rows = [{"slug": "claw-main", "org_id": "org-1", "model": "openai:gpt-5", "is_active": True}]
     client = make_anthropic()
-    report = await build_health_report(
-        make_db(rows), running_bots={"claw-main"}, anthropic_client=client
-    )
+    report = await build_health_report(make_db(rows), anthropic_client=client)
     assert report.status == "ok"
     assert report.agents[0].model_ok is None
     client.models.retrieve.assert_not_awaited()
@@ -159,7 +140,7 @@ async def test_null_model_validates_resolved_org_default():
         }
     )
     client = make_anthropic()
-    report = await build_health_report(db, running_bots={"claw-main"}, anthropic_client=client)
+    report = await build_health_report(db, anthropic_client=client)
     assert report.status == "ok"
     assert report.agents[0].model == "anthropic:claude-sonnet-5"
     assert report.agents[0].model_ok is True
@@ -175,9 +156,7 @@ async def test_unresolvable_model_degrades():
             "organizations": [{"default_model": None}],
         }
     )
-    report = await build_health_report(
-        db, running_bots={"claw-main"}, anthropic_client=make_anthropic()
-    )
+    report = await build_health_report(db, anthropic_client=make_anthropic())
     assert report.status == "degraded"
     assert report.invalid_models == ["claw-main"]
     assert report.agents[0].model == "(unset)"

@@ -107,9 +107,9 @@ async def insert_proactive_message(
     trigger: str,
     content: str,
     schedule_id: str | None = None,
-    channel: str = "telegram",
+    channel: str = "app",
 ) -> None:
-    """Insert an audit row for a sent proactive message."""
+    """Insert a proactive artifact for an app surface."""
     await (
         client.table("proactive_messages")
         .insert(
@@ -185,40 +185,3 @@ async def was_sent_within(client: AsyncClient, schedule_id: str, *, minutes: int
         .execute()
     )
     return len(result.data) > 0
-
-
-async def get_telegram_chat_id(
-    client: AsyncClient,
-    org_id: str,
-    agent_slug: str | None = None,
-) -> int | None:
-    """Look up the Telegram chat ID for an agent. Falls back to the org's
-    default agent when no slug is given (memory-flag and legacy callers)."""
-    query = client.table("agents").select("telegram_chat_id").eq("org_id", org_id)
-    query = query.eq("slug", agent_slug) if agent_slug is not None else query.eq("is_default", True)
-    result = await query.limit(1).execute()
-    if not result.data:
-        return None
-    return result.data[0].get("telegram_chat_id")
-
-
-async def save_telegram_chat_id(
-    client: AsyncClient,
-    org_id: str,
-    agent_slug: str,
-    chat_id: int,
-) -> None:
-    """Persist the Telegram chat ID on the agent row."""
-    result = (
-        await client.table("agents")
-        .update({"telegram_chat_id": chat_id})
-        .eq("org_id", org_id)
-        .eq("slug", agent_slug)
-        .execute()
-    )
-    if not result.data:
-        log.warning(
-            "telegram_chat_id_save_missed",
-            org_id=org_id,
-            agent_slug=agent_slug,
-        )

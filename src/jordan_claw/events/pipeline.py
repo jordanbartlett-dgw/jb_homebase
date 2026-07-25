@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import structlog
-from aiogram import Bot
 from supabase._async.client import AsyncClient
 
 from jordan_claw.agents.deps import AgentDeps
@@ -9,7 +8,7 @@ from jordan_claw.agents.factory import build_agent
 from jordan_claw.analytics.types import RunKind
 from jordan_claw.config import Settings
 from jordan_claw.db.event_triggers import EventTrigger, get_triggers
-from jordan_claw.proactive.delivery import send_proactive_message
+from jordan_claw.proactive.delivery import publish_proactive_message
 from jordan_claw.utils.agent_runner import run_agent_instrumented
 
 log = structlog.get_logger()
@@ -32,9 +31,8 @@ async def _run_trigger(
     trigger: EventTrigger,
     payload: dict,
     settings: Settings,
-    bots: dict[str, Bot],
 ) -> None:
-    """Run one trigger's agent against the payload and deliver the result."""
+    """Run one trigger's agent and persist any actionable app artifact."""
     agent, model_name = await build_agent(db, trigger.org_id, trigger.agent_slug)
     deps = AgentDeps(
         org_id=trigger.org_id,
@@ -66,9 +64,7 @@ async def _run_trigger(
         )
         return
 
-    bot = bots.get(trigger.agent_slug) or bots[settings.default_agent_slug]
-    await send_proactive_message(
-        bot=bot,
+    await publish_proactive_message(
         db=db,
         org_id=trigger.org_id,
         content=content,
@@ -85,7 +81,6 @@ async def process_event(
     source: str,
     payload: dict,
     settings: Settings,
-    bots: dict[str, Bot],
 ) -> int:
     """Run every enabled trigger for source against the payload. Returns runs started."""
     triggers = await get_triggers(db, source)
@@ -93,7 +88,7 @@ async def process_event(
 
     for trigger in triggers:
         try:
-            await _run_trigger(db, trigger, payload, settings, bots)
+            await _run_trigger(db, trigger, payload, settings)
             started += 1
         except Exception:
             log.exception(

@@ -34,7 +34,7 @@ async def test_save_usage_event_inserts_full_payload():
         org_id=ORG_ID,
         agent_slug="claw-main",
         conversation_id="conv-1",
-        channel="telegram",
+        channel="app",
         run_kind=RunKind.USER_MESSAGE,
         schedule_name=None,
         model="anthropic:claude-sonnet-4-5-20250929",
@@ -52,7 +52,7 @@ async def test_save_usage_event_inserts_full_payload():
     insert_payload = query.insert.call_args[0][0]
     assert insert_payload["org_id"] == ORG_ID
     assert insert_payload["agent_slug"] == "claw-main"
-    assert insert_payload["channel"] == "telegram"
+    assert insert_payload["channel"] == "app"
     assert insert_payload["run_kind"] == "user_message"
     assert insert_payload["input_tokens"] == 1000
     assert insert_payload["output_tokens"] == 500
@@ -103,7 +103,7 @@ async def test_save_usage_event_failure_run():
         org_id=ORG_ID,
         agent_slug="claw-main",
         conversation_id="conv-1",
-        channel="telegram",
+        channel="app",
         run_kind=RunKind.USER_MESSAGE,
         schedule_name=None,
         model="anthropic:claude-sonnet-4-5-20250929",
@@ -155,17 +155,17 @@ async def test_save_usage_event_proactive_includes_schedule_name():
 async def test_most_recent_agent_returns_slug():
     db, query = _mock_db(select_data=[{"agent_slug": "claw-main"}])
 
-    result = await most_recent_agent(db, org_id=ORG_ID, channel="telegram")
+    result = await most_recent_agent(db, org_id=ORG_ID, channel="app")
 
     assert result == "claw-main"
     db.table.assert_called_once_with("usage_events")
     query.eq.assert_any_call("org_id", ORG_ID)
-    query.eq.assert_any_call("channel", "telegram")
+    query.eq.assert_any_call("channel", "app")
     query.eq.assert_any_call("run_kind", "user_message")
 
 
 @pytest.mark.asyncio
 async def test_most_recent_agent_returns_none_when_no_rows():
     db, _ = _mock_db(select_data=[])
-    result = await most_recent_agent(db, org_id=ORG_ID, channel="telegram")
+    result = await most_recent_agent(db, org_id=ORG_ID, channel="app")
     assert result is None

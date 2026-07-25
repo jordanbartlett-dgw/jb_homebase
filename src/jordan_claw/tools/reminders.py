@@ -35,7 +35,7 @@ async def set_reminder(
     cron: str | None = None,
     agent_slug: str = "claw-main",
 ) -> str:
-    """Create a reminder that gets sent to Jordan over Telegram at the right time.
+    """Create a reminder artifact for Jordan's app at the right time.
     Pass exactly one of run_at (absolute datetime, for a one-off reminder) or
     cron (5-field cron expression evaluated in US Central, for a recurring one).
     ALWAYS call current_datetime first and convert relative phrases like

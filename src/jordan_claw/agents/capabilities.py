@@ -96,7 +96,7 @@ CAPABILITY_REGISTRY: dict[str, ToolGroup] = {
     ),
     "reminders": ToolGroup(
         id="reminders",
-        description="Set, list, and cancel one-off or recurring Telegram reminders for Jordan.",
+        description="Set, list, and cancel one-off or recurring app reminders for Jordan.",
         toolset=_toolset(
             (set_reminder, "set_reminder"),
             (list_reminders, "list_reminders"),
