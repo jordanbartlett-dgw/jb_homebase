@@ -8,6 +8,7 @@ import pytest
 from jordan_claw.meds.models import HealthEvent, MedicationEntry, MedicationProfile
 from jordan_claw.tools.meds import (
     amend_last_health_event,
+    create_timeline_note,
     get_health_events,
     get_last_visit_date,
     log_health_event,
@@ -357,3 +358,57 @@ async def test_save_medication_profile_passes_timeline_display_name():
         await save_medication_profile(ctx, timeline_display_name="Grandma J.")
     kwargs = mock_upsert.call_args.kwargs
     assert kwargs["timeline_display_name"] == "Grandma J."
+
+
+@pytest.mark.asyncio
+@patch("jordan_claw.tools.meds.insert_chunks")
+@patch("jordan_claw.tools.meds.generate_embeddings")
+@patch("jordan_claw.tools.meds.insert_note")
+async def test_create_timeline_note_writes_correct_vault_path_and_status(
+    mock_insert, mock_embed, mock_chunks
+):
+    mock_insert.return_value = {"id": "note-1"}
+    mock_embed.return_value = [[0.1] * 512]
+    ctx = _make_ctx()
+    result = await create_timeline_note(
+        ctx,
+        title="Cardiology visit 2026-08",
+        markdown_body="## July\n\nSeizure logged on 2026-07-10.",
+    )
+
+    call_kwargs = mock_insert.call_args.kwargs
+    assert call_kwargs["vault_path"] == "Health/Timelines/Cardiology visit 2026-08.md"
+    assert call_kwargs["note_type"] == "health_timeline"
+    assert call_kwargs["sync_status"] == "pending_export"
+    assert call_kwargs["source_origin"] == "claw"
+    assert call_kwargs["frontmatter"]["type"] == "health-timeline"
+    assert call_kwargs["frontmatter"]["title"] == "Cardiology visit 2026-08"
+    assert call_kwargs["frontmatter"]["status"] == "generated"
+    assert call_kwargs["frontmatter"]["tags"] == ["health", "timeline"]
+    assert re.match(r"^\d{4}-\d{2}-\d{2}$", call_kwargs["frontmatter"]["generated"])
+
+    assert "Cardiology visit 2026-08" in result
+    assert "created" in result.lower()
+
+
+@pytest.mark.asyncio
+@patch("jordan_claw.tools.meds.insert_chunks")
+@patch("jordan_claw.tools.meds.generate_embeddings")
+@patch("jordan_claw.tools.meds.insert_note")
+async def test_create_timeline_note_chunks_and_embeds_body(mock_insert, mock_embed, mock_chunks):
+    mock_insert.return_value = {"id": "note-1"}
+    mock_embed.return_value = [[0.2] * 512]
+    ctx = _make_ctx()
+    body = "## July\n\nSeizure logged on 2026-07-10."
+
+    await create_timeline_note(ctx, title="Timeline", markdown_body=body)
+
+    mock_embed.assert_called_once()
+    embedded_contents = mock_embed.call_args.args[0]
+    assert embedded_contents == [body]  # short body -> single chunk, content unchanged
+
+    chunk_rows = mock_chunks.call_args.args[1]
+    assert len(chunk_rows) == 1
+    assert chunk_rows[0]["note_id"] == "note-1"
+    assert chunk_rows[0]["content"] == body
+    assert chunk_rows[0]["embedding"] == [0.2] * 512

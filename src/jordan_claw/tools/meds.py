@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 import httpx
 import structlog
+import yaml
 from pydantic_ai import RunContext
 
 from jordan_claw.agents.deps import AgentDeps
@@ -18,7 +20,9 @@ from jordan_claw.db.health_log import (
     update_health_event,
 )
 from jordan_claw.db.meds import get_medication_profile, upsert_medication_profile
+from jordan_claw.db.obsidian import insert_chunks, insert_note
 from jordan_claw.meds.models import HealthCategory, MedicationEntry
+from jordan_claw.obsidian.embeddings import chunk_text, generate_embeddings
 from jordan_claw.tools.calendar import CENTRAL_TZ
 
 log = structlog.get_logger()
@@ -451,3 +455,73 @@ async def get_last_visit_date(ctx: RunContext[AgentDeps]) -> str:
     if last_date is None:
         return "No appointments logged yet. Ask Jordan for the range instead of guessing."
     return f"Most recent logged appointment: {last_date}."
+
+
+async def create_timeline_note(
+    ctx: RunContext[AgentDeps],
+    title: str,
+    markdown_body: str,
+) -> str:
+    """Write a doctor-facing health timeline note into the Obsidian vault
+    (folder Health/Timelines/). The body you compose must follow this shape:
+    header with the display name from the medication profile
+    (timeline_display_name — if unset, ask Jordan first), the date range
+    covered, and the generation date; then chronological entries grouped by
+    month; then a current-medications snapshot from the profile; then a
+    'Questions for the doctor' section. Returns the note title for
+    confirmation; it appears in the vault after the next sync.
+    NOT for general notes or web sources — use create_source_note (claw-main)
+    for those."""
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+
+    frontmatter = {
+        "type": "health-timeline",
+        "title": title,
+        "generated": today,
+        "tags": ["health", "timeline"],
+        "status": "generated",
+    }
+
+    vault_path = f"Health/Timelines/{title}.md"
+
+    # Build the full file content for hashing (frontmatter + body)
+    full_file = f"---\n{yaml.dump(frontmatter, default_flow_style=False)}---\n\n{markdown_body}"
+    content_hash = hashlib.sha256(full_file.encode()).hexdigest()
+
+    note_row = await insert_note(
+        ctx.deps.supabase_client,
+        org_id=ctx.deps.org_id,
+        vault_path=vault_path,
+        title=title,
+        note_type="health_timeline",
+        content=markdown_body,
+        frontmatter=frontmatter,
+        tags=["health", "timeline"],
+        wiki_links=[],
+        content_hash=content_hash,
+        source_origin="claw",
+        sync_status="pending_export",
+    )
+
+    # Generate chunks and embeddings
+    chunks = chunk_text(markdown_body)
+    embeddings = await generate_embeddings(
+        [c["content"] for c in chunks],
+        api_key=ctx.deps.openai_api_key,
+    )
+
+    note_id = note_row.get("id", "")
+    chunk_rows = [
+        {
+            "note_id": note_id,
+            "chunk_index": c["chunk_index"],
+            "content": c["content"],
+            "embedding": embeddings[i],
+            "token_count": c["token_count"],
+        }
+        for i, c in enumerate(chunks)
+    ]
+    await insert_chunks(ctx.deps.supabase_client, chunk_rows)
+
+    # TODO(phase-2-followup): PDF export would hook here — compose once, render twice.
+    return f"Timeline note '{title}' created. It will appear in your vault after the next sync."
