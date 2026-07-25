@@ -109,9 +109,11 @@ def _build_toolset(fixture: dict[str, str], captured_notes: list[str]) -> Functi
     ) -> str:
         """Record ONE health event for Jordan's daughter when he reports something
         that happened: a milestone, seizure, breathing episode, measurement,
-        illness, appointment, or medication change. NOT for adding detail to an
-        event already logged — use amend_last_health_event for that. Repeat
-        episodes on the same day are real: log each one with allow_duplicate=true."""
+        illness, or appointment. NOT for adding detail to an event already
+        logged — use amend_last_health_event for that. NOT for medication
+        changes - save_medication_profile auto-logs those when the med list
+        changes. Repeat episodes on the same day are real: log each one with
+        allow_duplicate=true."""
         return fixture["log_health_event"]
 
     async def amend_last_health_event(
@@ -120,6 +122,7 @@ def _build_toolset(fixture: dict[str, str], captured_notes: list[str]) -> Functi
         category: HealthCategory | None = None,
         event_date: str | None = None,
         severity: Literal["mild", "moderate", "severe", "er_visit"] | None = None,
+        match_category: HealthCategory | None = None,
     ) -> str:
         """Add detail or corrections to the MOST RECENTLY LOGGED health event, when
         Jordan follows up about something already logged. NOT for logging a new

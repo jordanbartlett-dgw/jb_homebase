@@ -115,6 +115,24 @@ async def test_get_latest_health_event_none_when_empty():
 
 
 @pytest.mark.asyncio
+async def test_get_latest_health_event_filters_by_category_when_given():
+    db, query = _mock_db(select_data=[_EVENT_ROW])
+    event = await get_latest_health_event(db, ORG_ID, category="seizure")
+    assert event is not None and event.id == "e1"
+    query.eq.assert_any_call("category", "seizure")
+    query.eq.assert_any_call("org_id", ORG_ID)
+    query.order.assert_called_once_with("logged_at", desc=True)
+
+
+@pytest.mark.asyncio
+async def test_get_latest_health_event_no_category_filter_when_omitted():
+    db, query = _mock_db(select_data=[_EVENT_ROW])
+    await get_latest_health_event(db, ORG_ID)
+    # No category filter applied: eq only called for org_id.
+    assert query.eq.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_update_health_event_sends_only_provided_fields():
     db, query = _mock_db(select_data=[_EVENT_ROW])
     await update_health_event(db, ORG_ID, "e1", details={"duration_sec": 60})

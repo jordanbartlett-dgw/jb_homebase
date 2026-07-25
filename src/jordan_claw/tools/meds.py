@@ -338,14 +338,15 @@ async def log_health_event(
 ) -> str:
     """Record ONE health event for Jordan's daughter when he reports something
     that happened: a milestone, seizure, breathing episode, measurement,
-    illness, appointment, or medication change. event_date is when it HAPPENED
+    illness, or appointment. event_date is when it HAPPENED
     (resolve relative dates with current_datetime first), which is often not
     today. notes hold Jordan's exact words.
     NOT for adding detail to an event already logged — use
-    amend_last_health_event for that. A same-day event of the same category is
-    refused unless allow_duplicate=true; repeat episodes on the same day
-    (a second seizure) are real and expected — pass allow_duplicate=true and
-    log each one."""
+    amend_last_health_event for that. NOT for medication changes -
+    save_medication_profile auto-logs those when the med list changes.
+    A same-day event of the same category is refused unless allow_duplicate=true;
+    repeat episodes on the same day (a second seizure) are real and expected —
+    pass allow_duplicate=true and log each one."""
     if not allow_duplicate:
         same_day = await get_events_for_date(ctx.deps.supabase_client, ctx.deps.org_id, event_date)
         clashes = [event for event in same_day if event.category == category]
@@ -382,13 +383,22 @@ async def amend_last_health_event(
     category: HealthCategory | None = None,
     event_date: str | None = None,
     severity: Literal["mild", "moderate", "severe", "er_visit"] | None = None,
+    match_category: HealthCategory | None = None,
 ) -> str:
     """Add detail or corrections to the MOST RECENTLY LOGGED health event, when
     Jordan follows up about something already logged. details keys merge into
     existing ones; notes append on a new line; category/event_date/severity
-    replace if given. NOT for logging a new event — use log_health_event."""
-    latest = await get_latest_health_event(ctx.deps.supabase_client, ctx.deps.org_id)
+    replace if given. Pass match_category to target the most recent event of
+    that category - use it whenever the follow-up names a specific kind of
+    event (a seizure, an appointment), so the amendment cannot land on a
+    different event logged since. NOT for logging a new event — use
+    log_health_event."""
+    latest = await get_latest_health_event(
+        ctx.deps.supabase_client, ctx.deps.org_id, category=match_category
+    )
     if latest is None:
+        if match_category is not None:
+            return f"No {match_category} event logged yet. Use log_health_event to record one."
         return "No health event logged yet. Use log_health_event to record one."
 
     merged_details = {**latest.details, **(details or {})} if details else None

@@ -169,6 +169,56 @@ async def test_amend_without_existing_event_points_to_log():
 
 
 @pytest.mark.asyncio
+async def test_amend_with_match_category_targets_that_categorys_latest_event():
+    """A newer medication_change row (auto-logged by save_medication_profile)
+    must not absorb an amendment meant for an earlier seizure. match_category
+    scopes the lookup so the DB layer returns the seizure row, not the
+    medication_change row that is more recent by logged_at."""
+    ctx = _make_ctx()
+    seizure_event = _existing_event("seizure", id="e-seizure")
+    with (
+        patch(
+            "jordan_claw.tools.meds.get_latest_health_event",
+            return_value=seizure_event,
+        ) as mock_latest,
+        patch("jordan_claw.tools.meds.update_health_event", return_value={}) as mock_update,
+    ):
+        result = await amend_last_health_event(
+            ctx, notes="recovered fast", match_category="seizure"
+        )
+    mock_latest.assert_called_once_with(
+        ctx.deps.supabase_client, ctx.deps.org_id, category="seizure"
+    )
+    assert mock_update.call_args.args[2] == "e-seizure"
+    assert "seizure" in result
+
+
+@pytest.mark.asyncio
+async def test_amend_without_match_category_uses_latest_overall():
+    """Existing behavior preserved: omitting match_category passes category=None
+    through, so the DB layer returns the latest event regardless of category."""
+    ctx = _make_ctx()
+    with (
+        patch(
+            "jordan_claw.tools.meds.get_latest_health_event",
+            return_value=_existing_event(),
+        ) as mock_latest,
+        patch("jordan_claw.tools.meds.update_health_event", return_value={}),
+    ):
+        await amend_last_health_event(ctx, notes="follow up")
+    mock_latest.assert_called_once_with(ctx.deps.supabase_client, ctx.deps.org_id, category=None)
+
+
+@pytest.mark.asyncio
+async def test_amend_with_match_category_no_event_of_that_category():
+    ctx = _make_ctx()
+    with patch("jordan_claw.tools.meds.get_latest_health_event", return_value=None):
+        result = await amend_last_health_event(ctx, notes="follow up", match_category="seizure")
+    assert "No seizure event logged yet" in result
+    assert "log_health_event" in result
+
+
+@pytest.mark.asyncio
 async def test_get_health_events_formats_with_details_and_notes():
     ctx = _make_ctx()
     with patch("jordan_claw.tools.meds.get_health_events_range", return_value=[_existing_event()]):

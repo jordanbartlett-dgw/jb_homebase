@@ -29,7 +29,7 @@ _DOC_FENCE_RE = re.compile(r"```\n(.*?)\n```", re.DOTALL)
 def _extract_sql_prompt() -> str:
     sql = MIGRATION_PATH.read_text()
     match = _SQL_PROMPT_RE.search(sql)
-    assert match, "could not locate system_prompt literal in migration 022 SQL"
+    assert match, "could not locate system_prompt literal in migration 024 SQL"
     return match.group(1).replace("''", "'")
 
 

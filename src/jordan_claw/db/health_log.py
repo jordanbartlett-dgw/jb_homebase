@@ -47,16 +47,16 @@ async def get_events_for_date(
     return [HealthEvent.model_validate(row) for row in result.data]
 
 
-async def get_latest_health_event(client: AsyncClient, org_id: str) -> HealthEvent | None:
-    """Most recently logged event (by logged_at, not event_date)."""
-    result = (
-        await client.table("health_events")
-        .select("*")
-        .eq("org_id", org_id)
-        .order("logged_at", desc=True)
-        .limit(1)
-        .execute()
-    )
+async def get_latest_health_event(
+    client: AsyncClient, org_id: str, category: str | None = None
+) -> HealthEvent | None:
+    """Most recently logged event (by logged_at, not event_date). Pass category
+    to scope to the most recent event of that category, rather than the most
+    recent event overall."""
+    query = client.table("health_events").select("*").eq("org_id", org_id)
+    if category is not None:
+        query = query.eq("category", category)
+    result = await query.order("logged_at", desc=True).limit(1).execute()
     if not result.data:
         return None
     return HealthEvent.model_validate(result.data[0])
