@@ -10,13 +10,17 @@ from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.tools.calendar import check_calendar, schedule_event
 from jordan_claw.tools.meds import (
     amend_last_health_event,
+    check_care_docs_current,
     create_timeline_note,
     fetch_fda_label,
+    get_care_profile_tool,
     get_health_events,
     get_last_visit_date,
     get_medication_profile_tool,
     log_health_event,
     normalize_medication,
+    save_care_document,
+    save_care_profile,
     save_medication_profile,
 )
 from jordan_claw.tools.memory import forget_memory, recall_memory
@@ -119,7 +123,8 @@ CAPABILITY_REGISTRY: dict[str, ToolGroup] = {
         description=(
             "Medication safety pre-screening for Jordan's daughter: RxNorm drug "
             "identity, FDA label warnings with QT extraction, her current "
-            "medication profile, health event log, and doctor timelines."
+            "medication profile, health event log, doctor timelines, care "
+            "profile and emergency/handoff documents."
         ),
         toolset=_toolset(
             (normalize_medication, "normalize_medication"),
@@ -131,6 +136,10 @@ CAPABILITY_REGISTRY: dict[str, ToolGroup] = {
             (get_health_events, "get_health_events"),
             (get_last_visit_date, "get_last_visit_date"),
             (create_timeline_note, "create_timeline_note"),
+            (get_care_profile_tool, "get_care_profile"),
+            (save_care_profile, "save_care_profile"),
+            (save_care_document, "save_care_document"),
+            (check_care_docs_current, "check_care_docs_current"),
         ),
     ),
     # Read-only cross-agent views. Same tool fns as the full groups — never

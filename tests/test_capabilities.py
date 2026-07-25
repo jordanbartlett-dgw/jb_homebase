@@ -18,7 +18,7 @@ def test_registry_covers_all_tools():
     tool_names = set()
     for group in CAPABILITY_REGISTRY.values():
         tool_names.update(group.toolset.tools)
-    assert len(tool_names) == 29
+    assert len(tool_names) == 33
 
 
 def test_expected_groups_exist():
@@ -132,6 +132,10 @@ async def test_med_check_capabilities_reach_the_model():
         "get_health_events",
         "get_last_visit_date",
         "create_timeline_note",
+        "get_care_profile",
+        "save_care_profile",
+        "save_care_document",
+        "check_care_docs_current",
         "current_datetime",
     } <= sent
 

@@ -41,6 +41,10 @@ EXPECTED_TOOLS = [
     "get_health_events",
     "get_last_visit_date",
     "create_timeline_note",
+    "get_care_profile",
+    "save_care_profile",
+    "save_care_document",
+    "check_care_docs_current",
 ]
 
 
@@ -96,6 +100,10 @@ def test_deps_tools_have_ctx_param():
         "get_health_events",
         "get_last_visit_date",
         "create_timeline_note",
+        "get_care_profile",
+        "save_care_profile",
+        "save_care_document",
+        "check_care_docs_current",
     ]
     for name in deps_tools:
         sig = inspect.signature(ALL_TOOLS[name].function)
