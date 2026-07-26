@@ -29,6 +29,7 @@ def test_allowed_events_matches_emitter_function_names():
         "agent_session_started",
         "eval_run_completed",
         "feedback_submitted",
+        "transcription_completed",
     }
     assert expected == emitter.ALLOWED_EVENTS
 
@@ -223,6 +224,44 @@ async def test_feedback_submitted_emits(mock_client):
     assert props["has_note"] is True
     assert props["prompt_source"] == "manual"
     assert props["conversation_id"] == "conv-1"
+
+
+@pytest.mark.asyncio
+async def test_transcription_completed_emits_with_typed_props(mock_client):
+    await emitter.transcription_completed(
+        org_id="org-1",
+        duration_s=12.5,
+        audio_bytes=2048,
+        cost_usd=Decimal("0.00125"),
+        latency_ms=850,
+    )
+    await _drain()
+
+    mock_client.capture.assert_called_once()
+    kwargs = mock_client.capture.call_args.kwargs
+    assert kwargs["event"] == "transcription_completed"
+    assert kwargs["distinct_id"] == "org-1"
+    props = kwargs["properties"]
+    assert props["duration_s"] == 12.5
+    assert props["audio_bytes"] == 2048
+    assert props["cost_usd"] == 0.00125
+    assert props["latency_ms"] == 850
+
+
+@pytest.mark.asyncio
+async def test_transcription_completed_handles_none_duration_and_cost(mock_client):
+    await emitter.transcription_completed(
+        org_id="org-1",
+        duration_s=None,
+        audio_bytes=2048,
+        cost_usd=None,
+        latency_ms=850,
+    )
+    await _drain()
+
+    props = mock_client.capture.call_args.kwargs["properties"]
+    assert props["duration_s"] is None
+    assert props["cost_usd"] is None
 
 
 @pytest.mark.asyncio

@@ -421,7 +421,14 @@ async def voice_message(request: Request) -> VoiceResponse:
             return await replay_response(db, original, org_id=settings.default_org_id)
 
         try:
-            transcript = await transcribe(audio, filename, content_type, settings)
+            transcript = await transcribe(
+                audio,
+                filename,
+                content_type,
+                settings,
+                db=request.app.state.db,
+                org_id=settings.default_org_id,
+            )
         except TranscriptionError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -462,6 +469,8 @@ async def voice_transcription(request: Request) -> VoiceTranscriptionResponse:
             content_type,
             settings,
             key=key,
+            db=request.app.state.db,
+            org_id=settings.default_org_id,
         )
     except TranscriptionError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

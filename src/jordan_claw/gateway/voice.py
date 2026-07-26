@@ -6,16 +6,21 @@ import time
 from typing import Any
 
 import httpx
+import logfire
 import structlog
 from pydantic import BaseModel, Field, field_validator
 from supabase._async.client import AsyncClient
 
+from jordan_claw.analytics import emitter
 from jordan_claw.analytics.types import RunKind
 from jordan_claw.config import Settings
 from jordan_claw.db.messages import get_assistant_reply_after, get_message_by_channel_id
+from jordan_claw.db.usage_events import save_usage_event
 from jordan_claw.gateway.classifier import classify
 from jordan_claw.gateway.models import GatewayResponse, IncomingMessage
 from jordan_claw.gateway.router import handle_message
+from jordan_claw.utils.agent_runner import _fire_save
+from jordan_claw.utils.pricing import compute_transcription_cost
 
 log = structlog.get_logger()
 
@@ -82,32 +87,87 @@ async def transcribe(
     filename: str,
     content_type: str,
     settings: Settings,
+    *,
+    db: AsyncClient | None = None,
+    org_id: str | None = None,
 ) -> str:
-    """Transcribe audio bytes via the OpenAI Whisper HTTP API (raw httpx, no sdk)."""
-    try:
-        async with httpx.AsyncClient(timeout=TRANSCRIBE_TIMEOUT_S) as client:
-            resp = await client.post(
-                WHISPER_URL,
-                headers={"Authorization": f"Bearer {settings.openai_api_key}"},
-                data={"model": WHISPER_MODEL},
-                files={"file": (filename, audio, content_type)},
+    """Transcribe audio bytes via the OpenAI Whisper HTTP API (raw httpx, no sdk).
+
+    When both `db` and `org_id` are provided and transcription succeeds, this
+    fires (fire-and-forget) a usage_events row and a `transcription_completed`
+    PostHog event. Callers that only need a transcript (e.g. drafts) can omit
+    both and no row/event is written.
+    """
+    with logfire.span("voice_transcribe", audio_bytes=len(audio)) as span:
+        ctx = span.get_span_context()
+        trace_id = f"{ctx.trace_id:032x}" if ctx and ctx.trace_id else None
+        start = time.monotonic()
+
+        try:
+            async with httpx.AsyncClient(timeout=TRANSCRIBE_TIMEOUT_S) as client:
+                resp = await client.post(
+                    WHISPER_URL,
+                    headers={"Authorization": f"Bearer {settings.openai_api_key}"},
+                    data={"model": WHISPER_MODEL, "response_format": "verbose_json"},
+                    files={"file": (filename, audio, content_type)},
+                )
+        except httpx.HTTPError as exc:
+            log.warning("transcription_request_failed", error=str(exc))
+            raise TranscriptionError("Transcription request failed") from exc
+
+        if resp.status_code != 200:
+            log.warning(
+                "transcription_failed",
+                status_code=resp.status_code,
+                body=resp.text[:500],
             )
-    except httpx.HTTPError as exc:
-        log.warning("transcription_request_failed", error=str(exc))
-        raise TranscriptionError("Transcription request failed") from exc
+            raise TranscriptionError(f"Transcription failed (HTTP {resp.status_code})")
 
-    if resp.status_code != 200:
-        log.warning(
-            "transcription_failed",
-            status_code=resp.status_code,
-            body=resp.text[:500],
-        )
-        raise TranscriptionError(f"Transcription failed (HTTP {resp.status_code})")
+        body = resp.json()
+        text = body.get("text")
+        if not isinstance(text, str):
+            raise TranscriptionError("Transcription response missing text")
 
-    text = resp.json().get("text")
-    if not isinstance(text, str):
-        raise TranscriptionError("Transcription response missing text")
-    return text
+        raw_duration = body.get("duration")
+        duration_s = raw_duration if isinstance(raw_duration, (int, float)) else None
+        cost = compute_transcription_cost(duration_s) if duration_s is not None else None
+        latency_ms = int((time.monotonic() - start) * 1000)
+
+        span.set_attribute("duration_s", duration_s)
+        span.set_attribute("usage.cost_usd", float(cost) if cost is not None else None)
+        span.set_attribute("latency_ms", latency_ms)
+
+        if db is not None and org_id is not None:
+            _fire_save(
+                save_usage_event(
+                    db,
+                    org_id=org_id,
+                    agent_slug="whisper",
+                    conversation_id=None,
+                    channel=VOICE_CHANNEL,
+                    run_kind=RunKind.TRANSCRIPTION,
+                    schedule_name=None,
+                    model=WHISPER_MODEL,
+                    input_tokens=0,
+                    output_tokens=0,
+                    cost_usd=cost,
+                    duration_ms=latency_ms,
+                    tool_call_count=0,
+                    success=True,
+                    error_type=None,
+                    error_severity=None,
+                    trace_id=trace_id,
+                )
+            )
+            await emitter.transcription_completed(
+                org_id=org_id,
+                duration_s=duration_s,
+                audio_bytes=len(audio),
+                cost_usd=cost,
+                latency_ms=latency_ms,
+            )
+
+        return text
 
 
 async def transcribe_once(
@@ -117,6 +177,8 @@ async def transcribe_once(
     settings: Settings,
     *,
     key: str,
+    db: AsyncClient | None = None,
+    org_id: str | None = None,
 ) -> str:
     """Transcribe one draft idempotently without creating a conversation row.
 
@@ -124,6 +186,9 @@ async def transcribe_once(
     intentionally do not touch the database, so a short process-local cache
     converges concurrent and immediately repeated requests. A restart may
     repeat the provider call, but cannot duplicate a user message or agent run.
+
+    `db`/`org_id` pass through to `transcribe` for its usage-event/event
+    bookkeeping; a cache hit makes no provider call, so it writes nothing.
     """
     now = time.monotonic()
     async with _transcription_lock:
@@ -141,7 +206,9 @@ async def transcribe_once(
 
         task = _transcription_tasks.get(key)
         if task is None:
-            task = asyncio.create_task(transcribe(audio, filename, content_type, settings))
+            task = asyncio.create_task(
+                transcribe(audio, filename, content_type, settings, db=db, org_id=org_id)
+            )
             _transcription_tasks[key] = task
 
     try:

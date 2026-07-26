@@ -16,6 +16,7 @@ ALLOWED_EVENTS: set[str] = {
     "agent_session_started",
     "eval_run_completed",
     "feedback_submitted",
+    "transcription_completed",
 }
 
 _pending_tasks: set[asyncio.Task] = set()
@@ -149,6 +150,23 @@ async def eval_run_completed(
         "duration_ms": duration_ms,
     }
     _fire("eval_run_completed", "system:eval", props)
+
+
+async def transcription_completed(
+    *,
+    org_id: str,
+    duration_s: float | None,
+    audio_bytes: int,
+    cost_usd: Decimal | None,
+    latency_ms: int,
+) -> None:
+    props = {
+        "duration_s": duration_s,
+        "audio_bytes": audio_bytes,
+        "cost_usd": float(cost_usd) if cost_usd is not None else None,
+        "latency_ms": latency_ms,
+    }
+    _fire("transcription_completed", org_id, props)
 
 
 async def feedback_submitted(
