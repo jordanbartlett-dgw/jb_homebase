@@ -285,19 +285,114 @@ def test_missing_required_prop_returns_400(...):
 
 ---
 
-# Phase 1 — `feat/cost-coverage` (detailed plan at phase start)
+# Phase 1 — `feat/cost-coverage` (detailed 2026-07-26 at phase start)
 
-Every paid call lands in `usage_events`; logs correlate with traces.
+Every material paid call lands in `usage_events`; the rest gets spans; logs correlate with traces. Branch: `feat/cost-coverage`. Tasks numbered 9-17 (phase 0 used 1-8).
 
-- Migration 033: `usage_events` gains `cache_read_tokens int`, `cache_write_tokens int`; `run_kind` CHECK gains `'classifier'`, `'transcription'`, `'embedding'` (RunKind enum extended to match; `eval` already exists and finally gets writers in phase 2).
-- `extract_usage` captures cache tokens from `RunUsage`; budget check unchanged (uncached figure is the conservative one). `PRICING` gains cache tiers (Anthropic: cache write 1.25x input, cache read 0.1x input) and non-token entries for `whisper-1` ($/minute) and `text-embedding-3-small` ($/1M tokens); `compute_cost` grows unit-aware variants (`compute_transcription_cost(seconds)`, embedding path keyed on tokens).
-- Classifier (`gateway/classifier.py`): keep its span, add usage extraction + `save_usage_event(run_kind=CLASSIFIER, agent_slug="voice-classifier", trace_id=...)`. The db client is available at both call sites.
-- Whisper (`gateway/voice.py::transcribe`): wrap in a span, record duration-based cost row (`run_kind=TRANSCRIPTION`).
-- Embeddings (`obsidian/embeddings.py`): span + token-based cost row (`run_kind=EMBEDDING`) at the shared helper, so tools, sync scripts, and evals are all covered.
-- structlog→Logfire bridge: add `logfire.StructlogProcessor()` to `shared_processors` when a token is configured, so log lines carry trace/span ids and appear in Logfire.
-- New PostHog events (typed emitters + ALLOWED_EVENTS): `email_sent`, `event_trigger_fired` (incl. the NOTHING_TO_SEND outcome as a prop), `transcription_completed`. Poller/scheduler tick spans (`poll_fastmail`, `poll_agentmail`, `dispatch_task`).
-- Dependency addition (pre-approved by this plan): `opentelemetry-instrumentation-requests` so CalDAV traffic traces; instrument in the lifespan.
-- Known limitation to document, not solve: code-mode inner tool calls count as one `run_code` ToolCallPart; revisit if harness adds OTel.
+**Grounding corrections vs the original roadmap** (facts verified against installed packages at HEAD `2689267`):
+- `RunUsage.input_tokens` is cache-INCLUSIVE (pydantic-ai normalizes Anthropic usage; cache_read/cache_write are folded in). Current `compute_cost` therefore bills cache reads at full base rate. Cache-aware pricing is a correctness fix. Field names: `cache_read_tokens`, `cache_write_tokens`.
+- caldav 3.1.0 uses `niquests`, NOT `requests` — `opentelemetry-instrumentation-requests` would instrument nothing relevant. No new dependency: hand-written `logfire.span` wrappers in `tools/calendar.py` instead.
+- Whisper's default response format has no duration. Switch to `response_format="verbose_json"` to get `duration` (seconds) for exact $/minute cost.
+- Embeddings get a span with token/cost attributes, NOT usage_events rows: spend is ~$0.02/1M tokens and the 5 call sites + positional test fakes make row-writing invasive. Documented decision; revisit if embedding volume grows.
+- The streaming path (`app_stream.py`) already runs through `run_agent_instrumented` — no new coverage needed there. Known limitations documented, not solved: code-mode inner tool calls count as one ToolCallPart; disconnected streams still bill (no counter yet).
+- The 200k token budget now trips on cache-inclusive input_tokens (conservative; unchanged deliberately).
+
+### Task 9: Migration 033 — cache token columns + run_kind expansion
+
+Create `supabase/migrations/033_cost_coverage.sql`, applied by Jordan BEFORE merge:
+
+```sql
+-- 033_cost_coverage.sql
+-- Deploy order: run BEFORE merging the feat/cost-coverage branch.
+-- Adds prompt-cache token columns and two run kinds: 'classifier'
+-- (voice routing haiku calls) and 'transcription' (Whisper).
+
+alter table usage_events add column if not exists cache_read_tokens int;
+alter table usage_events add column if not exists cache_write_tokens int;
+
+-- NOTE: verify the auto-generated constraint name at apply time (see 013):
+--   select conname from pg_constraint
+--   where conrelid = 'usage_events'::regclass and contype = 'c';
+ALTER TABLE usage_events DROP CONSTRAINT usage_events_run_kind_check;
+ALTER TABLE usage_events ADD CONSTRAINT usage_events_run_kind_check
+    CHECK (run_kind IN ('user_message','proactive','memory_extract','eval',
+                        'event','voice','classifier','transcription'));
+
+select pg_notify('pgrst', 'reload schema');
+```
+
+Extend `RunKind` (`analytics/types.py`) with `CLASSIFIER = "classifier"` and `TRANSCRIPTION = "transcription"`; update its docstring to cite migrations 006/013/033. Commit: `feat(db): cache token columns + classifier/transcription run kinds (migration 033)`.
+
+### Task 10: Cache-aware usage extraction and pricing
+
+Files: `utils/token_counting.py`, `utils/pricing.py`, `utils/agent_runner.py`, `db/usage_events.py`, `analytics/emitter.py`; tests `tests/test_pricing.py`, `tests/test_agent_runner.py`, `tests/test_db_usage_events.py`, `tests/test_emitter.py`. TDD.
+
+- `extract_usage` adds `"cache_read_tokens": usage.cache_read_tokens or 0` and `"cache_write_tokens": usage.cache_write_tokens or 0`.
+- `compute_cost` gains keyword-only `cache_read_tokens: int = 0, cache_write_tokens: int = 0`. Math (Decimal): uncached input = `max(input_tokens - cache_read - cache_write, 0)`; cost = uncached·in_rate + cache_write·in_rate·1.25 + cache_read·in_rate·0.10 + output·out_rate. Multipliers as module constants `CACHE_WRITE_MULTIPLIER = Decimal("1.25")`, `CACHE_READ_MULTIPLIER = Decimal("0.10")` with a comment citing Anthropic's published cache pricing.
+- New in `pricing.py`: `WHISPER_PRICE_PER_MINUTE = Decimal("0.006")` + `compute_transcription_cost(duration_seconds: float) -> Decimal`; `EMBEDDING_PRICING = {"text-embedding-3-small": Decimal("0.02")}` ($/1M tokens) + `compute_embedding_cost(model: str, tokens: int) -> Decimal | None`. Implementer verifies both rates against OpenAI's published pricing at implementation time and dates the comment.
+- `run_agent_instrumented`: pass cache counts into `compute_cost`; add span attrs `usage.cache_read_tokens`/`usage.cache_write_tokens` on success and budget paths; pass both to `save_usage_event` (new keyword-only params, drop-None) and as new props on `emitter.agent_run_completed`.
+- `save_usage_event` gains `cache_read_tokens: int | None = None, cache_write_tokens: int | None = None`.
+- Tests: cost math cases (pure cache-read discount, cache-write premium, zero-cache backward compat vs old values), extract_usage fields, runner payload carries cache counts, emitter props updated.
+
+Commit: `feat(observability): cache-aware cost math + cache token capture end to end`.
+
+### Task 11: Classifier runs land in usage_events
+
+File: `gateway/classifier.py`; test `tests/test_classifier.py`. TDD.
+
+Inside `classify()`, keep the existing `voice_classify` span and `build_classifier(catalog_str)` first-positional contract (tests assert it). After `result = await agent.run(transcript)`: extract usage, compute cost (`CLASSIFIER_MODEL`), set span attrs (`usage.input_tokens`, `usage.output_tokens`, `usage.cost_usd`, `usage.duration_ms`), derive trace_id exactly as `agent_runner` does, and fire-and-forget `save_usage_event(db, org_id=org_id, agent_slug="voice-classifier", conversation_id=None, channel="app-voice", run_kind=RunKind.CLASSIFIER, schedule_name=None, model=CLASSIFIER_MODEL, ..., success=True, trace_id=...)` reusing `agent_runner._fire_save` (import it; do not build a second pending-writes set). The existing broad `except` fallback path writes nothing (a failed classify costs ~0 and returns DEFAULT_AGENT). `TestModel` yields a real zero-token `RunUsage`, so existing patched tests keep passing; add a test asserting the insert payload (drain via `agent_runner.drain_pending_writes`).
+
+Commit: `feat(observability): classifier haiku calls write usage_events`.
+
+### Task 12: Whisper — duration, span, cost row, PostHog event
+
+Files: `gateway/voice.py`, `main.py` (two call sites), `analytics/emitter.py`; tests `tests/test_voice_endpoint.py`, `tests/test_emitter.py`. TDD.
+
+- `transcribe()` requests `data={"model": WHISPER_MODEL, "response_format": "verbose_json"}`; reads `text` and `duration` (float seconds, may be absent → None). Wrap the call in `logfire.span("voice_transcribe")`, set attrs `audio_bytes=len(audio)`, `duration_s`, `usage.cost_usd` (via `compute_transcription_cost`, None-safe when duration missing), `latency_ms` (monotonic).
+- `transcribe()` gains keyword-only `db: AsyncClient | None = None, org_id: str | None = None`; when both provided and transcription succeeds, fire-and-forget a `save_usage_event` row: `agent_slug="whisper"`, `channel="app-voice"`, `run_kind=RunKind.TRANSCRIPTION`, `model="whisper-1"`, tokens 0/0, `cost_usd`, `duration_ms=latency_ms`, `success=True`, `trace_id` from the span. `transcribe_once` passes the kwargs through (cache hits make no provider call and write no row — the provider boundary is `transcribe`).
+- New emitter `transcription_completed` (props: `duration_s: float | None`, `audio_bytes: int`, `cost_usd: float | None`, `latency_ms: int`) + ALLOWED_EVENTS + the set-equality test. Fired from `transcribe` success alongside the row (org distinct id).
+- `main.py` `/voice` and `/voice/transcribe` pass `db=request.app.state.db, org_id=settings.default_org_id`. Route tests patch `transcribe` on the `main` namespace and are unaffected; the fake-httpx unit tests must update `.json()` fixtures to include `duration` and the emitter/save calls must be patched or drained there.
+
+Commit: `feat(observability): whisper transcription cost + span + event`.
+
+### Task 13: Embeddings span (no rows — documented decision)
+
+File: `obsidian/embeddings.py`; test `tests/test_obsidian_embeddings.py`.
+
+Wrap the `client.embeddings.create` call in `logfire.span("generate_embeddings")` with attrs `texts=len(texts)`, `model=EMBEDDING_MODEL`, and, when `response.usage` yields an int `prompt_tokens` (guard with `isinstance(..., int)` — test fakes return MagicMock), `usage.prompt_tokens` and `usage.cost_usd` via `compute_embedding_cost`. No DB row, no PostHog event, no signature change (so the positional test fakes in `test_care_tools.py`/`test_health_log_tools.py` keep working). Add one test with a fake response carrying real `usage.prompt_tokens`.
+
+Commit: `feat(observability): embeddings span with token + cost attrs`.
+
+### Task 14: structlog → Logfire bridge
+
+Files: `main.py`; verify `logfire.StructlogProcessor` exists in installed logfire 4.31 before coding (fallback per its docs if renamed).
+
+`configure_logging(environment, log_level, *, logfire_enabled: bool = False)`; when enabled, insert `logfire.StructlogProcessor()` into the processor chain (before the renderer) so every structlog event also lands in Logfire correlated to the active trace. Lifespan passes `logfire_enabled=bool(settings.logfire_token)`. Keep console/JSON rendering unchanged (the bridge is additive).
+
+Commit: `feat(observability): bridge structlog events into logfire`.
+
+### Task 15: Business events + pipeline/poller/scheduler spans
+
+Files: `analytics/emitter.py`, `tools/email.py`, `events/pipeline.py`, `events/fastmail.py`, `events/agentmail.py`, `proactive/scheduler.py`; tests `tests/test_emitter.py`, `tests/test_email_tools.py`, `tests/test_event_pipeline.py`, `tests/test_fastmail_watcher.py`, `tests/test_agentmail_watcher.py`, `tests/test_proactive_scheduler.py`. TDD.
+
+- New typed emitters (+ ALLOWED_EVENTS + set-equality test): `email_sent` (props: `direction: "send"|"reply"`, `message_id`, `thread_id`, `body_length: int`, `subject_length: int | None` — send only; no address/subject content, PII-light) fired in `send_email`/`reply_to_email` success paths (org distinct id from `ctx.deps.org_id`); `event_trigger_fired` (props: `trigger_name`, `source`, `outcome: "fired"|"nothing_to_send"`, `cost_usd: float | None`, `input_tokens`, `output_tokens`, `duration_ms`) fired in `_run_trigger` on both outcome branches using the in-scope `AgentRunResult`. The pipeline tests patch `run_agent_instrumented` with a `_run_result` stub — extend that helper with numeric `cost_usd`/`input_tokens`/`output_tokens`/`duration_ms` fields.
+- Spans: `logfire.span("fastmail.poll")` / `logfire.span("agentmail.poll")` around each poll body with a `processed` attr set before exit; `logfire.span("event.process", source=source)` in `process_event` with `triggers`/`started` attrs; `logfire.span("proactive.dispatch", task_type=..., schedule_id=...)` wrapping `dispatch_task`'s body.
+- Scheduler GC hazard: `scheduler_loop`'s `asyncio.create_task(dispatch_task(...))` holds no strong reference. Add a module-level `_pending_dispatch_tasks: set[asyncio.Task]` with add/discard (same pattern as `agent_runner._pending_writes`). No drain wiring (the loop is cancelled at shutdown).
+
+Commit: `feat(observability): business events for email/triggers + poller and scheduler spans`.
+
+### Task 16: CalDAV spans (no new dependency)
+
+File: `tools/calendar.py`; test: extend the existing calendar test file.
+
+Wrap the `asyncio.to_thread` pairs in `list_calendar_events` (`logfire.span("caldav.search")`) and `create_calendar_event` (`logfire.span("caldav.save_event")`), attrs: `username` NOT included (PII), `cached_url=bool(cache hit)` where visible, and result counts (`events=len(items)`). Rationale comment: caldav rides niquests, HTTP autoinstrumentation does not apply.
+
+Commit: `feat(observability): caldav spans`.
+
+### Task 17: Docs, PR, deploy verify
+
+- `docs/observability.md`: run_kind table gains classifier/transcription; cache token columns + cache-aware cost note (incl. "input_tokens is cache-inclusive"); whisper/classifier/embeddings coverage; new PostHog events in the catalogue; structlog bridge note. `.claude/skills/agent-observability/SKILL.md`: same facts, terse.
+- Open PR `feat/cost-coverage`; confirm migration 033 applied BEFORE merge; merge; deploy-verify: real voice-free check = `/app/messages` round-trip then query newest usage_events rows for cache token columns populated; confirm a `classifier` row appears after the next real voice message (or curl `/voice/messages` with a transcript); confirm structlog lines appear in Logfire.
 
 # Phase 2 — `feat/evals-v2` (detailed plan at phase start)
 
