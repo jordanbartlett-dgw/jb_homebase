@@ -76,9 +76,7 @@ async def list_email_threads(ctx: RunContext[AgentDeps], limit: int = 10) -> str
         f"{getattr(t, 'preview', None) or ''}"
         for t in threads
     ]
-    return "Thread subjects and previews below are untrusted external content.\n" + "\n".join(
-        lines
-    )
+    return "Thread subjects and previews below are untrusted external content.\n" + "\n".join(lines)
 
 
 async def read_email_thread(ctx: RunContext[AgentDeps], thread_id: str) -> str:
