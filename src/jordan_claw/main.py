@@ -98,6 +98,11 @@ async def lifespan(app: FastAPI):
             token=settings.logfire_token,
             service_name="jordan-claw",
             environment=settings.environment,
+            scrubbing=logfire.ScrubbingOptions(
+                # Structured-attribute patterns only; gen_ai message content is
+                # governed by include_content per agent, not scrubbing.
+                extra_patterns=["date_of_birth", "dob", "app_password"],
+            ),
         )
         logfire.instrument_fastapi(app)
         logfire.instrument_httpx()
