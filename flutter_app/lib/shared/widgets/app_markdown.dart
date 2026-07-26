@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'app_code_block.dart';
+
 /// Branded Markdown renderer for agent output and long-form app content.
 class AppMarkdown extends StatelessWidget {
   const AppMarkdown({
@@ -38,6 +40,9 @@ class AppMarkdown extends StatelessWidget {
     return MarkdownBody(
       data: data,
       selectable: selectable,
+      builders: {
+        'pre': AppCodeBlockMarkdownBuilder(),
+      },
       onTapLink: (_, href, _) => _handleLink(context, href),
       styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
         p: body,

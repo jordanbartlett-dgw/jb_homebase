@@ -12,6 +12,7 @@ import '../features/voice/voice_overlay.dart';
 import '../features/voice/voice_preview.dart';
 import '../features/voice/voice_providers.dart';
 import '../shared/models/agent.dart';
+import '../shared/widgets/app_markdown.dart';
 import '../theme/app_theme.dart';
 
 /// Shared theme configuration for design review in the Flutter Widget
@@ -108,6 +109,47 @@ void selectPreviewPrompt(String _) {}
 Widget medCheckWelcomePreview() => AgentWelcome(
   agent: Agent.byId('med-check'),
   onSelectPrompt: selectPreviewPrompt,
+);
+
+@Preview(
+  name: 'Generated Code · Light',
+  group: 'Code Mode',
+  size: Size(390, 640),
+  brightness: Brightness.light,
+  theme: homebasePreviewTheme,
+  wrapper: homebasePreviewWrapper,
+)
+@Preview(
+  name: 'Generated Code · Dark',
+  group: 'Code Mode',
+  size: Size(390, 640),
+  brightness: Brightness.dark,
+  theme: homebasePreviewTheme,
+  wrapper: homebasePreviewWrapper,
+)
+Widget generatedCodePreview() => const SingleChildScrollView(
+  padding: EdgeInsets.all(20),
+  child: AppMarkdown(
+    data: '''
+I grouped the upcoming events by calendar and kept only the fields needed for the summary.
+
+```python
+import asyncio
+
+events = await asyncio.gather(
+    check_calendar(days=7),
+    search_notes(query="launch checklist"),
+)
+
+summary = {
+    "event_count": len(events[0]),
+    "has_checklist": bool(events[1]),
+}
+```
+
+The result is ready to use in the weekly review.
+''',
+  ),
 );
 
 @Preview(
