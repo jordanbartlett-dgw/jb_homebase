@@ -61,7 +61,6 @@ async def _run_trigger(
         schedule_name=trigger.name,
     )
     content = result.output
-    cost_usd = float(result.cost_usd) if result.cost_usd is not None else None
 
     if NOTHING_TO_SEND in content:
         log.info(
@@ -75,7 +74,7 @@ async def _run_trigger(
             trigger_name=trigger.name,
             source=trigger.source,
             outcome="nothing_to_send",
-            cost_usd=cost_usd,
+            cost_usd=result.cost_usd,
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
             duration_ms=result.duration_ms,
@@ -97,7 +96,7 @@ async def _run_trigger(
         trigger_name=trigger.name,
         source=trigger.source,
         outcome="fired",
-        cost_usd=cost_usd,
+        cost_usd=result.cost_usd,
         input_tokens=result.input_tokens,
         output_tokens=result.output_tokens,
         duration_ms=result.duration_ms,

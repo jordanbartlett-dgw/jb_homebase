@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import structlog
 from supabase._async.client import AsyncClient
 
 from jordan_claw.analytics.types import RunKind
+
+log = structlog.get_logger()
 
 
 async def save_usage_event(
@@ -30,12 +33,17 @@ async def save_usage_event(
     cache_read_tokens: int | None = None,
     cache_write_tokens: int | None = None,
 ) -> None:
-    """Insert one row into usage_events. None-valued optional fields are dropped."""
+    """Insert one row into usage_events. None-valued optional fields are dropped.
+
+    Fire-and-forget: a write failure is logged, never raised, so callers on the
+    hot path (agent runs, transcription) never crash on a ledger write.
+    """
+    run_kind_value = run_kind.value if isinstance(run_kind, RunKind) else run_kind
     data: dict = {
         "org_id": org_id,
         "agent_slug": agent_slug,
         "channel": channel,
-        "run_kind": run_kind.value if isinstance(run_kind, RunKind) else run_kind,
+        "run_kind": run_kind_value,
         "model": model,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
@@ -62,7 +70,15 @@ async def save_usage_event(
     if cache_write_tokens is not None:
         data["cache_write_tokens"] = cache_write_tokens
 
-    await client.table("usage_events").insert(data).execute()
+    try:
+        await client.table("usage_events").insert(data).execute()
+    except Exception as exc:
+        log.warning(
+            "usage_event_write_failed",
+            agent_slug=agent_slug,
+            run_kind=run_kind_value,
+            error=str(exc),
+        )
 
 
 async def most_recent_agent(

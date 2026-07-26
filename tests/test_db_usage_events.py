@@ -4,6 +4,7 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import structlog.testing
 
 from jordan_claw.analytics.types import RunKind
 from jordan_claw.db.usage_events import most_recent_agent, save_usage_event
@@ -184,6 +185,39 @@ async def test_save_usage_event_proactive_includes_schedule_name():
     payload = query.insert.call_args[0][0]
     assert payload["schedule_name"] == "morning_briefing"
     assert payload["run_kind"] == "proactive"
+
+
+@pytest.mark.asyncio
+async def test_save_usage_event_write_failure_logs_and_does_not_raise():
+    """Fire-and-forget: a ledger write failure must never crash the caller."""
+    db, query = _mock_db()
+    query.execute = AsyncMock(side_effect=RuntimeError("db unreachable"))
+
+    with structlog.testing.capture_logs() as cap_logs:
+        await save_usage_event(
+            db,
+            org_id=ORG_ID,
+            agent_slug="claw-main",
+            conversation_id="conv-1",
+            channel="app",
+            run_kind=RunKind.USER_MESSAGE,
+            schedule_name=None,
+            model="anthropic:claude-sonnet-4-5-20250929",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=None,
+            duration_ms=200,
+            tool_call_count=0,
+            success=True,
+            error_type=None,
+            error_severity=None,
+        )
+
+    warnings = [e for e in cap_logs if e.get("event") == "usage_event_write_failed"]
+    assert len(warnings) == 1
+    assert warnings[0]["agent_slug"] == "claw-main"
+    assert warnings[0]["run_kind"] == "user_message"
+    assert warnings[0]["error"] == "db unreachable"
 
 
 @pytest.mark.asyncio

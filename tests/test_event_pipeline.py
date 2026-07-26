@@ -156,7 +156,7 @@ async def test_process_event_runs_each_trigger_and_publishes():
     emit_kwargs = mock_emit.call_args.kwargs
     assert emit_kwargs["outcome"] == "fired"
     assert emit_kwargs["source"] == "fastmail-email"
-    assert emit_kwargs["cost_usd"] == 0.01
+    assert emit_kwargs["cost_usd"] == Decimal("0.01")
     assert emit_kwargs["input_tokens"] == 100
     assert emit_kwargs["output_tokens"] == 50
     assert emit_kwargs["duration_ms"] == 900
