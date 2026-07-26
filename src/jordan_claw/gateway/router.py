@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import structlog
 from supabase._async.client import AsyncClient
@@ -35,6 +36,7 @@ async def handle_message(
     history_limit: int = 50,
     environment: str = "development",
     run_kind: RunKind = RunKind.USER_MESSAGE,
+    event_stream_handler: Any | None = None,
 ) -> GatewayResponse:
     """Process an incoming message through the full gateway lifecycle."""
     log = logger.bind(
@@ -113,6 +115,7 @@ async def handle_message(
             channel=msg.channel,
             conversation_id=conversation_id,
             message_history=history,
+            event_stream_handler=event_stream_handler,
         )
         response_text = result.output
 

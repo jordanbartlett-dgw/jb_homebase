@@ -201,6 +201,34 @@ async def test_tool_call_count_extracted_from_messages():
     assert result.tool_call_count == 2
 
 
+@pytest.mark.asyncio
+async def test_event_stream_handler_reaches_agent_run():
+    agent = MagicMock()
+    fake_usage = MagicMock(input_tokens=10, output_tokens=5, requests=1)
+    fake_result = MagicMock()
+    fake_result.output = "done"
+    fake_result.usage = fake_usage
+    fake_result.all_messages = MagicMock(return_value=[])
+    agent.run = AsyncMock(return_value=fake_result)
+    db, _ = _mock_db()
+    handler = AsyncMock()
+
+    await run_agent_instrumented(
+        agent=agent,
+        prompt="hello",
+        deps=None,
+        db=db,
+        org_id=ORG_ID,
+        agent_slug="claw-main",
+        model="anthropic:claude-sonnet-4-5-20250929",
+        run_kind=RunKind.USER_MESSAGE,
+        channel="app",
+        event_stream_handler=handler,
+    )
+
+    assert agent.run.call_args.kwargs["event_stream_handler"] is handler
+
+
 def test_classify_error_known_signatures():
     assert classify_error(TimeoutError("x")) == ("timeout", "medium")
     assert classify_error(ConnectionError("x")) == ("network", "medium")

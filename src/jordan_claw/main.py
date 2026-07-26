@@ -11,7 +11,7 @@ import logfire
 import structlog
 from anthropic import AsyncAnthropic
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from jordan_claw.analytics import emitter
 from jordan_claw.analytics.posthog_client import shutdown_posthog
@@ -39,6 +39,10 @@ from jordan_claw.gateway.app_history import (
     get_app_history_detail,
     get_current_app_conversation,
     list_app_history,
+)
+from jordan_claw.gateway.app_stream import (
+    drain_pending_stream_tasks,
+    start_app_message_stream,
 )
 from jordan_claw.gateway.app_today import TodayResponse, load_today
 from jordan_claw.gateway.classifier import classify
@@ -142,6 +146,7 @@ async def lifespan(app: FastAPI):
     scheduler_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await scheduler_task
+    await drain_pending_stream_tasks()
     await emitter.drain_pending_emits()
     shutdown_posthog()
     await app.state.anthropic.close()
@@ -255,6 +260,34 @@ async def app_text_message(body: AppMessageRequest, request: Request) -> AppMess
         agent_slug=body.agent_slug,
         reply=response.content,
         conversation_id=response.conversation_id,
+    )
+
+
+@app.post("/app/messages/stream")
+async def app_text_message_stream(
+    body: AppMessageRequest,
+    request: Request,
+) -> StreamingResponse:
+    """Stream safe progress plus the final text reply as newline-delimited JSON.
+
+    Tool names are translated to argument-free activity labels. Private model
+    thinking, tool arguments, and tool results are never part of this contract.
+    The completed reply follows the same persistence and replay lifecycle as
+    POST /app/messages.
+    """
+    _require_app_token(request, surface="app message stream")
+    events = start_app_message_stream(
+        db=request.app.state.db,
+        settings=request.app.state.settings,
+        body=body,
+    )
+    return StreamingResponse(
+        events,
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

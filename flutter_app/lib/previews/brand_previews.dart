@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/chat/chat_screen.dart';
 import '../features/chat/widgets/agent_welcome.dart';
+import '../features/chat/widgets/streaming_response.dart';
 import '../features/home/dashboard_screen.dart';
 import '../features/home/widgets/proactive_artifact_card.dart';
 import '../features/history/history_screen.dart';
@@ -152,6 +153,33 @@ summary = {
 
 The result is ready to use in the weekly review.
 ''',
+  ),
+);
+
+@Preview(
+  name: 'Streaming Response · Light',
+  group: 'Chat',
+  size: Size(390, 460),
+  brightness: Brightness.light,
+  theme: homebasePreviewTheme,
+  wrapper: homebasePreviewWrapper,
+)
+@Preview(
+  name: 'Streaming Response · Dark',
+  group: 'Chat',
+  size: Size(390, 460),
+  brightness: Brightness.dark,
+  theme: homebasePreviewTheme,
+  wrapper: homebasePreviewWrapper,
+)
+Widget streamingResponsePreview() => const Padding(
+  padding: EdgeInsets.all(20),
+  child: StreamingResponse(
+    status: 'Writing response',
+    partialText:
+        'I checked your calendar and notes. Here’s the start of the plan:\n\n'
+        '1. Review the open quote before the board call.\n'
+        '2. Protect the afternoon focus block.',
   ),
 );
 

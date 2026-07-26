@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import 'conversation_api_models.dart';
 import 'gateway_config.dart';
+import 'message_stream_event.dart';
 import 'today_api_models.dart';
 
 /// Reply from the gateway for one sent message (text or voice).
@@ -35,10 +36,9 @@ class ApiException implements Exception {
 
 /// HTTP client for the Jordan Claw gateway.
 ///
-/// Blocking request/reply (no streaming): agent runs take 30-60s and the
-/// gateway converges Railway edge replays server-side via the idempotency
-/// key, so a generous client timeout is safe. The typing indicator covers
-/// the wait.
+/// Text chat streams safe progress and answer deltas. Voice and the legacy
+/// text method remain blocking. Every message carries a stable idempotency key
+/// so a retry converges on the original gateway run.
 class ApiClient {
   ApiClient({
     http.Client? inner,
@@ -83,6 +83,82 @@ class ApiClient {
       reply: body['reply'] as String,
       conversationId: body['conversation_id'] as String?,
     );
+  }
+
+  /// POST /app/messages/stream — safe activity, final-text deltas, completion.
+  ///
+  /// A dropped transport gets one automatic reconnect with the same key. The
+  /// gateway may only return status + completion on a reconnect because the
+  /// original agent stream is allowed to finish independently.
+  Stream<MessageStreamEvent> sendMessageStream({
+    required String agentSlug,
+    required String text,
+  }) async* {
+    final idempotencyKey = createIdempotencyKey();
+    Object? lastError;
+
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        await for (final event in _messageStreamAttempt(
+          agentSlug: agentSlug,
+          text: text,
+          idempotencyKey: idempotencyKey,
+        )) {
+          yield event;
+          if (event.type == MessageStreamEventType.complete ||
+              event.type == MessageStreamEventType.error) {
+            return;
+          }
+        }
+        throw const ApiException(0, 'Message stream ended before completion');
+      } on Exception catch (error) {
+        lastError = error;
+        if (attempt == 1) rethrow;
+      }
+    }
+
+    throw lastError ?? const ApiException(0, 'Message stream failed');
+  }
+
+  Stream<MessageStreamEvent> _messageStreamAttempt({
+    required String agentSlug,
+    required String text,
+    required String idempotencyKey,
+  }) async* {
+    final request =
+        http.Request(
+            'POST',
+            Uri.parse('$baseUrl/app/messages/stream'),
+          )
+          ..headers.addAll({
+            'Authorization': 'Bearer $appToken',
+            'Content-Type': 'application/json',
+            'Accept': 'application/x-ndjson',
+          })
+          ..body = jsonEncode({
+            'text': text,
+            'agent_slug': agentSlug,
+            'idempotency_key': idempotencyKey,
+          });
+
+    final response = await _inner.send(request).timeout(_timeout);
+    if (response.statusCode != 200) {
+      final body = await response.stream.bytesToString();
+      throw ApiException(
+        response.statusCode,
+        body.isEmpty ? 'HTTP ${response.statusCode}' : body,
+      );
+    }
+
+    final lines = response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .timeout(_timeout);
+    await for (final line in lines) {
+      if (line.trim().isEmpty) continue;
+      final json = jsonDecode(line) as Map<String, dynamic>;
+      yield MessageStreamEvent.fromJson(json);
+    }
   }
 
   /// POST /voice — raw audio bytes; the gateway transcribes, routes to an

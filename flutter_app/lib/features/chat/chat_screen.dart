@@ -11,8 +11,8 @@ import '../../shared/widgets/message_bubble.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_theme.dart';
 import 'widgets/agent_welcome.dart';
+import 'widgets/streaming_response.dart';
 import 'widgets/tool_call_chip.dart';
-import 'widgets/typing_indicator.dart';
 
 /// ChatScreen — distraction-free chat with an agent picker in the header.
 /// Switching agents slides the whole thread horizontally (direction
@@ -123,6 +123,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final thread = ref.watch(agentThreadProvider(agent.id));
     final messages = thread.asData?.value ?? const <Message>[];
     final typing = ref.watch(agentTypingProvider(agent.id));
+    final progress = ref.watch(agentStreamProgressProvider(agent.id));
 
     // Keep the newest message in view as the conversation grows.
     ref.listen(agentThreadProvider(agent.id), (previous, next) {
@@ -132,6 +133,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
     ref.listen(agentTypingProvider(agent.id), (previous, next) {
       if (next) _scrollToEnd(agent.id);
+    });
+    ref.listen(agentStreamProgressProvider(agent.id), (previous, next) {
+      if (next.partialReply.length > (previous?.partialReply.length ?? 0)) {
+        _scrollToEnd(agent.id);
+      }
     });
 
     return SafeArea(
@@ -200,8 +206,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         itemCount: messages.length + (typing ? 1 : 0),
                         itemBuilder: (context, i) {
                           if (i == messages.length) {
-                            return TypingIndicator(
-                              tint: Theme.of(context).colorScheme.primary,
+                            return StreamingResponse(
+                              status: progress.status,
+                              partialText: progress.partialReply,
                             );
                           }
                           final message = messages[i];
@@ -223,7 +230,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             onSend: _send,
             hint: agent.name,
             onMic: () => context.push(Routes.voice),
-            enabled: thread.hasValue,
+            enabled: thread.hasValue && !typing,
           ),
         ],
       ),

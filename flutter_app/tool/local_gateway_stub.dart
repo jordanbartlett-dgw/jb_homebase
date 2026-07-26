@@ -21,6 +21,35 @@ Future<void> main() async {
       });
     } else if (request.method == 'GET' && path == '/app/conversations/current') {
       _json(request, null);
+    } else if (request.method == 'POST' && path == '/app/messages/stream') {
+      final body = jsonDecode(await utf8.decoder.bind(request).join()) as Map<String, dynamic>;
+      request.response.headers.contentType = ContentType(
+        'application',
+        'x-ndjson',
+        charset: 'utf-8',
+      );
+      request.response.writeln(
+        jsonEncode({'type': 'status', 'message': 'Checking your calendar'}),
+      );
+      await request.response.flush();
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      request.response.writeln(
+        jsonEncode({'type': 'delta', 'text': 'stub reply '}),
+      );
+      await request.response.flush();
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      request.response.writeln(
+        jsonEncode({'type': 'delta', 'text': 'for ${body['agent_slug']}'}),
+      );
+      request.response.writeln(
+        jsonEncode({
+          'type': 'complete',
+          'agent_slug': body['agent_slug'],
+          'reply': 'stub reply for ${body['agent_slug']}',
+          'conversation_id': 'stub-conversation',
+        }),
+      );
+      await request.response.close();
     } else if (request.method == 'POST' && path == '/app/messages') {
       final body = jsonDecode(await utf8.decoder.bind(request).join()) as Map<String, dynamic>;
       await Future<void>.delayed(const Duration(milliseconds: 1500));

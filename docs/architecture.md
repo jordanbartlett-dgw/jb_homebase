@@ -4,7 +4,7 @@ Maintained system map. Update this file when flows or modules change; it is the
 first thing a session reads (per CLAUDE.md). Line numbers drift — treat them as
 "look here first" pointers, and trust names over numbers.
 
-Verified 2026-07-25.
+Verified 2026-07-26.
 
 ## One process, three inbound surfaces, one core
 
@@ -20,8 +20,15 @@ Every inbound message, regardless of channel, funnels into
 - `POST /app/messages` (`main.py::app_text_message`): bearer `CLAW_APP_TOKEN`,
   explicit `agent_slug` (no classifier), dedup key `app-{slug}-{idempotency_key}`,
   replay converges via `gateway/app_chat.py::replay_app_response`. Blocking reply
-  `{agent_slug, reply, conversation_id}`. Channel `app`, one conversation per
-  agent (`channel_thread_id` = slug).
+  `{agent_slug, reply, conversation_id}` retained as a compatibility surface.
+  `POST /app/messages/stream` (`gateway/app_stream.py`) is the Flutter primary:
+  newline-delimited JSON status, final-answer delta, and completion events over
+  the same `handle_message` lifecycle. It emits argument-free tool activity but
+  never model thinking, tool arguments, or tool results. Ten-second status
+  heartbeats keep the connection live. The producer has a strong task reference
+  and survives an iOS disconnect; a reconnect with the same key polls the
+  original persisted reply instead of rerunning. Channel `app`, one conversation
+  per agent (`channel_thread_id` = slug).
 - App history (`gateway/app_history.py`): authenticated
   `GET /app/conversations` (created-at cursor page, optional agent filter),
   `GET /app/conversations/current?agent_slug=...` (relaunch hydration),
@@ -158,7 +165,7 @@ Observability details, event catalogue, dashboard ids: `docs/observability.md`.
 | Concern | Mechanism | Where |
 |---|---|---|
 | Duplicate inbound | stable app keys (`app-{slug}-{key}`, `app-voice-{key}`) | `db/messages.py::message_exists` |
-| Railway edge replay (>20s no response) | stable idempotency key + replay converges on original run's reply | `gateway/voice.py::await_original_reply`, `app_chat.py::replay_app_response` |
+| Railway edge replay (>20s no response) | stable idempotency key + replay converges on original run's reply; stream heartbeats prevent an idle edge connection | `gateway/voice.py::await_original_reply`, `app_chat.py::replay_app_response`, `app_stream.py` |
 | Voice draft replay | same draft key shares the in-flight/completed Whisper result for five minutes; no DB side effect | `gateway/voice.py::transcribe_once` |
 | Fire-and-forget task GC | strong-ref sets + `drain_*` helpers | `main.py`, `agent_runner.py`, `emitter.py` |
 | Double proactive send | tz-aware `was_sent_today` | `proactive/delivery.py` |
@@ -241,8 +248,9 @@ exercise) and the sign-in screen shows. Agent ids in
 `ConversationRepository`; history state lives in
 `lib/state/conversation_state.dart`.
 
-Live today: text chat (`ApiClient.sendMessage` → `/app/messages`, per-message
-idempotency key, 120s timeout, deliberate no-streaming), current-thread
+Live today: text chat (`ApiClient.sendMessageStream` →
+`/app/messages/stream`, per-message idempotency key, one same-key transport
+reconnect), current-thread
 hydration, paginated read-only History, New Chat archiving, and Today
 (`ApiClient.fetchToday` → `/app/today`) with a real morning briefing,
 structured seven-day calendar, and recent proactive-artifacts feed.
@@ -250,10 +258,14 @@ structured seven-day calendar, and recent proactive-artifacts feed.
 three artifacts and a full recent-updates sheet, including memory corrections,
 AgentMail event summaries, training reviews, and care-document nudges.
 `TodayController` owns refresh/loading/error state; Home, digest detail, and
-Calendar remain lean views. Assistant Markdown uses a shared branded renderer;
+Calendar remain lean views. Chat first shows safe activity such as
+calendar/web/code use, then grows the final Markdown response in place;
+completion replaces partial text with the authoritative persisted reply.
+Assistant Markdown uses a shared branded renderer;
 fenced code becomes a syntax-highlighted, copyable, wrap/scroll code card.
-Code Mode still returns one final Markdown string — sandbox source, tool traces,
-and files are not part of the app contract. Voice is live: `record` captures
+Code Mode still returns one final Markdown string — private thinking, sandbox
+source, tool arguments/results, and files are not part of the app contract.
+Voice is live: `record` captures
 mono AAC into a temporary M4A, `permission_handler` owns runtime microphone
 access, live dBFS samples drive the capture waveform, `/voice/transcribe`
 creates an editable draft, `audio_waveforms` provides playback/seeking, and
