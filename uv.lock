@@ -3,6 +3,22 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
+name = "agentmail"
+version = "0.5.8"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pydantic-core" },
+    { name = "typing-extensions" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/09/5c/85ca86daa8cbac5f02fd623e2413d27e2b2a08fa4de5aef776a4dc1f6ee9/agentmail-0.5.8.tar.gz", hash = "sha256:085eb0e847593f87315712102f86a249b52bea93359c477c48d6d646883dde5f", size = 142977, upload-time = "2026-07-15T07:57:06.301Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dc/6f/1ee48bdf4a3dd64bde84f79109417e890a60edb119cd9d8024e46442b319/agentmail-0.5.8-py3-none-any.whl", hash = "sha256:e9479bf2d5c473ffbe6874d67a1a3679071e4eb99a4bc9f192473082ec4befd3", size = 307190, upload-time = "2026-07-15T07:57:04.948Z" },
+]
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -744,6 +760,7 @@ name = "jordan-claw"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "agentmail" },
     { name = "caldav" },
     { name = "click" },
     { name = "croniter" },
@@ -772,6 +789,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "agentmail", specifier = ">=0.5.8" },
     { name = "caldav", specifier = ">=1.4.0" },
     { name = "click", specifier = ">=8.1.0" },
     { name = "croniter", specifier = ">=2.0.0" },
