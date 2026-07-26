@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import structlog
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.toolsets import FunctionToolset
+from pydantic_ai_harness import CodeMode
 
 from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.tools.calendar import check_calendar, schedule_event
@@ -72,7 +73,7 @@ def _toolset(*fns_and_names: tuple) -> FunctionToolset[AgentDeps]:
     return ts
 
 
-CAPABILITY_REGISTRY: dict[str, ToolGroup] = {
+CAPABILITY_REGISTRY: dict[str, AbstractCapability[AgentDeps]] = {
     "core": ToolGroup(
         id="core",
         description="Time and date awareness.",
@@ -190,12 +191,21 @@ CAPABILITY_REGISTRY: dict[str, ToolGroup] = {
             (read_note, "read_note"),
         ),
     ),
+    # Not a ToolGroup: wraps the agent's other granted tools behind a single
+    # run_code tool (Monty sandbox). Tool-count tests skip non-ToolGroups.
+    "code_mode": CodeMode(
+        id="code_mode",
+        description=(
+            "Write sandboxed Python that composes the agent's other tools in "
+            "one step (loops, parallel fan-out)."
+        ),
+    ),
 }
 
 
-def resolve_capabilities(ids: list[str]) -> list[ToolGroup]:
-    """Map capability ids to registered ToolGroups, skipping unknown ids with a warning."""
-    groups: list[ToolGroup] = []
+def resolve_capabilities(ids: list[str]) -> list[AbstractCapability[AgentDeps]]:
+    """Map capability ids to registered capabilities, skipping unknown ids with a warning."""
+    groups: list[AbstractCapability[AgentDeps]] = []
     for cid in ids:
         group = CAPABILITY_REGISTRY.get(cid)
         if group is None:
