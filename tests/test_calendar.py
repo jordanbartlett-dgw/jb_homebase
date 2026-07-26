@@ -338,3 +338,50 @@ async def test_create_event_accepts_iso_string():
     assert "Created" in result
     assert "String event" in result
     assert "09:00" in result
+
+
+@pytest.mark.asyncio
+async def test_caldav_search_span_attributes(capfire):
+    """caldav.search span exports events count and cached_url boolean attributes."""
+    from jordan_claw.tools.calendar import list_calendar_events
+
+    start = datetime(2026, 4, 1, 9, 0, tzinfo=CHICAGO)
+    end = datetime(2026, 4, 1, 10, 0, tzinfo=CHICAGO)
+
+    items = [
+        _make_calendar_item([_make_vevent("Team standup", start, end)]),
+        _make_calendar_item([_make_vevent("Client call", start, end)]),
+    ]
+    mock_cal = _make_mock_calendar(items)
+    test_username = "user@test.com"
+
+    with patch(
+        "jordan_claw.tools.calendar._connect_calendar",
+        return_value=mock_cal,
+    ):
+        events = await list_calendar_events(
+            test_username,
+            "test-pass",
+            datetime(2026, 4, 1, tzinfo=CHICAGO),
+            datetime(2026, 4, 2, tzinfo=CHICAGO),
+        )
+
+    assert len(events) == 2
+
+    # Filter to caldav.search spans with the events attribute (not pending_span placeholders)
+    spans = [
+        s
+        for s in capfire.exporter.exported_spans
+        if s.name == "caldav.search" and "events" in (s.attributes or {})
+    ]
+    assert len(spans) == 1
+
+    attrs = spans[0].attributes or {}
+    # Verify span attributes contain expected values
+    assert attrs["events"] == 2
+    assert isinstance(attrs["cached_url"], bool)
+
+    # PII negative assertion: username should not appear in any attribute value
+    for attr_name, attr_value in attrs.items():
+        if isinstance(attr_value, str):
+            assert test_username not in attr_value, f"PII leaked in {attr_name}: {attr_value}"

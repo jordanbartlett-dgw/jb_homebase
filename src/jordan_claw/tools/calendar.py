@@ -113,6 +113,7 @@ async def list_calendar_events(
         # caldav rides niquests, so httpx/requests autoinstrumentation never sees these
         # calls; hand spans are the coverage
         with logfire.span("caldav.search") as span:
+            span.set_attribute("cached_url", username in _calendar_url_cache)
             calendar = await asyncio.to_thread(_connect_calendar, username, app_password)
             items = await asyncio.to_thread(
                 calendar.search, start=start_date, end=end_date, event=True
@@ -243,7 +244,8 @@ async def create_calendar_event(
         end = end.replace(tzinfo=CENTRAL_TZ)
 
     try:
-        with logfire.span("caldav.save_event"):
+        with logfire.span("caldav.save_event") as span:
+            span.set_attribute("cached_url", username in _calendar_url_cache)
             calendar = await asyncio.to_thread(_connect_calendar, username, app_password)
             ical = _build_ical(title, start, end, location, description)
             await asyncio.to_thread(calendar.save_event, ical)
