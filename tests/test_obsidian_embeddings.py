@@ -93,3 +93,23 @@ async def test_generate_embeddings_multiple():
     )
 
     assert len(embeddings) == 2
+
+
+@pytest.mark.asyncio
+async def test_generate_embeddings_with_usage_tokens():
+    """Test that generate_embeddings returns embeddings normally with real usage tokens."""
+    mock_response = AsyncMock()
+    mock_response.data = [
+        AsyncMock(embedding=[0.1] * 512, index=0),
+    ]
+    # Set real usage.prompt_tokens (not a MagicMock)
+    mock_response.usage = AsyncMock()
+    mock_response.usage.prompt_tokens = 1000
+
+    mock_client = AsyncMock()
+    mock_client.embeddings.create.return_value = mock_response
+
+    embeddings = await generate_embeddings(["test text"], api_key="test-key", client=mock_client)
+
+    assert len(embeddings) == 1
+    assert len(embeddings[0]) == 512

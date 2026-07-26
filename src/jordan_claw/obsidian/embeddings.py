@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import re
 
+import logfire
 from openai import AsyncOpenAI
+
+from jordan_claw.utils.pricing import compute_embedding_cost
 
 CHARS_PER_TOKEN = 4
 MAX_CHUNK_TOKENS = 1000
@@ -114,11 +117,20 @@ async def generate_embeddings(
 ) -> list[list[float]]:
     """Generate embeddings for a list of texts using OpenAI API."""
     client = client or _get_embedding_client(api_key)
-    response = await client.embeddings.create(
-        model=EMBEDDING_MODEL,
-        input=texts,
-        dimensions=EMBEDDING_DIMENSIONS,
-    )
+    with logfire.span("generate_embeddings", texts=len(texts), model=EMBEDDING_MODEL) as span:
+        response = await client.embeddings.create(
+            model=EMBEDDING_MODEL,
+            input=texts,
+            dimensions=EMBEDDING_DIMENSIONS,
+        )
+        # Guard response.usage.prompt_tokens with isinstance check
+        # to handle both real responses and test mocks
+        prompt_tokens = getattr(getattr(response, "usage", None), "prompt_tokens", None)
+        if isinstance(prompt_tokens, int):
+            span.set_attribute("usage.prompt_tokens", prompt_tokens)
+            cost = compute_embedding_cost(EMBEDDING_MODEL, prompt_tokens)
+            if cost is not None:
+                span.set_attribute("usage.cost_usd", float(cost))
     # Sort by index to preserve order
     sorted_data = sorted(response.data, key=lambda d: d.index)
     return [d.embedding for d in sorted_data]
