@@ -244,16 +244,32 @@ async def test_save_care_profile_dumps_contacts_before_db_boundary(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+DEFAULT_CRITICAL_FLAG = (
+    "Long QT syndrome - avoid QT-prolonging medications, confirm with cardiology."
+)
+
+
 def _patch_successful_write(monkeypatch, care=None, meds_profile=None, existing_paths=()):
     """Wire every dependency save_care_document needs for a real write, and
     return the captured insert_note/upsert_care_document call args.
     existing_paths simulates what get_vault_paths_with_prefix would find
     already in obsidian_notes — pass the exact same-day path to exercise the
-    version-suffix collision handling."""
+    version-suffix collision handling.
+    The default care profile carries DEFAULT_CRITICAL_FLAG so emergency-doc
+    tests clear the critical-flags gate; callers exercising that gate itself
+    pass their own care profile and body."""
     captured: dict = {}
 
     meds_profile = meds_profile or MedicationProfile(org_id=ORG_ID, timeline_display_name="Ellie")
-    care = care if care is not None else CareProfile(org_id=ORG_ID, diagnoses=["Long QT syndrome"])
+    care = (
+        care
+        if care is not None
+        else CareProfile(
+            org_id=ORG_ID,
+            diagnoses=["Long QT syndrome"],
+            critical_flags=[DEFAULT_CRITICAL_FLAG],
+        )
+    )
 
     monkeypatch.setattr(
         meds, "get_medication_profile", lambda *a, **kw: _async_return(meds_profile)
@@ -340,6 +356,72 @@ async def test_save_care_document_budget_gate_allows_handoff_same_size(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_save_care_document_no_critical_flags_gate_refuses_when_care_none(monkeypatch):
+    """No care profile at all — the emergency sheet has nothing to lead with,
+    so the tool must refuse before ever looking at body content."""
+    monkeypatch.setattr(
+        meds,
+        "get_medication_profile",
+        lambda *a, **kw: _async_return(
+            MedicationProfile(org_id=ORG_ID, timeline_display_name="Ellie")
+        ),
+    )
+    monkeypatch.setattr(meds, "get_care_profile", lambda *a, **kw: _async_return(None))
+
+    def _fail_insert_note(*a, **kw):
+        raise AssertionError("must not write when there is no care profile")
+
+    monkeypatch.setattr(meds, "insert_note", _fail_insert_note)
+
+    out = await meds.save_care_document(FakeCtx(), "emergency", "one-page emergency body")
+
+    assert out == (
+        "Not written: the care profile has no critical_flags. The emergency sheet "
+        "must lead with the QT warning - confirm the critical flags with Jordan first."
+    )
+
+
+@pytest.mark.asyncio
+async def test_save_care_document_no_critical_flags_gate_refuses_when_flags_empty(monkeypatch):
+    """A care profile exists but critical_flags is empty — same refusal as no
+    profile at all; an emergency sheet must never ship with no QT warning."""
+    care = CareProfile(org_id=ORG_ID, diagnoses=["Long QT syndrome"], critical_flags=[])
+    monkeypatch.setattr(
+        meds,
+        "get_medication_profile",
+        lambda *a, **kw: _async_return(
+            MedicationProfile(org_id=ORG_ID, timeline_display_name="Ellie")
+        ),
+    )
+    monkeypatch.setattr(meds, "get_care_profile", lambda *a, **kw: _async_return(care))
+
+    def _fail_insert_note(*a, **kw):
+        raise AssertionError("must not write when critical_flags is empty")
+
+    monkeypatch.setattr(meds, "insert_note", _fail_insert_note)
+
+    out = await meds.save_care_document(FakeCtx(), "emergency", "one-page emergency body")
+
+    assert out == (
+        "Not written: the care profile has no critical_flags. The emergency sheet "
+        "must lead with the QT warning - confirm the critical flags with Jordan first."
+    )
+
+
+@pytest.mark.asyncio
+async def test_save_care_document_no_critical_flags_gate_does_not_apply_to_handoff(monkeypatch):
+    """The empty-critical_flags refusal is emergency-only pending a product
+    decision on whether a handoff needs the same guard."""
+    care = CareProfile(org_id=ORG_ID, diagnoses=["Long QT syndrome"], critical_flags=[])
+    captured = _patch_successful_write(monkeypatch, care=care)
+
+    out = await meds.save_care_document(FakeCtx(), "handoff", "handoff body, no flags on file")
+
+    assert "insert_note" in captured
+    assert "created" in out
+
+
+@pytest.mark.asyncio
 async def test_save_care_document_critical_flag_gate_refuses_when_flag_missing(monkeypatch):
     """A missing (or reworded/paraphrased) critical flag must refuse the write
     entirely — the flag never appears as a substring of a paraphrase."""
@@ -396,7 +478,8 @@ async def test_save_care_document_critical_flag_gate_does_not_apply_to_handoff(m
 @pytest.mark.asyncio
 async def test_save_care_document_success_writes_and_upserts_hash_bundle(monkeypatch):
     captured = _patch_successful_write(monkeypatch)
-    out = await meds.save_care_document(FakeCtx(), "emergency", "one-page emergency body")
+    body = f"one-page emergency body. {DEFAULT_CRITICAL_FLAG}"
+    out = await meds.save_care_document(FakeCtx(), "emergency", body)
 
     assert "insert_note" in captured
     note_kwargs = captured["insert_note"]
@@ -434,7 +517,8 @@ async def test_save_care_document_first_write_gets_no_version_suffix(monkeypatch
     """No prior note at this same-day path — title must be the plain base
     title, no ' - vN' suffix."""
     captured = _patch_successful_write(monkeypatch, existing_paths=[])
-    await meds.save_care_document(FakeCtx(), "emergency", "one-page emergency body")
+    body = f"one-page emergency body. {DEFAULT_CRITICAL_FLAG}"
+    await meds.save_care_document(FakeCtx(), "emergency", body)
     expected_title = "Ellie - Emergency One-Pager - 2026-07-25"
     assert captured["insert_note"]["title"] == expected_title
     assert captured["insert_note"]["vault_path"] == f"Health/Documents/{expected_title}.md"
@@ -451,7 +535,8 @@ async def test_save_care_document_same_day_regeneration_gets_v2(monkeypatch):
         monkeypatch, existing_paths=[f"Health/Documents/{base_title}.md"]
     )
 
-    out = await meds.save_care_document(FakeCtx(), "emergency", "regenerated body")
+    body = f"regenerated body. {DEFAULT_CRITICAL_FLAG}"
+    out = await meds.save_care_document(FakeCtx(), "emergency", body)
 
     expected_title = f"{base_title} - v2"
     assert captured["insert_note"]["title"] == expected_title
@@ -473,7 +558,8 @@ async def test_save_care_document_third_same_day_save_gets_v3(monkeypatch):
         ],
     )
 
-    await meds.save_care_document(FakeCtx(), "emergency", "regenerated again")
+    body = f"regenerated again. {DEFAULT_CRITICAL_FLAG}"
+    await meds.save_care_document(FakeCtx(), "emergency", body)
 
     expected_title = f"{base_title} - v3"
     assert captured["insert_note"]["title"] == expected_title

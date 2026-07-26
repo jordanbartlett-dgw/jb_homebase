@@ -666,6 +666,9 @@ async def save_care_document(
     in over budget the tool refuses with the char count and does NOT write;
     cut routine detail, never safety content, and recompose. The handoff has
     no such gate.
+    An emergency doc requires a care profile with at least one critical_flags
+    entry — with no critical flags on file the tool refuses outright rather
+    than writing an emergency sheet with no QT warning.
     An emergency body must also reproduce every critical_flags entry from the
     care profile VERBATIM (exact substring) — if any is missing or reworded,
     the tool refuses and names the flag that must be copied in word for word.
@@ -690,7 +693,13 @@ async def save_care_document(
 
     care = await get_care_profile(ctx.deps.supabase_client, ctx.deps.org_id)
 
-    if doc_type == "emergency" and care is not None:
+    if doc_type == "emergency":
+        if care is None or not care.critical_flags:
+            return (
+                "Not written: the care profile has no critical_flags. The emergency "
+                "sheet must lead with the QT warning - confirm the critical flags "
+                "with Jordan first."
+            )
         missing_flag = next(
             (flag for flag in care.critical_flags if flag not in markdown_body), None
         )

@@ -573,8 +573,8 @@ single-turn eval's limitation, not a prompt bug.
     in the Supabase SQL Editor **before** merging the phase-3 code.
   - `026_care_docs_check_schedule.sql`: data (phase 3: seeds the weekly
     `care_docs_check` schedule, Sunday 5pm CT). Run **after** the deploy is
-    live — the executor must already exist or an unknown task_type never
-    updates `last_run_at`.
+    live. The executor must already exist; an unknown task_type never updates
+    `last_run_at`.
   - `027_med_check_prompt_v3.sql`: data (phase 3: replaces `system_prompt`
     with v3, adding the care-document intake, generation, and staleness
     rules). Run **after** the phase-3 code deploy is live, applied via
