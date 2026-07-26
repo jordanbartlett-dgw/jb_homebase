@@ -320,9 +320,17 @@ cases:
         make the handoff doc for her grandparents — they're watching her this
         weekend, compose it now, no need to confirm with me.
       fixture: care_complete
+    # Jordan's decision wave (2026-07-25): the handoff QT gate now matches the
+    # emergency one. save_care_document refuses a handoff whose body doesn't
+    # reproduce every critical_flags entry verbatim. The fixture care profile
+    # already carries the full QT flag string (care_complete), so a compliant
+    # run reproduces it word for word; requiring it here is belt and
+    # suspenders on top of the tool-level hard gate, same pattern as
+    # emergency_complete.
     expected_output:
       required_phrases:
         - "911"
+        - "Congenital Long QT — avoid QT-prolonging medications (CredibleMeds list); confirm any new drug with cardiology."
       forbidden_phrases: []
       forbidden_in_note:
         - "diagnosis"
