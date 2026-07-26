@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 import caldav
 import icalendar
+import logfire
 import structlog
 from pydantic import BaseModel
 from pydantic_ai import RunContext
@@ -109,8 +110,14 @@ async def list_calendar_events(
     end_date = _normalize_range_boundary(end_date, end=True)
 
     try:
-        calendar = await asyncio.to_thread(_connect_calendar, username, app_password)
-        items = await asyncio.to_thread(calendar.search, start=start_date, end=end_date, event=True)
+        # caldav rides niquests, so httpx/requests autoinstrumentation never sees these
+        # calls; hand spans are the coverage
+        with logfire.span("caldav.search") as span:
+            calendar = await asyncio.to_thread(_connect_calendar, username, app_password)
+            items = await asyncio.to_thread(
+                calendar.search, start=start_date, end=end_date, event=True
+            )
+            span.set_attribute("events", len(items))
     except Exception as exc:
         log.error("calendar.get_events.failed", error=str(exc))
         raise CalendarAccessError("Calendar is temporarily unavailable.") from exc
@@ -236,9 +243,10 @@ async def create_calendar_event(
         end = end.replace(tzinfo=CENTRAL_TZ)
 
     try:
-        calendar = await asyncio.to_thread(_connect_calendar, username, app_password)
-        ical = _build_ical(title, start, end, location, description)
-        await asyncio.to_thread(calendar.save_event, ical)
+        with logfire.span("caldav.save_event"):
+            calendar = await asyncio.to_thread(_connect_calendar, username, app_password)
+            ical = _build_ical(title, start, end, location, description)
+            await asyncio.to_thread(calendar.save_event, ical)
     except Exception as exc:
         log.error("calendar.create_event.failed", error=str(exc))
         return f"Error creating calendar event: {exc}"
