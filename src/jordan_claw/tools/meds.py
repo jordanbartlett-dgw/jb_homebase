@@ -666,6 +666,10 @@ async def save_care_document(
     in over budget the tool refuses with the char count and does NOT write;
     cut routine detail, never safety content, and recompose. The handoff has
     no such gate.
+    An emergency body must also reproduce every critical_flags entry from the
+    care profile VERBATIM (exact substring) — if any is missing or reworded,
+    the tool refuses and names the flag that must be copied in word for word.
+    The handoff has no such gate.
     Same-day regeneration (the profile changed, Jordan asks to regenerate
     today) is versioned automatically — a second same-day save gets " - v2",
     a third " - v3", and so on — it never overwrites the same vault path.
@@ -685,6 +689,17 @@ async def save_care_document(
         )
 
     care = await get_care_profile(ctx.deps.supabase_client, ctx.deps.org_id)
+
+    if doc_type == "emergency" and care is not None:
+        missing_flag = next(
+            (flag for flag in care.critical_flags if flag not in markdown_body), None
+        )
+        if missing_flag is not None:
+            return (
+                f"Not written: the critical flag '{missing_flag}' must appear in the "
+                "document word for word. Rewrite the body and include it verbatim - "
+                "critical flags are never cut or paraphrased."
+            )
 
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     base_title = f"{display_name} - {CARE_DOC_LABELS[doc_type]} - {today}"

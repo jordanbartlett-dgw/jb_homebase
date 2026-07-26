@@ -340,6 +340,60 @@ async def test_save_care_document_budget_gate_allows_handoff_same_size(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_save_care_document_critical_flag_gate_refuses_when_flag_missing(monkeypatch):
+    """A missing (or reworded/paraphrased) critical flag must refuse the write
+    entirely — the flag never appears as a substring of a paraphrase."""
+    flag = (
+        "Congenital Long QT — avoid QT-prolonging medications (CredibleMeds list); "
+        "confirm any new drug with cardiology."
+    )
+    care = CareProfile(org_id=ORG_ID, critical_flags=[flag])
+    _patch_successful_write(monkeypatch, care=care)
+
+    def _fail_insert_note(*a, **kw):
+        raise AssertionError("must not write when a critical flag is missing")
+
+    monkeypatch.setattr(meds, "insert_note", _fail_insert_note)
+
+    body = "CRITICAL: Congenital Long QT syndrome — avoid QT-prolonging meds. Confirm with cards."
+    out = await meds.save_care_document(FakeCtx(), "emergency", body)
+
+    assert out == (
+        f"Not written: the critical flag '{flag}' must appear in the document word "
+        "for word. Rewrite the body and include it verbatim - critical flags are "
+        "never cut or paraphrased."
+    )
+
+
+@pytest.mark.asyncio
+async def test_save_care_document_critical_flag_gate_allows_when_flag_present(monkeypatch):
+    flag = "Congenital Long QT — avoid QT-prolonging medications (CredibleMeds list)."
+    care = CareProfile(org_id=ORG_ID, critical_flags=[flag])
+    captured = _patch_successful_write(monkeypatch, care=care)
+
+    body = f"CRITICAL: {flag}\n\nRest of the one-pager follows."
+    out = await meds.save_care_document(FakeCtx(), "emergency", body)
+
+    assert "insert_note" in captured
+    assert "created" in out
+
+
+@pytest.mark.asyncio
+async def test_save_care_document_critical_flag_gate_does_not_apply_to_handoff(monkeypatch):
+    """The handoff doc_type has no budget gate and no critical-flag gate —
+    a missing flag must not block the write."""
+    flag = "Congenital Long QT — avoid QT-prolonging medications (CredibleMeds list)."
+    care = CareProfile(org_id=ORG_ID, critical_flags=[flag])
+    captured = _patch_successful_write(monkeypatch, care=care)
+
+    body = "Handoff body that never mentions the flag at all."
+    out = await meds.save_care_document(FakeCtx(), "handoff", body)
+
+    assert "insert_note" in captured
+    assert "created" in out
+
+
+@pytest.mark.asyncio
 async def test_save_care_document_success_writes_and_upserts_hash_bundle(monkeypatch):
     captured = _patch_successful_write(monkeypatch)
     out = await meds.save_care_document(FakeCtx(), "emergency", "one-page emergency body")
