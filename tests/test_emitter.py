@@ -51,6 +51,7 @@ async def test_agent_run_completed_emits_with_typed_props(mock_client):
         tool_call_count=2,
         success=True,
         error_type=None,
+        error_severity=None,
     )
     await _drain()
 
@@ -71,6 +72,34 @@ async def test_agent_run_completed_emits_with_typed_props(mock_client):
     assert props["tool_call_count"] == 2
     assert props["success"] is True
     assert props["error_type"] is None
+    assert props["error_severity"] is None
+
+
+@pytest.mark.asyncio
+async def test_agent_run_completed_includes_error_severity_on_failure(mock_client):
+    await emitter.agent_run_completed(
+        org_id="org-1",
+        user_id=None,
+        agent_slug="claw-main",
+        run_kind=RunKind.USER_MESSAGE,
+        channel="app",
+        conversation_id="conv-1",
+        schedule_name=None,
+        model="anthropic:claude-sonnet-4-5-20250929",
+        input_tokens=0,
+        output_tokens=0,
+        cost_usd=None,
+        duration_ms=50,
+        tool_call_count=0,
+        success=False,
+        error_type="timeout",
+        error_severity="medium",
+    )
+    await _drain()
+
+    props = mock_client.capture.call_args.kwargs["properties"]
+    assert props["error_type"] == "timeout"
+    assert props["error_severity"] == "medium"
 
 
 @pytest.mark.asyncio
@@ -91,6 +120,7 @@ async def test_agent_run_completed_uses_user_id_when_provided(mock_client):
         tool_call_count=0,
         success=True,
         error_type=None,
+        error_severity=None,
     )
     await _drain()
 

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import os
+
+os.environ.setdefault("LOGFIRE_IGNORE_NO_CONFIG", "1")
+
 from unittest.mock import AsyncMock, patch
 
 import pytest

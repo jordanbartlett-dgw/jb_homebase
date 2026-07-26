@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import secrets
+
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from jordan_claw.analytics import emitter
+from jordan_claw.analytics.types import RunKind
 
 log = structlog.get_logger()
 
@@ -21,7 +24,7 @@ def _make_auth_dep(token: str | None):
             raise HTTPException(status_code=401, detail="analytics_proxy_disabled")
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="missing_bearer")
-        if authorization.removeprefix("Bearer ").strip() != token:
+        if not secrets.compare_digest(authorization.removeprefix("Bearer ").strip(), token):
             raise HTTPException(status_code=401, detail="bad_token")
 
     return _verify
@@ -45,7 +48,12 @@ def build_analytics_router(*, token: str | None, org_id: str) -> APIRouter:
         if body.event not in emitter.ALLOWED_EVENTS:
             raise HTTPException(status_code=400, detail="unknown_event")
 
-        await _dispatch(body.event, body.distinct_id, body.properties, org_id)
+        try:
+            await _dispatch(body.event, body.distinct_id, body.properties, org_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=f"missing_property: {exc.args[0]}") from exc
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"status": "accepted"}
 
     return router
@@ -58,7 +66,7 @@ async def _dispatch(event: str, distinct_id: str, props: dict, org_id: str) -> N
             org_id=org_id,
             user_id=distinct_id,
             agent_slug=props["agent_slug"],
-            run_kind=props["run_kind"],
+            run_kind=RunKind(props["run_kind"]),
             channel=props["channel"],
             conversation_id=props.get("conversation_id"),
             schedule_name=props.get("schedule_name"),
@@ -70,6 +78,7 @@ async def _dispatch(event: str, distinct_id: str, props: dict, org_id: str) -> N
             tool_call_count=props["tool_call_count"],
             success=props["success"],
             error_type=props.get("error_type"),
+            error_severity=props.get("error_severity"),
         )
     elif event == "proactive_sent":
         await emitter.proactive_sent(

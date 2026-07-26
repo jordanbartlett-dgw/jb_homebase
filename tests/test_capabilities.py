@@ -23,6 +23,60 @@ def test_tool_counts_ignore_non_toolgroup_capabilities():
     assert len(tool_names) == 37
 
 
+def test_private_content_capability_disables_content_capture():
+    from pydantic_ai.capabilities import Instrumentation
+
+    cap = CAPABILITY_REGISTRY["private_content"]
+    assert isinstance(cap, Instrumentation)
+    assert cap.settings.include_content is False
+
+
+@pytest.mark.asyncio
+async def test_private_content_overrides_global_instrument_pydantic_ai(capfire):
+    """The per-agent `private_content` capability must win over the gateway's
+    global `logfire.instrument_pydantic_ai()` default (main.py). Reproduces
+    that global default here, then proves a plain TestModel agent leaks the
+    prompt into exported spans while an agent carrying `private_content`
+    does not.
+    """
+    import logfire
+
+    marker = "super-secret-marker-content-xyz"
+
+    try:
+        logfire.instrument_pydantic_ai()  # mirrors main.py's unconditional global default
+
+        plain_agent = Agent("test", name="plain_agent", instructions="be helpful")
+        private_agent = Agent(
+            "test",
+            name="private_agent",
+            instructions="be helpful",
+            capabilities=[CAPABILITY_REGISTRY["private_content"]],
+        )
+
+        await plain_agent.run(marker)
+        await private_agent.run(marker)
+    finally:
+        # Agent._instrument_default is process-global (ClassVar); reset it so this
+        # test's global override doesn't leak into other tests in the same run.
+        Agent.instrument_all(False)
+
+    def _blob_for(agent_name: str) -> str:
+        return "".join(
+            str(dict(span.attributes or {}))
+            for span in capfire.exporter.exported_spans
+            if span.attributes
+            and agent_name
+            in (span.attributes.get("agent_name"), span.attributes.get("gen_ai.agent.name"))
+        )
+
+    plain_blob = _blob_for("plain_agent")
+    private_blob = _blob_for("private_agent")
+
+    assert marker in plain_blob
+    assert marker not in private_blob
+
+
 def test_expected_groups_exist():
     assert set(CAPABILITY_REGISTRY) == {
         "core",
@@ -37,6 +91,7 @@ def test_expected_groups_exist():
         "meds",
         "email",
         "code_mode",
+        "private_content",
     }
 
 
