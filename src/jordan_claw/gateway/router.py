@@ -120,7 +120,7 @@ async def handle_message(
             log.debug("agent_message_content", content=msg.content, response=response_text)
 
     except Exception:
-        log.exception("agent_run_failed", status="error")
+        log.exception("chat_error_response_sent", status="error")
         await update_conversation_status(db, conversation_id, "error")
         await save_message(
             db,

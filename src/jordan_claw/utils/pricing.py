@@ -6,7 +6,7 @@ import structlog
 
 log = structlog.get_logger()
 
-# USD per 1M tokens. Source: anthropic.com/pricing as of 2026-04-15.
+# USD per 1M tokens. Source: anthropic.com/pricing as of 2026-07-26.
 # Update this dict when Anthropic changes prices or you add a new model.
 PRICING: dict[str, dict[str, Decimal]] = {
     "claude-sonnet-4-5-20250929": {"input": Decimal("3.00"), "output": Decimal("15.00")},
