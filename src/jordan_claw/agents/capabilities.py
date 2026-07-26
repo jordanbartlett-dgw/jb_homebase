@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import structlog
-from pydantic_ai.capabilities import AbstractCapability
+from pydantic_ai import InstrumentationSettings
+from pydantic_ai.capabilities import AbstractCapability, Instrumentation
 from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai_harness import CodeMode
 
@@ -199,6 +200,13 @@ CAPABILITY_REGISTRY: dict[str, AbstractCapability[AgentDeps]] = {
             "Write sandboxed Python that composes the agent's other tools in "
             "one step (loops, parallel fan-out)."
         ),
+    ),
+    # Not a ToolGroup: per-agent instrumentation override. Grants NOTHING to
+    # the model; it turns off prompt/completion content export to Logfire for
+    # agents handling sensitive data (med-check). Logfire scrubbing does not
+    # apply to gen_ai message attributes, so this is the only content lever.
+    "private_content": Instrumentation(
+        settings=InstrumentationSettings(include_content=False),
     ),
 }
 
