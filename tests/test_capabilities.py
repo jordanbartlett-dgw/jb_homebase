@@ -18,7 +18,7 @@ def test_registry_covers_all_tools():
     tool_names = set()
     for group in CAPABILITY_REGISTRY.values():
         tool_names.update(group.toolset.tools)
-    assert len(tool_names) == 33
+    assert len(tool_names) == 37
 
 
 def test_expected_groups_exist():
@@ -33,6 +33,7 @@ def test_expected_groups_exist():
         "obsidian_readonly",
         "reminders",
         "meds",
+        "email",
     }
 
 
@@ -137,6 +138,18 @@ async def test_med_check_capabilities_reach_the_model():
         "save_care_document",
         "check_care_docs_current",
         "current_datetime",
+    } <= sent
+
+
+@pytest.mark.asyncio
+async def test_email_capability_reaches_the_model():
+    """Wiring proof: an agent granted email sends all four email tool defs."""
+    sent = await _sent_tools(_prod_shaped_config("claw-main", ["core", "email"]))
+    assert {
+        "send_email",
+        "reply_to_email",
+        "list_email_threads",
+        "read_email_thread",
     } <= sent
 
 

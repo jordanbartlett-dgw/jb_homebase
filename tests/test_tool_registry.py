@@ -45,6 +45,10 @@ EXPECTED_TOOLS = [
     "save_care_profile",
     "save_care_document",
     "check_care_docs_current",
+    "send_email",
+    "reply_to_email",
+    "list_email_threads",
+    "read_email_thread",
 ]
 
 
@@ -104,6 +108,10 @@ def test_deps_tools_have_ctx_param():
         "save_care_profile",
         "save_care_document",
         "check_care_docs_current",
+        "send_email",
+        "reply_to_email",
+        "list_email_threads",
+        "read_email_thread",
     ]
     for name in deps_tools:
         sig = inspect.signature(ALL_TOOLS[name].function)
