@@ -569,15 +569,18 @@ def _care_source_hash(
 ) -> str:
     """sha256-based fingerprint of the fields a doc_type is composed from, used by
     check_care_docs_current to detect staleness.
-    emergency: full care profile + medications + allergies + timeline_display_name.
+    emergency: full care profile + medications + allergies + timeline_display_name
+    + date_of_birth.
     handoff: full care profile + timeline_display_name only (meds appear in the
     handoff only as 'handled by her parents' unless a dose falls in care windows,
-    so a medication-only edit must not flip the handoff stale).
+    and DOB never appears on the handoff at all, so a medication-only or
+    DOB-only edit must not flip the handoff stale).
 
     Returns a JSON string, not a bare digest:
     {"total": <sha256 hex of the whole payload>, "sections": {<care-profile
-    field name, or "display_name"/"medications"/"allergies">: <sha256[:8] of
-    that section alone>}}. check_care_docs_current compares "total" for the
+    field name, or "display_name"/"medications"/"allergies"/"date_of_birth"
+    (the last three emergency-only)>: <sha256[:8] of that section alone>}}.
+    check_care_docs_current compares "total" for the
     cheap current/stale check and diffs "sections" against a freshly computed
     bundle to name exactly which sections changed. The db layer stores and
     reads this as an opaque string; it does not need to know the format.
@@ -591,10 +594,13 @@ def _care_source_hash(
     if doc_type == "emergency":
         medications = [m.model_dump() for m in meds.medications] if meds else []
         allergies = meds.allergies if meds else None
+        date_of_birth = meds.date_of_birth if meds else None
         sections["medications"] = _section_hash(medications)
         sections["allergies"] = _section_hash(allergies)
+        sections["date_of_birth"] = _section_hash(date_of_birth)
         payload["medications"] = medications
         payload["allergies"] = allergies
+        payload["date_of_birth"] = date_of_birth
 
     total = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
     return json.dumps({"total": total, "sections": sections}, sort_keys=True)

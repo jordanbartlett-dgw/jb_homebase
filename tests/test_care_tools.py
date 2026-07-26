@@ -79,6 +79,30 @@ def test_med_edit_flips_emergency_but_not_handoff():
     assert handoff_a["sections"] == handoff_b["sections"]
 
 
+def test_dob_edit_flips_emergency_but_not_handoff():
+    """Re-review finding: setting or correcting date_of_birth after an
+    emergency doc exists must flip it stale (the ER sheet is otherwise
+    permanently missing her age with no nudge to fix it). DOB never appears
+    on the handoff, so it must not flip that one."""
+    care = CareProfile(org_id=ORG_ID, diagnoses=["Long QT syndrome"])
+    meds_a = MedicationProfile(
+        org_id=ORG_ID, timeline_display_name="Ellie", date_of_birth="2015-03-14"
+    )
+    meds_b = MedicationProfile(
+        org_id=ORG_ID, timeline_display_name="Ellie", date_of_birth="2015-03-15"
+    )
+
+    emergency_a = json.loads(meds._care_source_hash("emergency", care, meds_a))
+    emergency_b = json.loads(meds._care_source_hash("emergency", care, meds_b))
+    assert emergency_a["total"] != emergency_b["total"]
+    assert emergency_a["sections"]["date_of_birth"] != emergency_b["sections"]["date_of_birth"]
+
+    handoff_a = json.loads(meds._care_source_hash("handoff", care, meds_a))
+    handoff_b = json.loads(meds._care_source_hash("handoff", care, meds_b))
+    assert handoff_a["total"] == handoff_b["total"]
+    assert handoff_a["sections"] == handoff_b["sections"]
+
+
 def test_care_edit_flips_both_doc_types():
     meds_profile = MedicationProfile(org_id=ORG_ID, timeline_display_name="Ellie")
     care_a = CareProfile(org_id=ORG_ID, seizure_plan="call 911 if seizure > 5 min")

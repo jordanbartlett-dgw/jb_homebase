@@ -2,7 +2,7 @@
   "dataset": "med_check",
   "score": 0.9791666666666667,
   "ran_at": "2026-07-26T02:35:40.949363+00:00",
-  "git_sha": "0315da9",
+  "git_sha": "6c5aa94",
   "cases_total": 12,
   "cases_passed": 12
 }
