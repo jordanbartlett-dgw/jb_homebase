@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import logfire
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
@@ -7,6 +9,11 @@ from pydantic_ai import Agent
 from supabase._async.client import AsyncClient
 
 from jordan_claw.agents.capabilities import CAPABILITY_REGISTRY
+from jordan_claw.analytics.types import RunKind
+from jordan_claw.db.usage_events import save_usage_event
+from jordan_claw.utils.agent_runner import _fire_save
+from jordan_claw.utils.pricing import compute_cost
+from jordan_claw.utils.token_counting import extract_usage
 
 log = structlog.get_logger()
 
@@ -69,10 +76,53 @@ async def classify(db: AsyncClient, transcript: str, org_id: str) -> str:
         catalog, known_slugs = await _agent_catalog(db, org_id)
         agent = build_classifier(catalog)
         with logfire.span("voice_classify", org_id=org_id) as span:
+            ctx = span.get_span_context()
+            trace_id = f"{ctx.trace_id:032x}" if ctx and ctx.trace_id else None
+
+            start = time.monotonic()
             result = await agent.run(transcript)
+            duration_ms = int((time.monotonic() - start) * 1000)
+
             decision = result.output
             span.set_attribute("route.agent_slug", decision.agent_slug)
             span.set_attribute("route.confidence", decision.confidence)
+
+            usage = extract_usage(result.usage)
+            cost = compute_cost(
+                CLASSIFIER_MODEL,
+                usage["input_tokens"],
+                usage["output_tokens"],
+                cache_read_tokens=usage["cache_read_tokens"],
+                cache_write_tokens=usage["cache_write_tokens"],
+            )
+            span.set_attribute("usage.input_tokens", usage["input_tokens"])
+            span.set_attribute("usage.output_tokens", usage["output_tokens"])
+            span.set_attribute("usage.cost_usd", float(cost) if cost is not None else None)
+            span.set_attribute("usage.duration_ms", duration_ms)
+
+            _fire_save(
+                save_usage_event(
+                    db,
+                    org_id=org_id,
+                    agent_slug="voice-classifier",
+                    conversation_id=None,
+                    channel="app-voice",
+                    run_kind=RunKind.CLASSIFIER,
+                    schedule_name=None,
+                    model=CLASSIFIER_MODEL,
+                    input_tokens=usage["input_tokens"],
+                    output_tokens=usage["output_tokens"],
+                    cost_usd=cost,
+                    duration_ms=duration_ms,
+                    tool_call_count=0,
+                    success=True,
+                    error_type=None,
+                    error_severity=None,
+                    trace_id=trace_id,
+                    cache_read_tokens=usage["cache_read_tokens"],
+                    cache_write_tokens=usage["cache_write_tokens"],
+                )
+            )
 
         if decision.confidence < CONFIDENCE_FLOOR:
             log.info(
