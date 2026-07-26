@@ -253,6 +253,8 @@ async def handle_app_message(
         fastmail_username=settings.fastmail_username,
         fastmail_app_password=settings.fastmail_app_password,
         openai_api_key=settings.openai_api_key,
+        agentmail_api_key=settings.agentmail_api_key,
+        agentmail_inbox_id=settings.agentmail_inbox_id,
         history_limit=settings.message_history_limit,
         environment=settings.environment,
         run_kind=run_kind,

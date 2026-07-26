@@ -30,6 +30,8 @@ async def handle_message(
     fastmail_username: str,
     fastmail_app_password: str,
     openai_api_key: str = "",
+    agentmail_api_key: str = "",
+    agentmail_inbox_id: str = "",
     history_limit: int = 50,
     environment: str = "development",
     run_kind: RunKind = RunKind.USER_MESSAGE,
@@ -94,6 +96,8 @@ async def handle_message(
             fastmail_app_password=fastmail_app_password,
             supabase_client=db,
             openai_api_key=openai_api_key,
+            agentmail_api_key=agentmail_api_key,
+            agentmail_inbox_id=agentmail_inbox_id,
         )
         history = db_messages_to_history(db_messages)
 
