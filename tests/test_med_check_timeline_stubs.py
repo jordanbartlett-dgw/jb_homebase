@@ -17,8 +17,13 @@ import pytest
 from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 
-from evals.fixtures.med_check import FIXTURES
-from evals.tasks.med_check import _build_toolset, _compose_reply
+from evals.fixtures.med_check import FIXTURES, QT_CRITICAL_FLAG
+from evals.tasks.med_check import _build_toolset, _compose_reply, _stub_care_document_refusal
+
+SEIZURE_CRITICAL_FLAG = (
+    "Seizure lasting over 5 minutes, or a second seizure within 30 minutes of the "
+    "first, is a 911 call"
+)
 
 FIXTURE_DRIVEN_KEYS = (
     "normalize_medication",
@@ -82,17 +87,101 @@ def test_every_fixture_has_all_fixture_driven_keys(fixture_name: str) -> None:
 
 @pytest.mark.asyncio
 async def test_save_care_document_captures_markdown_body() -> None:
+    """TestModel's auto-generated tool args never carry the fixture's real
+    critical_flags, so the (correct, prod-mirroring) gate would refuse a
+    TestModel-driven call. Call the stub directly with a gate-passing body
+    instead, same pattern as the other direct-call tests below."""
     fixture = FIXTURES["care_complete"]
     captured_notes: list[str] = []
     toolset = _build_toolset(fixture, captured_notes)
 
-    agent = Agent(TestModel(call_tools=["save_care_document"]), toolsets=[toolset])
-    result = await agent.run("make her emergency sheet")
+    body = f"CRITICAL: {QT_CRITICAL_FLAG} {SEIZURE_CRITICAL_FLAG}. Rest of the one-pager follows."
+    tool_return = await toolset.tools["save_care_document"].function(
+        doc_type="emergency", markdown_body=body
+    )
 
-    assert captured_notes, "save_care_document stub did not capture a markdown body"
-    composed = _compose_reply(str(result.output), captured_notes)
+    assert captured_notes == [body]
+    composed = _compose_reply(tool_return, captured_notes)
     assert "===NOTE===" in composed
     assert captured_notes[-1] in composed
+
+
+@pytest.mark.asyncio
+async def test_save_care_document_stub_refuses_missing_critical_flag() -> None:
+    """A body missing one of the fixture's critical_flags entries must be
+    refused with the prod's exact refusal text, and nothing gets captured -
+    this is the eval-stub-infidelity bug: the stub used to accept any body,
+    denying the model the retry loop prod's real gate provides."""
+    fixture = FIXTURES["care_complete"]
+    captured_notes: list[str] = []
+    toolset = _build_toolset(fixture, captured_notes)
+
+    body = f"CRITICAL: {QT_CRITICAL_FLAG} Rest of the one-pager follows."  # missing seizure flag
+    tool_return = await toolset.tools["save_care_document"].function(
+        doc_type="handoff", markdown_body=body
+    )
+
+    assert tool_return == (
+        f"Not written: the critical flag '{SEIZURE_CRITICAL_FLAG}' must appear in the "
+        "document word for word. Rewrite the body and include it verbatim - "
+        "critical flags are never cut or paraphrased."
+    )
+    assert captured_notes == []
+
+
+@pytest.mark.asyncio
+async def test_save_care_document_stub_refuses_empty_critical_flags() -> None:
+    """A get_care_profile fixture with no critical_flags (or no parseable
+    profile at all, e.g. a non-care fixture's placeholder) refuses the write
+    outright, same as prod's empty-flags gate."""
+    fixture = dict(FIXTURES["care_complete"])
+    fixture["get_care_profile"] = 'Profile is complete.\n\n{"critical_flags": []}'
+    captured_notes: list[str] = []
+    toolset = _build_toolset(fixture, captured_notes)
+
+    tool_return = await toolset.tools["save_care_document"].function(
+        doc_type="emergency", markdown_body="anything at all"
+    )
+
+    assert tool_return == (
+        "Not written: the care profile has no critical_flags. The emergency "
+        "sheet must lead with the QT warning - confirm the critical flags "
+        "with Jordan first."
+    )
+    assert captured_notes == []
+
+
+def test_stub_care_document_refusal_budget_gate_emergency_only() -> None:
+    """The char-budget gate mirrors prod: emergency over CARE_DOC_CHAR_BUDGET
+    refuses before the critical-flags check ever runs; handoff has no such
+    gate at any size."""
+    oversized = "x" * 3000
+    care_profile_fixture = FIXTURES["care_complete"]["get_care_profile"]
+
+    refusal = _stub_care_document_refusal("emergency", oversized, care_profile_fixture)
+    assert refusal is not None
+    assert "3000 chars" in refusal
+    assert "over the one-page budget" in refusal
+
+    # Same oversized body on handoff hits the critical-flags gate instead,
+    # since the budget gate is emergency-only and this body has no flags.
+    handoff_refusal = _stub_care_document_refusal("handoff", oversized, care_profile_fixture)
+    assert handoff_refusal is not None
+    assert "over the one-page budget" not in handoff_refusal
+
+
+def test_fixture_critical_flags_parses_json_tail() -> None:
+    from evals.tasks.med_check import _fixture_critical_flags
+
+    parsed = _fixture_critical_flags(FIXTURES["care_complete"]["get_care_profile"])
+    assert parsed == [QT_CRITICAL_FLAG, SEIZURE_CRITICAL_FLAG]
+
+
+def test_fixture_critical_flags_empty_for_non_care_placeholder() -> None:
+    from evals.tasks.med_check import _fixture_critical_flags
+
+    placeholder = FIXTURES["known_risk_ondansetron"]["get_care_profile"]
+    assert _fixture_critical_flags(placeholder) == []
 
 
 @pytest.mark.asyncio

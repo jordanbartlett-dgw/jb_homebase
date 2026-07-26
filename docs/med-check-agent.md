@@ -551,14 +551,20 @@ stopping to confirm. There is no rubric branch for a confirmation-only reply.
 A model that stops to ask scores as a failure here by design. That's the
 single-turn eval's limitation, not a prompt bug.
 
-**Baseline:** 0.792 (0.7916666666666666, `evals/baselines/med_check.json`, ran
-2026-07-25), 12/12 cases producing results. This is a regression from the
-prior 0.917 baseline, driven by the `handoff_actionable` requirement above
-(`phrase_assertion` 11/12 = 0.917, exactly the one new-requirement miss) plus
-a broader `llm_judge` drop (0.667, 4/12 cases including three the decision
-wave never touched) that reads as single-sample judge noise but has not been
-re-run to confirm. See the BLOCKED note in the decision-wave report. Real
-regressions fire at score < baseline minus 0.05.
+**Baseline:** 0.979 (0.9791666666666667, `evals/baselines/med_check.json`, ran
+2026-07-25), 12/12 cases passing, `phrase_assertion` 1.000. An interim run at
+0.792 flagged a regression on `handoff_actionable`, root-caused as eval-stub
+infidelity, not a model or prompt compliance failure: the stub
+`save_care_document` in `evals/tasks/med_check.py` used to accept any body
+unconditionally, so a first draft missing a critical flag got captured and
+graded as final, denying the model the same-turn retry loop prod's real gate
+provides (the model sees the refusal string and retries within the run). The
+stub now mirrors `jordan_claw.tools.meds.save_care_document`'s budget and
+critical-flags gates exactly, refusal text included, and only a gate-passing
+body reaches `captured_notes`. After the fix, `llm_judge` recovered to 0.958
+(11/12 at 1.0; `stale_offer_once` at 0.5, ordinary single-sample judge
+variance, well above the 0.85 re-diagnosis threshold). Real regressions fire
+at score < baseline minus 0.05.
 
 ## Known eval limitations
 

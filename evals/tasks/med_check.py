@@ -6,6 +6,7 @@ prompt changes, update both (drift risk documented in docs/med-check-agent.md)."
 
 from __future__ import annotations
 
+import json
 from typing import Literal
 
 from pydantic_ai import Agent
@@ -14,6 +15,7 @@ from pydantic_ai.toolsets import FunctionToolset
 from evals.fixtures.med_check import FIXTURES
 from evals.types import MedCheckInputs
 from jordan_claw.meds.models import CareContact, HealthCategory, MedicationEntry
+from jordan_claw.tools.meds import CARE_DOC_CHAR_BUDGET
 
 TARGET_MODEL = "anthropic:claude-sonnet-5"  # prod org default_model, pinned
 
@@ -72,6 +74,55 @@ Both documents end with the generation date and: maintained by her parents; not 
 Staleness: after any save_medication_profile or save_care_profile call, check check_care_docs_current. If a document went stale, say so in one line and offer to regenerate now. One line, one offer, no nagging.
 
 Memory: recall_memory for context outside the medication profile. Forget facts only when Jordan asks."""
+
+
+def _fixture_critical_flags(get_care_profile_fixture: str) -> list[str]:
+    """Extract critical_flags from a get_care_profile fixture string, mirroring
+    what a real get_care_profile / CareProfile round-trip would hand
+    save_care_document's gate. Fixtures embed the profile as
+    "<status line>\\n\\n<json>" (see evals/fixtures/med_check.py); a fixture
+    with no real profile (the SHOULD-NOT-BE-CALLED placeholder, or any other
+    non-JSON text) has no parseable tail and correctly yields []."""
+    _, _, json_tail = get_care_profile_fixture.partition("\n\n")
+    try:
+        return json.loads(json_tail).get("critical_flags", [])
+    except (json.JSONDecodeError, AttributeError):
+        return []
+
+
+def _stub_care_document_refusal(
+    doc_type: Literal["emergency", "handoff"],
+    markdown_body: str,
+    care_profile_fixture: str,
+) -> str | None:
+    """Return the prod refusal string jordan_claw.tools.meds.save_care_document
+    would produce for these inputs, or None if the write would proceed.
+    Mirrors that tool's budget and critical-flags gates exactly (same
+    literal text, same CARE_DOC_CHAR_BUDGET constant) so the eval's stub
+    denies a non-compliant first draft the same way prod does, instead of
+    silently accepting it and grading a draft the model would have retried
+    past in a real run."""
+    if doc_type == "emergency" and len(markdown_body) > CARE_DOC_CHAR_BUDGET:
+        return (
+            f"body is {len(markdown_body)} chars, over the one-page budget - cut "
+            "routine detail, never safety content, and rewrite"
+        )
+
+    critical_flags = _fixture_critical_flags(care_profile_fixture)
+    if not critical_flags:
+        return (
+            "Not written: the care profile has no critical_flags. The emergency "
+            "sheet must lead with the QT warning - confirm the critical flags "
+            "with Jordan first."
+        )
+    missing_flag = next((flag for flag in critical_flags if flag not in markdown_body), None)
+    if missing_flag is not None:
+        return (
+            f"Not written: the critical flag '{missing_flag}' must appear in the "
+            "document word for word. Rewrite the body and include it verbatim - "
+            "critical flags are never cut or paraphrased."
+        )
+    return None
 
 
 def _build_toolset(fixture: dict[str, str], captured_notes: list[str]) -> FunctionToolset:
@@ -202,10 +253,18 @@ def _build_toolset(fixture: dict[str, str], captured_notes: list[str]) -> Functi
         comes in over budget the tool refuses with the char count and does
         NOT write; cut routine detail, never safety content, and recompose.
         The handoff has no such gate.
+        Both doc types require a care profile with at least one critical_flags
+        entry, and both must reproduce every critical_flags entry VERBATIM
+        (exact substring). A missing profile, empty critical_flags, or a
+        paraphrased/dropped flag all refuse the write and name what has to be
+        copied in word for word.
         Same-day regeneration is versioned automatically and never overwrites
         the same vault path. Returns the note title.
         NOT for drafting or editing the body, and NOT for the doctor timeline
         — use create_timeline_note for that."""
+        refusal = _stub_care_document_refusal(doc_type, markdown_body, fixture["get_care_profile"])
+        if refusal is not None:
+            return refusal
         captured_notes.append(markdown_body)
         doc_label = "Emergency One-Pager" if doc_type == "emergency" else "Caregiver Handoff"
         return (
