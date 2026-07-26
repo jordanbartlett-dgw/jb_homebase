@@ -41,6 +41,8 @@ async def _run_trigger(
         fastmail_app_password=settings.fastmail_app_password,
         supabase_client=db,
         openai_api_key=settings.openai_api_key,
+        agentmail_api_key=settings.agentmail_api_key,
+        agentmail_inbox_id=settings.agentmail_inbox_id,
     )
     result = await run_agent_instrumented(
         agent=agent,

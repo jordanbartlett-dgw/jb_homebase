@@ -33,6 +33,8 @@ async def test_full_scheduled_flow():
     mock_settings.openai_api_key = "test-openai"
     mock_settings.tavily_api_key = "test-tavily"
     mock_settings.default_agent_slug = "claw-main"
+    mock_settings.agentmail_api_key = ""
+    mock_settings.agentmail_inbox_id = ""
 
     inserted_messages: list[dict] = []
 

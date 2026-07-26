@@ -65,6 +65,10 @@ Every inbound message, regardless of channel, funnels into
   `fastmail_watch`), cursor in `watcher_cursors` (first poll seeds cursor, no
   backfill storm), fires `process_event(source="fastmail-email")` per new email.
   Disabled when `FASTMAIL_API_TOKEN` is empty.
+- `events/agentmail.py::poll_agentmail`: AgentMail inbox poll on a schedule
+  (task_type `agentmail_watch`, source `agentmail-email`), cursor in
+  `watcher_cursors` (first poll seeds cursor, no backfill storm). Disabled
+  when `AGENTMAIL_API_KEY` is empty.
 
 ### Proactive flow
 
@@ -112,7 +116,9 @@ ever list/cancel `source='reminder'` rows.
   read-only cross-agent views **workout_readonly** (3 read tools, on
   claw-main) and **obsidian_readonly** (search_notes + read_note, on
   workout-coach) that reuse the same tool fns — never grant a *_readonly group
-  alongside its full group (duplicate names). 33 distinct tools total. Unknown
+  alongside its full group (duplicate names), plus **email** (4 tools:
+  send_email, reply_to_email, list_email_threads, read_email_thread; the
+  agent's own AgentMail inbox, on claw-main). 37 distinct tools total. Unknown
   ids are skipped with a warning (safe deploy ordering). log_workout refuses
   same-day same-activity duplicates unless allow_duplicate=true;
   amend_last_workout updates the latest log (follow-up detail was
@@ -159,13 +165,13 @@ Observability details, event catalogue, dashboard ids: `docs/observability.md`.
 
 ## Database (Supabase, hosted)
 
-Migrations `001`–`028` (005 removed as a no-op), applied by hand in the SQL
+Migrations `001`–`029` (005 removed as a no-op), applied by hand in the SQL
 Editor. 016/019/021/023/025/028 are schema (run before their code deploy),
-015/017/018/020/022/024/026/027 are data grants/seeds (015 applied
+015/017/018/020/022/024/026/027/029 are data grants/seeds (015 applied
 2026-07-25; the rest run only after their code deploy; headers state the
-ordering). 024 and 027 are applied via `supabase-py`, not pasted into the SQL
-Editor, because the system-prompt literal is long enough that clipboard quote
-conversion mangles it. Tables:
+ordering). 024, 027, and 029 are applied via `supabase-py`, not pasted into
+the SQL Editor, because the system-prompt literal is long enough that
+clipboard quote conversion mangles it. Tables:
 organizations, agents, conversations, messages, memory_facts /
 memory_events / memory_context, obsidian_notes / obsidian_note_chunks
 (pgvector, 512-dim text-embedding-3-small, RPC `search_obsidian_notes`),
@@ -190,8 +196,10 @@ Defaulted/optional: `DEFAULT_AGENT_SLUG` (claw-main),
 `POSTHOG_HOST`, `POSTHOG_ENABLED`, `FRONTEND_ANALYTICS_TOKEN`,
 `EVAL_JUDGE_MODEL`, `EVAL_TEST_ORG_ID`, `CLAW_WEBHOOK_SECRET` ("" = webhooks
 disabled), `CLAW_APP_TOKEN` ("" = app/voice endpoints disabled),
-`FASTMAIL_API_TOKEN` ("" = mail watching/reading off). Railway also needs
-`PORT=8000` on the web service (healthcheck).
+`FASTMAIL_API_TOKEN` ("" = mail watching/reading off), `AGENTMAIL_API_KEY`
+("" = email tools degraded and the agentmail watcher off),
+`AGENTMAIL_INBOX_ID`. Railway also needs `PORT=8000` on the web service
+(healthcheck).
 
 ## Evals
 

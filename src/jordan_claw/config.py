@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     claw_webhook_secret: str = ""
     claw_app_token: str = ""
     fastmail_api_token: str = ""
+    # AgentMail: the agent's own inbox. Empty key = email tools degraded
+    # and the agentmail watcher off.
+    agentmail_api_key: str = ""
+    agentmail_inbox_id: str = "jordanb@agentmail.to"
 
     model_config = ConfigDict(env_file=".env")
 

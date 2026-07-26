@@ -10,6 +10,7 @@ from supabase._async.client import AsyncClient
 
 from jordan_claw.config import Settings
 from jordan_claw.db.proactive import disable_schedule, get_enabled_schedules, update_last_run
+from jordan_claw.events.agentmail import poll_agentmail
 from jordan_claw.events.fastmail import poll_fastmail
 from jordan_claw.proactive.delivery import publish_proactive_message
 from jordan_claw.proactive.executors import (
@@ -38,6 +39,13 @@ EXECUTOR_MAP = {
     "reminder": execute_reminder,
     "weekly_training_review": execute_weekly_training_review,
     "care_docs_check": execute_care_docs_check,
+}
+
+# Watchers deliver per-email through the event pipeline itself, so they
+# don't fit the content-returning executor signature.
+WATCHER_MAP = {
+    "fastmail_watch": poll_fastmail,
+    "agentmail_watch": poll_agentmail,
 }
 
 CHECK_INTERVAL_SECONDS = 60
@@ -76,11 +84,10 @@ async def dispatch_task(
     settings: Settings,
 ) -> None:
     """Execute a scheduled task and persist its result for app surfaces."""
-    # fastmail_watch delivers per-email through the event pipeline itself,
-    # so it doesn't fit the content-returning executor signature.
-    if schedule.task_type == "fastmail_watch":
+    watcher = WATCHER_MAP.get(schedule.task_type)
+    if watcher is not None:
         try:
-            await poll_fastmail(db, settings)
+            await watcher(db, settings)
             await update_last_run(db, schedule.id)
             log.info(
                 "proactive.task_complete",

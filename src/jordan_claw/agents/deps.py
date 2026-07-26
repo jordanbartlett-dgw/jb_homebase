@@ -16,3 +16,5 @@ class AgentDeps(BaseModel):
     fastmail_app_password: str
     supabase_client: Any = None
     openai_api_key: str = ""
+    agentmail_api_key: str = ""
+    agentmail_inbox_id: str = ""

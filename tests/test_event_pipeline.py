@@ -39,6 +39,8 @@ def _settings() -> MagicMock:
     settings.fastmail_app_password = "p"
     settings.openai_api_key = "oa"
     settings.default_agent_slug = "claw-main"
+    settings.agentmail_api_key = ""
+    settings.agentmail_inbox_id = ""
     return settings
 
 

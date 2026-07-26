@@ -48,6 +48,8 @@ def _mock_settings() -> MagicMock:
     s.default_org_id = "org-1"
     s.default_agent_slug = "claw-main"
     s.tavily_api_key = "test-tavily"
+    s.agentmail_api_key = ""
+    s.agentmail_inbox_id = ""
     return s
 
 

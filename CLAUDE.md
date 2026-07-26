@@ -55,8 +55,8 @@ idempotency patterns). Do not re-derive the architecture by walking the tree.
 - **Reuse before writing.** Working integrations already exist for: Fastmail
   JMAP (`events/fastmail.py`), Whisper (`gateway/voice.py`), CalDAV
   (`tools/calendar.py`), Tavily (`tools/web_search.py`), OpenAI embeddings
-  (`obsidian/embeddings.py`). Extend or extract from these; do not write a
-  second client for a service we already talk to.
+  (`obsidian/embeddings.py`), AgentMail (`tools/email.py`). Extend or extract
+  from these; do not write a second client for a service we already talk to.
 - **New tools need a wiring proof**, not just unit tests: `TestModel(call_tools=[])`
   + `last_model_request_parameters` to assert the tool reaches the model, or
   `FunctionModel` for run-through tests (see `tests/test_capabilities.py`).
