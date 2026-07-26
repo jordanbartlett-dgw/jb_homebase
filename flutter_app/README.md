@@ -18,12 +18,11 @@ JB Homebase design pivot — this README is current).
   retained sessions, opens read-only transcripts, and New Chat archives the
   current session before the next send. Home reads `GET /app/today` for the
   existing morning briefing and structured seven-day Fastmail agenda; refresh
-  re-fetches without rerunning the agent. Voice upload
-  (`ApiClient.sendVoice` → `POST /voice`) is built and tested but unused —
-  real audio capture (`record`) is the next feature.
-- Still pending: voice overlay
-  (placeholder transcript), passkey/magic-link screens (live builds skip them
-  — the static token is the interim auth), and push delivery.
+  re-fetches without rerunning the agent. Voice capture is live: the app
+  records M4A, transcribes without sending, allows transcript/audio review,
+  then sends the edited draft through the classifier-selected agent.
+- Still pending: passkey/magic-link screens (live builds skip them — the
+  static token is the interim auth) and push delivery.
 - `dart analyze --fatal-infos` clean; unit + widget + flow tests pass
   (`flutter test`); on-simulator integration test drives the live path
   (`integration_test/live_chat_test.dart`).
@@ -45,8 +44,9 @@ nav (NavigationRail on ≥ 840dp):
 - **History** — retained app sessions grouped by date with agent identity,
   active-session state, cursor pagination, and read-only transcripts.
 
-Voice: mic in the chat composer → recording overlay (animated waveform) →
-transcript preview → Send appends to the active agent's thread.
+Voice: mic in the chat composer → real M4A recording with live amplitude →
+server-side Whisper draft → editable transcript and audio playback → Send
+routes the reviewed text and opens the classifier-selected agent's thread.
 
 ## Design system
 
@@ -89,10 +89,18 @@ from server-side conversation history, one gateway thread per agent. Agent ids i
 `lib/shared/models/agent.dart` ARE
 the gateway slugs — `claw-main`, `workout-coach`.
 
-The live-path integration test runs against a local stub of
-`/app/messages`, `/app/conversations/current`, and `/app/today` (see
-`integration_test/live_chat_test.dart`). Use the stub to avoid writing test
-conversations to production.
+The live-path integration test covers text and voice against the committed
+local stub, avoiding test conversations in production:
+
+```bash
+# terminal 1
+dart run tool/local_gateway_stub.dart
+
+# terminal 2 (simulator)
+flutter test integration_test/live_chat_test.dart -d "iPhone 17" \
+  --dart-define=GATEWAY_URL=http://127.0.0.1:8787 \
+  --dart-define=CLAW_APP_TOKEN=stub-token
+```
 
 ## File map
 
@@ -130,7 +138,7 @@ test/
 In Xcode (Runner → Signing & Capabilities): development team, Push
 Notifications, Background Modes (fetch + remote notifications), Associated
 Domains (`applinks:auth.jbhomebase.app`). APNs needs a real device and the
-`.p8` key uploaded to Firebase. App icon + splash are placeholders.
+`.p8` key uploaded to Firebase. Splash is still a placeholder.
 
 ## Locked decisions
 

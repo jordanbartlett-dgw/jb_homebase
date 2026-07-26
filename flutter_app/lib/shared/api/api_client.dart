@@ -56,7 +56,7 @@ class ApiClient {
 
   /// One key per utterance; a Railway edge replay of the same request
   /// carries the same key and converges on the original reply.
-  String _idempotencyKey() => '${DateTime.now().microsecondsSinceEpoch}-${_keySeq++}';
+  String createIdempotencyKey() => '${DateTime.now().microsecondsSinceEpoch}-${_keySeq++}';
 
   /// POST /app/messages — text chat with an explicit agent.
   Future<AgentReply> sendMessage({
@@ -73,7 +73,7 @@ class ApiClient {
           body: jsonEncode({
             'text': text,
             'agent_slug': agentSlug,
-            'idempotency_key': _idempotencyKey(),
+            'idempotency_key': createIdempotencyKey(),
           }),
         )
         .timeout(_timeout);
@@ -99,9 +99,59 @@ class ApiClient {
             'Authorization': 'Bearer $appToken',
             'Content-Type': contentType,
             'X-Audio-Filename': filename,
-            'X-Idempotency-Key': _idempotencyKey(),
+            'X-Idempotency-Key': createIdempotencyKey(),
           },
           body: audioBytes,
+        )
+        .timeout(_timeout);
+    final body = _decode(resp);
+    return AgentReply(
+      agentSlug: body['agent_slug'] as String,
+      reply: body['reply'] as String,
+      transcript: body['transcript'] as String?,
+    );
+  }
+
+  /// POST /voice/transcribe — create a server-side Whisper draft without
+  /// creating a conversation message or running an agent.
+  Future<String> transcribeVoice({
+    required List<int> audioBytes,
+    required String idempotencyKey,
+    String filename = 'voice.m4a',
+    String contentType = 'audio/m4a',
+  }) async {
+    final resp = await _inner
+        .post(
+          Uri.parse('$baseUrl/voice/transcribe'),
+          headers: {
+            'Authorization': 'Bearer $appToken',
+            'Content-Type': contentType,
+            'X-Audio-Filename': filename,
+            'X-Idempotency-Key': idempotencyKey,
+          },
+          body: audioBytes,
+        )
+        .timeout(_timeout);
+    return _decode(resp)['transcript'] as String;
+  }
+
+  /// POST /voice/messages — send the reviewed (and optionally edited)
+  /// transcript. The same utterance key is reused for replay convergence.
+  Future<AgentReply> sendVoiceTranscript({
+    required String transcript,
+    required String idempotencyKey,
+  }) async {
+    final resp = await _inner
+        .post(
+          Uri.parse('$baseUrl/voice/messages'),
+          headers: {
+            'Authorization': 'Bearer $appToken',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'transcript': transcript,
+            'idempotency_key': idempotencyKey,
+          }),
         )
         .timeout(_timeout);
     final body = _decode(resp);

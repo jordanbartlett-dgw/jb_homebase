@@ -146,6 +146,66 @@ void main() {
       expect(reply.agentSlug, 'workout-coach');
       expect(reply.reply, 'Logged it.');
     });
+
+    test('transcribes a draft without sending it', () async {
+      late http.Request captured;
+      final client = ApiClient(
+        baseUrl: 'https://gateway.test',
+        appToken: 'claw-token',
+        inner: MockClient((request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode({'transcript': 'review this first'}),
+            200,
+          );
+        }),
+      );
+
+      final transcript = await client.transcribeVoice(
+        audioBytes: [4, 5, 6],
+        filename: 'draft.m4a',
+        idempotencyKey: 'draft-123',
+      );
+
+      expect(captured.url.toString(), 'https://gateway.test/voice/transcribe');
+      expect(captured.headers['Authorization'], 'Bearer claw-token');
+      expect(captured.headers['X-Audio-Filename'], 'draft.m4a');
+      expect(captured.headers['X-Idempotency-Key'], 'draft-123');
+      expect(captured.bodyBytes, [4, 5, 6]);
+      expect(transcript, 'review this first');
+    });
+
+    test('sends the edited transcript with the draft idempotency key', () async {
+      late http.Request captured;
+      final client = ApiClient(
+        baseUrl: 'https://gateway.test',
+        appToken: 'claw-token',
+        inner: MockClient((request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode({
+              'transcript': 'edited workout',
+              'agent_slug': 'workout-coach',
+              'reply': 'Logged it.',
+            }),
+            200,
+          );
+        }),
+      );
+
+      final reply = await client.sendVoiceTranscript(
+        transcript: 'edited workout',
+        idempotencyKey: 'draft-123',
+      );
+
+      expect(captured.url.toString(), 'https://gateway.test/voice/messages');
+      expect(captured.headers['Authorization'], 'Bearer claw-token');
+      final body = jsonDecode(captured.body) as Map<String, dynamic>;
+      expect(body['transcript'], 'edited workout');
+      expect(body['idempotency_key'], 'draft-123');
+      expect(reply.agentSlug, 'workout-coach');
+      expect(reply.reply, 'Logged it.');
+    });
   });
 
   group('conversation history', () {

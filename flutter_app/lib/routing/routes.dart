@@ -22,4 +22,5 @@ class Routes {
 
   // Voice capture overlay (modal)
   static const String voice = '/voice';
+  static const String voicePreview = '/voice/preview';
 }

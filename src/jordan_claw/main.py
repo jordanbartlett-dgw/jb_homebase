@@ -45,11 +45,14 @@ from jordan_claw.gateway.classifier import classify
 from jordan_claw.gateway.voice import (
     OriginalRunIncompleteError,
     TranscriptionError,
+    VoiceMessageRequest,
     VoiceResponse,
+    VoiceTranscriptionResponse,
     handle_app_message,
     idempotency_key,
     replay_response,
     transcribe,
+    transcribe_once,
 )
 from jordan_claw.health import build_health_report
 from jordan_claw.proactive.scheduler import scheduler_loop
@@ -393,3 +396,72 @@ async def voice_message(request: Request) -> VoiceResponse:
     except OriginalRunIncompleteError as exc:
         raise HTTPException(status_code=504, detail="original request did not complete") from exc
     return VoiceResponse(transcript=transcript, agent_slug=agent_slug, reply=response.content)
+
+
+@app.post("/voice/transcribe", response_model=VoiceTranscriptionResponse)
+async def voice_transcription(request: Request) -> VoiceTranscriptionResponse:
+    """Transcribe an audio draft without sending it to an agent.
+
+    The Flutter preview-before-send flow calls this after recording stops.
+    No conversation or message row is created. X-Idempotency-Key converges
+    Railway edge replays onto one in-process Whisper task/result.
+    """
+    _require_app_token(request, surface="voice")
+    settings = request.app.state.settings
+    audio = await request.body()
+    filename = request.headers.get("X-Audio-Filename", "voice.m4a")
+    content_type = request.headers.get("Content-Type", "application/octet-stream")
+    key = idempotency_key(audio, request.headers.get("X-Idempotency-Key"))
+
+    try:
+        transcript = await transcribe_once(
+            audio,
+            filename,
+            content_type,
+            settings,
+            key=key,
+        )
+    except TranscriptionError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return VoiceTranscriptionResponse(transcript=transcript)
+
+
+@app.post("/voice/messages", response_model=VoiceResponse)
+async def voice_transcript_message(
+    body: VoiceMessageRequest,
+    request: Request,
+) -> VoiceResponse:
+    """Route a reviewed voice transcript and run its selected agent.
+
+    This is the only step in the two-stage voice flow that persists a user
+    message. The required idempotency key gives it the same replay convergence
+    guarantees as the backward-compatible one-shot POST /voice endpoint.
+    """
+    _require_app_token(request, surface="voice")
+    settings = request.app.state.settings
+    db = request.app.state.db
+    key = idempotency_key(body.transcript.encode(), body.idempotency_key)
+
+    try:
+        original = await get_message_by_channel_id(db, key)
+        if original is not None:
+            return await replay_response(db, original, org_id=settings.default_org_id)
+
+        agent_slug = await classify(db, body.transcript, settings.default_org_id)
+        response = await handle_app_message(
+            db,
+            org_id=settings.default_org_id,
+            agent_slug=agent_slug,
+            text=body.transcript,
+            settings=settings,
+            channel_message_id=key,
+            channel=APP_CHANNEL,
+            channel_thread_id=agent_slug,
+        )
+    except OriginalRunIncompleteError as exc:
+        raise HTTPException(status_code=504, detail="original request did not complete") from exc
+    return VoiceResponse(
+        transcript=body.transcript,
+        agent_slug=agent_slug,
+        reply=response.content,
+    )

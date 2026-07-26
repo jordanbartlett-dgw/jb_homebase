@@ -105,6 +105,34 @@ class AgentThread extends _$AgentThread {
     });
   }
 
+  /// Apply the already-completed voice exchange to the classified agent's
+  /// thread. Voice preview sends only after review, so both messages arrive
+  /// together rather than showing a typing state on the recording screen.
+  void appendVoiceExchange({
+    required String transcript,
+    required String reply,
+  }) {
+    final current = state.asData?.value ?? const <Message>[];
+    final now = DateTime.now();
+    state = AsyncData([
+      ...current,
+      Message(
+        id: 'msg-${now.microsecondsSinceEpoch}-voice-user',
+        role: MessageRole.user,
+        body: transcript,
+        timestamp: now,
+      ),
+      Message(
+        id: 'msg-${now.microsecondsSinceEpoch}-voice-assistant',
+        role: MessageRole.assistant,
+        body: reply,
+        timestamp: now.add(const Duration(milliseconds: 1)),
+      ),
+    ]);
+    ref.read(agentTypingProvider(agentId).notifier).set(false);
+    ref.invalidate(conversationHistoryProvider);
+  }
+
   Future<bool> startNewChat() async {
     if (ref.read(agentTypingProvider(agentId))) return false;
     final previous = state.asData?.value ?? const <Message>[];

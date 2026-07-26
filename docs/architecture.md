@@ -37,12 +37,20 @@ Every inbound message, regardless of channel, funnels into
   an agent run. Calendar failure degrades to `calendar_status="unavailable"`
   while preserving the digest. Briefings are persisted directly as app
   artifacts, independent of an outbound delivery channel.
-- `POST /voice` (`main.py::voice_message`): raw audio body + bearer auth →
-  `gateway/voice.py::transcribe` (raw httpx to OpenAI Whisper) →
-  `gateway/classifier.py::classify` (Haiku, structured `RouteDecision`, always
-  falls back to `claw-main`) → `gateway/voice.py::handle_app_message` → same
-  `handle_message` core. Replayed request skips transcription+run and polls the
-  original reply (`await_original_reply`, 2s × 90s → 504).
+- Voice supports both the original one-shot adapter and the app's
+  preview-before-send flow. `POST /voice` (`main.py::voice_message`) remains
+  raw audio → Whisper → classifier → agent for backward compatibility.
+  The Flutter app uses `POST /voice/transcribe` (raw M4A → Whisper draft; no
+  conversation/message write) followed only after review by
+  `POST /voice/messages` (edited transcript + stable idempotency key →
+  `gateway/classifier.py::classify` → `gateway/voice.py::handle_app_message` →
+  the same `handle_message` core). Reviewed voice messages persist in channel
+  `app`, with `channel_thread_id` = classified slug, so they hydrate and rotate
+  in the same per-agent thread as text. Classifier failure always falls back
+  to `claw-main`. Agent-run replays poll the original reply
+  (`await_original_reply`, 2s × 90s → 504); transcription-only Railway replays
+  converge through a five-minute process-local task/result cache and can never
+  duplicate a message.
 
 ### Event flow (webhooks + fastmail)
 
@@ -141,6 +149,7 @@ Observability details, event catalogue, dashboard ids: `docs/observability.md`.
 |---|---|---|
 | Duplicate inbound | stable app keys (`app-{slug}-{key}`, `app-voice-{key}`) | `db/messages.py::message_exists` |
 | Railway edge replay (>20s no response) | stable idempotency key + replay converges on original run's reply | `gateway/voice.py::await_original_reply`, `app_chat.py::replay_app_response` |
+| Voice draft replay | same draft key shares the in-flight/completed Whisper result for five minutes; no DB side effect | `gateway/voice.py::transcribe_once` |
 | Fire-and-forget task GC | strong-ref sets + `drain_*` helpers | `main.py`, `agent_runner.py`, `emitter.py` |
 | Double proactive send | tz-aware `was_sent_today` | `proactive/delivery.py` |
 | Topic bleed | 30-min idle rotation (archive + fresh conversation) | `db/conversations.py` |
@@ -150,8 +159,8 @@ Observability details, event catalogue, dashboard ids: `docs/observability.md`.
 
 ## Database (Supabase, hosted)
 
-Migrations `001`–`027` (005 removed as a no-op), applied by hand in the SQL
-Editor. 016/019/021/023/025 are schema (run before their code deploy),
+Migrations `001`–`028` (005 removed as a no-op), applied by hand in the SQL
+Editor. 016/019/021/023/025/028 are schema (run before their code deploy),
 015/017/018/020/022/024/026/027 are data grants/seeds (015 applied
 2026-07-25; the rest run only after their code deploy; headers state the
 ordering). 024 and 027 are applied via `supabase-py`, not pasted into the SQL
@@ -226,13 +235,16 @@ hydration, paginated read-only History, New Chat archiving, and Today
 (`ApiClient.fetchToday` → `/app/today`) with a real morning briefing and
 structured seven-day calendar. `TodayRepository` maps wire payloads to domain
 models; `TodayController` owns refresh/loading/error state; Home, digest
-detail, and Calendar remain lean views. Built but uncalled:
-`ApiClient.sendVoice` → `/voice`. Any NEW live surface must branch on
+detail, and Calendar remain lean views. Voice is live: `record` captures mono
+AAC into a temporary M4A, `permission_handler` owns runtime microphone access,
+live dBFS samples drive the capture waveform, `/voice/transcribe` creates an
+editable draft, `audio_waveforms` provides playback/seeking, and
+`/voice/messages` sends the reviewed transcript into the classifier-selected
+agent thread. Any NEW live surface must branch on
 `GatewayConfig.isLive` and keep the mock path working — widget tests run in
 mock mode, and an unguarded live call hits an empty baseUrl there. Stubbed:
-voice capture/preview (fake waveform, placeholder transcript),
-passkey/magic-link (live builds skip auth — the static token is interim auth),
-push (Firebase deps present, uninitialized). Blocked on Apple Developer account: DEVELOPMENT_TEAM /
+passkey/magic-link (live builds skip auth — the static token is interim auth)
+and push (Firebase deps present, uninitialized). Blocked on Apple Developer account: DEVELOPMENT_TEAM /
 archiving, APNs key, AASA hosting for passkeys+magic-link (fallback decision:
 ship magic-link-only if passkeys breaks). Xcode 26.0 pin: `device_info_plus`
 12.3.0 override until Xcode ≥ 26.1.

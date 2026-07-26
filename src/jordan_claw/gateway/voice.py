@@ -6,7 +6,7 @@ import time
 
 import httpx
 import structlog
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from supabase._async.client import AsyncClient
 
 from jordan_claw.analytics.types import RunKind
@@ -25,6 +25,11 @@ VOICE_CHANNEL = "app-voice"
 IDEMPOTENCY_KEY_MAX_LEN = 120
 POLL_INTERVAL_S = 2.0
 POLL_TIMEOUT_S = 90.0
+TRANSCRIPTION_CACHE_TTL_S = 300.0
+
+_transcription_tasks: dict[str, asyncio.Task[str]] = {}
+_transcription_cache: dict[str, tuple[float, str]] = {}
+_transcription_lock = asyncio.Lock()
 
 
 class TranscriptionError(Exception):
@@ -48,6 +53,27 @@ class VoiceResponse(BaseModel):
     transcript: str
     agent_slug: str
     reply: str
+
+
+class VoiceTranscriptionResponse(BaseModel):
+    """Draft response from POST /voice/transcribe; no message has been sent."""
+
+    transcript: str
+
+
+class VoiceMessageRequest(BaseModel):
+    """Reviewed transcript submitted by the voice preview screen."""
+
+    transcript: str = Field(min_length=1, max_length=100_000)
+    idempotency_key: str = Field(min_length=1, max_length=IDEMPOTENCY_KEY_MAX_LEN)
+
+    @field_validator("transcript", "idempotency_key")
+    @classmethod
+    def reject_blank(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("must not be blank")
+        return cleaned
 
 
 async def transcribe(
@@ -81,6 +107,55 @@ async def transcribe(
     if not isinstance(text, str):
         raise TranscriptionError("Transcription response missing text")
     return text
+
+
+async def transcribe_once(
+    audio: bytes,
+    filename: str,
+    content_type: str,
+    settings: Settings,
+    *,
+    key: str,
+) -> str:
+    """Transcribe one draft idempotently without creating a conversation row.
+
+    Railway can replay a slow upload while Whisper is still running. Drafts
+    intentionally do not touch the database, so a short process-local cache
+    converges concurrent and immediately repeated requests. A restart may
+    repeat the provider call, but cannot duplicate a user message or agent run.
+    """
+    now = time.monotonic()
+    async with _transcription_lock:
+        expired = [
+            cached_key
+            for cached_key, (created_at, _) in _transcription_cache.items()
+            if now - created_at >= TRANSCRIPTION_CACHE_TTL_S
+        ]
+        for cached_key in expired:
+            _transcription_cache.pop(cached_key, None)
+
+        cached = _transcription_cache.get(key)
+        if cached is not None:
+            return cached[1]
+
+        task = _transcription_tasks.get(key)
+        if task is None:
+            task = asyncio.create_task(transcribe(audio, filename, content_type, settings))
+            _transcription_tasks[key] = task
+
+    try:
+        transcript = await asyncio.shield(task)
+    except Exception:
+        async with _transcription_lock:
+            if _transcription_tasks.get(key) is task:
+                _transcription_tasks.pop(key, None)
+        raise
+
+    async with _transcription_lock:
+        _transcription_cache[key] = (time.monotonic(), transcript)
+        if _transcription_tasks.get(key) is task:
+            _transcription_tasks.pop(key, None)
+    return transcript
 
 
 def idempotency_key(audio: bytes, header: str | None) -> str:

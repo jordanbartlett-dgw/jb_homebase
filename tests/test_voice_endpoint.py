@@ -105,6 +105,33 @@ async def test_transcribe_raises_on_network_error(monkeypatch):
         await transcribe(AUDIO, "note.m4a", "audio/m4a", _settings())
 
 
+async def test_transcribe_once_converges_repeated_draft_key(monkeypatch):
+    from jordan_claw.gateway import voice
+
+    voice._transcription_cache.clear()
+    voice._transcription_tasks.clear()
+    mock_transcribe = AsyncMock(return_value="draft transcript")
+    monkeypatch.setattr(voice, "transcribe", mock_transcribe)
+
+    first = await voice.transcribe_once(
+        AUDIO,
+        "note.m4a",
+        "audio/m4a",
+        _settings(),
+        key="app-voice-draft-1",
+    )
+    second = await voice.transcribe_once(
+        b"different replay body",
+        "note.m4a",
+        "audio/m4a",
+        _settings(),
+        key="app-voice-draft-1",
+    )
+
+    assert first == second == "draft transcript"
+    assert mock_transcribe.await_count == 1
+
+
 # --- idempotency_key ---
 
 
@@ -334,6 +361,96 @@ async def test_voice_returns_502_on_transcription_failure():
 
     assert resp.status_code == 502
     assert resp.json()["detail"] == "Transcription failed (HTTP 500)"
+
+
+# --- two-stage preview-before-send voice flow ---
+
+
+async def test_voice_transcribe_returns_draft_without_running_agent():
+    from jordan_claw import main
+
+    settings = _wire_app_state(app_token="app-token")
+    with (
+        patch.object(
+            main,
+            "transcribe_once",
+            new=AsyncMock(return_value="review this transcript"),
+        ) as mock_transcribe,
+        patch.object(main, "classify", new=AsyncMock()) as mock_classify,
+        patch.object(main, "handle_app_message", new=AsyncMock()) as mock_handle,
+    ):
+        async with _voice_client() as client:
+            resp = await client.post(
+                "/voice/transcribe",
+                content=AUDIO,
+                headers={
+                    "Authorization": "Bearer app-token",
+                    "Content-Type": "audio/m4a",
+                    "X-Audio-Filename": "draft.m4a",
+                    "X-Idempotency-Key": "draft-1",
+                },
+            )
+
+    assert resp.status_code == 200
+    assert resp.json() == {"transcript": "review this transcript"}
+    args = mock_transcribe.call_args.args
+    assert args[:4] == (AUDIO, "draft.m4a", "audio/m4a", settings)
+    assert mock_transcribe.call_args.kwargs["key"] == "app-voice-draft-1"
+    mock_classify.assert_not_awaited()
+    mock_handle.assert_not_awaited()
+
+
+async def test_voice_message_routes_reviewed_transcript_once():
+    from jordan_claw import main
+
+    _wire_app_state(app_token="app-token")
+    gateway_response = GatewayResponse(content="Logged it.", conversation_id="c1")
+    with (
+        patch.object(main, "get_message_by_channel_id", new=AsyncMock(return_value=None)),
+        patch.object(main, "classify", new=AsyncMock(return_value="workout-coach")) as mock_cls,
+        patch.object(
+            main,
+            "handle_app_message",
+            new=AsyncMock(return_value=gateway_response),
+        ) as mock_handle,
+    ):
+        async with _voice_client() as client:
+            resp = await client.post(
+                "/voice/messages",
+                json={
+                    "transcript": "  log my edited workout  ",
+                    "idempotency_key": "draft-1",
+                },
+                headers={"Authorization": "Bearer app-token"},
+            )
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "transcript": "log my edited workout",
+        "agent_slug": "workout-coach",
+        "reply": "Logged it.",
+    }
+    assert mock_cls.call_args.args[1:] == ("log my edited workout", "org-1")
+    assert mock_handle.call_args.kwargs["channel_message_id"] == "app-voice-draft-1"
+    assert mock_handle.call_args.kwargs["text"] == "log my edited workout"
+    assert mock_handle.call_args.kwargs["channel"] == "app"
+    assert mock_handle.call_args.kwargs["channel_thread_id"] == "workout-coach"
+
+
+async def test_voice_message_rejects_blank_transcript_before_agent_run():
+    from jordan_claw import main
+
+    _wire_app_state(app_token="app-token")
+    with patch.object(main, "handle_app_message", new=AsyncMock()) as mock_handle:
+        async with _voice_client() as client:
+            resp = await client.post(
+                "/voice/messages",
+                json={"transcript": "   ", "idempotency_key": "draft-1"},
+                headers={"Authorization": "Bearer app-token"},
+            )
+
+    assert resp.status_code == 422
+    mock_handle.assert_not_awaited()
 
 
 # --- /voice replay convergence ---

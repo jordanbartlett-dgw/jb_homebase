@@ -11,6 +11,8 @@ import '../features/home/calendar_screen.dart';
 import '../features/home/dashboard_screen.dart';
 import '../features/home/digest_detail_screen.dart';
 import '../features/voice/voice_overlay.dart';
+import '../features/voice/voice_draft.dart';
+import '../features/voice/voice_preview.dart';
 import '../shell/homebase_shell.dart';
 import '../state/app_state.dart';
 import 'routes.dart';
@@ -55,6 +57,16 @@ GoRouter buildAppRouter(WidgetRef ref) {
           fullscreenDialog: true,
           child: VoiceOverlay(),
         ),
+      ),
+      GoRoute(
+        path: Routes.voicePreview,
+        pageBuilder: (context, state) {
+          final draft = state.extra as VoiceDraft?;
+          return MaterialPage<void>(
+            fullscreenDialog: true,
+            child: draft == null ? const VoiceOverlay() : VoicePreview(draft: draft),
+          );
+        },
       ),
 
       // Tab shell — each branch keeps its own state and nav stack.
