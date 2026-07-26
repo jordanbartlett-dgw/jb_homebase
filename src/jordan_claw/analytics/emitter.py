@@ -72,6 +72,8 @@ async def agent_run_completed(
     success: bool,
     error_type: str | None,
     error_severity: str | None,
+    cache_read_tokens: int,
+    cache_write_tokens: int,
 ) -> None:
     props = {
         "agent_slug": agent_slug,
@@ -88,6 +90,8 @@ async def agent_run_completed(
         "success": success,
         "error_type": error_type,
         "error_severity": error_severity,
+        "cache_read_tokens": cache_read_tokens,
+        "cache_write_tokens": cache_write_tokens,
     }
     _fire("agent_run_completed", _resolve_distinct_id(user_id, org_id), props)
 

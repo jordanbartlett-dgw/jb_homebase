@@ -95,6 +95,38 @@ async def test_save_usage_event_drops_none_fields():
     assert "error_type" not in payload
     assert "error_severity" not in payload
     assert "trace_id" not in payload
+    assert "cache_read_tokens" not in payload
+    assert "cache_write_tokens" not in payload
+
+
+@pytest.mark.asyncio
+async def test_save_usage_event_includes_cache_tokens_when_provided():
+    db, query = _mock_db(select_data=[{"id": "u1"}])
+
+    await save_usage_event(
+        db,
+        org_id=ORG_ID,
+        agent_slug="claw-main",
+        conversation_id="conv-1",
+        channel="app",
+        run_kind=RunKind.USER_MESSAGE,
+        schedule_name=None,
+        model="anthropic:claude-sonnet-4-5-20250929",
+        input_tokens=1000,
+        output_tokens=200,
+        cost_usd=Decimal("0.01"),
+        duration_ms=1500,
+        tool_call_count=1,
+        success=True,
+        error_type=None,
+        error_severity=None,
+        cache_read_tokens=300,
+        cache_write_tokens=150,
+    )
+
+    payload = query.insert.call_args[0][0]
+    assert payload["cache_read_tokens"] == 300
+    assert payload["cache_write_tokens"] == 150
 
 
 @pytest.mark.asyncio

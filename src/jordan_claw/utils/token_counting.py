@@ -10,4 +10,6 @@ def extract_usage(usage: RunUsage) -> dict:
         "output_tokens": usage.output_tokens or 0,
         "total_tokens": (usage.input_tokens or 0) + (usage.output_tokens or 0),
         "requests": usage.requests or 0,
+        "cache_read_tokens": usage.cache_read_tokens or 0,
+        "cache_write_tokens": usage.cache_write_tokens or 0,
     }

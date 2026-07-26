@@ -103,6 +103,44 @@ def test_agent_run_completed_via_proxy_dispatches():
     mock_emit.assert_awaited_once()
     kwargs = mock_emit.call_args.kwargs
     assert kwargs["run_kind"] == RunKind.USER_MESSAGE
+    # No cache_read_tokens/cache_write_tokens in the request body -> default to 0.
+    assert kwargs["cache_read_tokens"] == 0
+    assert kwargs["cache_write_tokens"] == 0
+
+
+def test_agent_run_completed_via_proxy_passes_through_cache_tokens():
+    with patch(
+        "jordan_claw.gateway.analytics_proxy.emitter.agent_run_completed",
+        new=AsyncMock(),
+    ) as mock_emit:
+        client = TestClient(_app_with_token())
+        resp = client.post(
+            "/api/analytics/event",
+            json={
+                "event": "agent_run_completed",
+                "distinct_id": "user-42",
+                "properties": {
+                    "agent_slug": "claw-main",
+                    "run_kind": "user_message",
+                    "channel": "web",
+                    "model": "anthropic:claude-sonnet-5",
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "duration_ms": 1200,
+                    "tool_call_count": 0,
+                    "success": True,
+                    "cache_read_tokens": 30,
+                    "cache_write_tokens": 10,
+                },
+            },
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+
+    assert resp.status_code == 202
+    mock_emit.assert_awaited_once()
+    kwargs = mock_emit.call_args.kwargs
+    assert kwargs["cache_read_tokens"] == 30
+    assert kwargs["cache_write_tokens"] == 10
 
 
 def test_bad_run_kind_returns_400():

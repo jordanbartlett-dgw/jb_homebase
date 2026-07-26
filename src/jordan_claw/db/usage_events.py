@@ -27,6 +27,8 @@ async def save_usage_event(
     error_severity: str | None,
     metadata: dict | None = None,
     trace_id: str | None = None,
+    cache_read_tokens: int | None = None,
+    cache_write_tokens: int | None = None,
 ) -> None:
     """Insert one row into usage_events. None-valued optional fields are dropped."""
     data: dict = {
@@ -55,6 +57,10 @@ async def save_usage_event(
         data["metadata"] = metadata
     if trace_id is not None:
         data["trace_id"] = trace_id
+    if cache_read_tokens is not None:
+        data["cache_read_tokens"] = cache_read_tokens
+    if cache_write_tokens is not None:
+        data["cache_write_tokens"] = cache_write_tokens
 
     await client.table("usage_events").insert(data).execute()
 

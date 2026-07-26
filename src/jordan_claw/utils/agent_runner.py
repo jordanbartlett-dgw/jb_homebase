@@ -165,6 +165,8 @@ async def run_agent_instrumented[OutputT](
                     error_type=error_type,
                     error_severity=error_severity,
                     trace_id=trace_id,
+                    cache_read_tokens=0,
+                    cache_write_tokens=0,
                 )
             )
             await emitter.agent_run_completed(
@@ -184,13 +186,21 @@ async def run_agent_instrumented[OutputT](
                 success=False,
                 error_type=error_type,
                 error_severity=error_severity,
+                cache_read_tokens=0,
+                cache_write_tokens=0,
             )
             raise
 
         duration_ms = int((time.monotonic() - start) * 1000)
         usage = extract_usage(result.usage)
         tool_call_count = _count_tool_calls(result.all_messages())
-        cost = compute_cost(model, usage["input_tokens"], usage["output_tokens"])
+        cost = compute_cost(
+            model,
+            usage["input_tokens"],
+            usage["output_tokens"],
+            cache_read_tokens=usage["cache_read_tokens"],
+            cache_write_tokens=usage["cache_write_tokens"],
+        )
 
         if usage["total_tokens"] > max_total_tokens:
             log.warning(
@@ -201,6 +211,8 @@ async def run_agent_instrumented[OutputT](
             )
             span.set_attribute("usage.input_tokens", usage["input_tokens"])
             span.set_attribute("usage.output_tokens", usage["output_tokens"])
+            span.set_attribute("usage.cache_read_tokens", usage["cache_read_tokens"])
+            span.set_attribute("usage.cache_write_tokens", usage["cache_write_tokens"])
             span.set_attribute("usage.cost_usd", float(cost) if cost is not None else None)
             span.set_attribute("usage.duration_ms", duration_ms)
             span.set_attribute("usage.tool_call_count", tool_call_count)
@@ -226,6 +238,8 @@ async def run_agent_instrumented[OutputT](
                     error_type="token_budget_exceeded",
                     error_severity="high",
                     trace_id=trace_id,
+                    cache_read_tokens=usage["cache_read_tokens"],
+                    cache_write_tokens=usage["cache_write_tokens"],
                 )
             )
             await emitter.agent_run_completed(
@@ -245,6 +259,8 @@ async def run_agent_instrumented[OutputT](
                 success=False,
                 error_type="token_budget_exceeded",
                 error_severity="high",
+                cache_read_tokens=usage["cache_read_tokens"],
+                cache_write_tokens=usage["cache_write_tokens"],
             )
             raise TokenBudgetExceededError(
                 f"agent_run total_tokens={usage['total_tokens']} > budget={max_total_tokens}"
@@ -252,6 +268,8 @@ async def run_agent_instrumented[OutputT](
 
         span.set_attribute("usage.input_tokens", usage["input_tokens"])
         span.set_attribute("usage.output_tokens", usage["output_tokens"])
+        span.set_attribute("usage.cache_read_tokens", usage["cache_read_tokens"])
+        span.set_attribute("usage.cache_write_tokens", usage["cache_write_tokens"])
         span.set_attribute("usage.cost_usd", float(cost) if cost is not None else None)
         span.set_attribute("usage.duration_ms", duration_ms)
         span.set_attribute("usage.tool_call_count", tool_call_count)
@@ -276,6 +294,8 @@ async def run_agent_instrumented[OutputT](
                 error_type=None,
                 error_severity=None,
                 trace_id=trace_id,
+                cache_read_tokens=usage["cache_read_tokens"],
+                cache_write_tokens=usage["cache_write_tokens"],
             )
         )
         await emitter.agent_run_completed(
@@ -295,6 +315,8 @@ async def run_agent_instrumented[OutputT](
             success=True,
             error_type=None,
             error_severity=None,
+            cache_read_tokens=usage["cache_read_tokens"],
+            cache_write_tokens=usage["cache_write_tokens"],
         )
 
         return AgentRunResult(

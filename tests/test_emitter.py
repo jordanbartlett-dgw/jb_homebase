@@ -52,6 +52,8 @@ async def test_agent_run_completed_emits_with_typed_props(mock_client):
         success=True,
         error_type=None,
         error_severity=None,
+        cache_read_tokens=30,
+        cache_write_tokens=10,
     )
     await _drain()
 
@@ -73,6 +75,8 @@ async def test_agent_run_completed_emits_with_typed_props(mock_client):
     assert props["success"] is True
     assert props["error_type"] is None
     assert props["error_severity"] is None
+    assert props["cache_read_tokens"] == 30
+    assert props["cache_write_tokens"] == 10
 
 
 @pytest.mark.asyncio
@@ -94,6 +98,8 @@ async def test_agent_run_completed_includes_error_severity_on_failure(mock_clien
         success=False,
         error_type="timeout",
         error_severity="medium",
+        cache_read_tokens=0,
+        cache_write_tokens=0,
     )
     await _drain()
 
@@ -121,6 +127,8 @@ async def test_agent_run_completed_uses_user_id_when_provided(mock_client):
         success=True,
         error_type=None,
         error_severity=None,
+        cache_read_tokens=0,
+        cache_write_tokens=0,
     )
     await _drain()
 
