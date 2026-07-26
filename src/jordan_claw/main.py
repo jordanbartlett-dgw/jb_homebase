@@ -63,8 +63,16 @@ from jordan_claw.proactive.scheduler import scheduler_loop
 from jordan_claw.utils.agent_runner import drain_pending_writes
 
 
-def configure_logging(environment: str, log_level: str) -> None:
-    """Configure structlog with console (dev) or JSON (prod) rendering."""
+def configure_logging(environment: str, log_level: str, *, logfire_enabled: bool = False) -> None:
+    """Configure structlog with console (dev) or JSON (prod) rendering.
+
+    When `logfire_enabled`, every structlog event is also forwarded to Logfire
+    (correlated with the active trace/span) via `logfire.integrations.structlog.
+    LogfireProcessor`, exported as `logfire.StructlogProcessor`. `console_log=False`
+    (its default) keeps the bridge additive: Logfire does its own stdout export,
+    so the processor must not also print to console, or lines double up next to
+    our existing JSON/console renderer.
+    """
     shared_processors = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
@@ -73,6 +81,9 @@ def configure_logging(environment: str, log_level: str) -> None:
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
     ]
+
+    if logfire_enabled:
+        shared_processors.append(logfire.StructlogProcessor(console_log=False))
 
     if environment == "production":
         renderer = structlog.processors.JSONRenderer()
@@ -113,7 +124,11 @@ async def lifespan(app: FastAPI):
         logfire.instrument_httpx()
         logfire.instrument_pydantic_ai()
 
-    configure_logging(settings.environment, settings.log_level)
+    configure_logging(
+        settings.environment,
+        settings.log_level,
+        logfire_enabled=bool(settings.logfire_token),
+    )
     logger = structlog.get_logger()
 
     if settings.logfire_token:
