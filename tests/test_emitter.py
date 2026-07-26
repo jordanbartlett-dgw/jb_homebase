@@ -30,6 +30,8 @@ def test_allowed_events_matches_emitter_function_names():
         "eval_run_completed",
         "feedback_submitted",
         "transcription_completed",
+        "email_sent",
+        "event_trigger_fired",
     }
     assert expected == emitter.ALLOWED_EVENTS
 
@@ -261,6 +263,100 @@ async def test_transcription_completed_handles_none_duration_and_cost(mock_clien
 
     props = mock_client.capture.call_args.kwargs["properties"]
     assert props["duration_s"] is None
+    assert props["cost_usd"] is None
+
+
+@pytest.mark.asyncio
+async def test_email_sent_emits_send_props(mock_client):
+    await emitter.email_sent(
+        org_id="org-1",
+        user_id=None,
+        direction="send",
+        message_id="msg-1",
+        thread_id="th-1",
+        body_length=42,
+        subject_length=7,
+    )
+    await _drain()
+
+    mock_client.capture.assert_called_once()
+    kwargs = mock_client.capture.call_args.kwargs
+    assert kwargs["event"] == "email_sent"
+    assert kwargs["distinct_id"] == "org-1"
+    props = kwargs["properties"]
+    assert props["direction"] == "send"
+    assert props["message_id"] == "msg-1"
+    assert props["thread_id"] == "th-1"
+    assert props["body_length"] == 42
+    assert props["subject_length"] == 7
+
+
+@pytest.mark.asyncio
+async def test_email_sent_reply_has_no_subject_length(mock_client):
+    await emitter.email_sent(
+        org_id="org-1",
+        user_id=None,
+        direction="reply",
+        message_id="msg-2",
+        thread_id="th-1",
+        body_length=10,
+        subject_length=None,
+    )
+    await _drain()
+
+    props = mock_client.capture.call_args.kwargs["properties"]
+    assert props["direction"] == "reply"
+    assert props["subject_length"] is None
+    assert "subject" not in props
+    assert "to" not in props
+
+
+@pytest.mark.asyncio
+async def test_event_trigger_fired_emits_fired_outcome(mock_client):
+    await emitter.event_trigger_fired(
+        org_id="org-1",
+        user_id=None,
+        trigger_name="inbound_email_review",
+        source="fastmail-email",
+        outcome="fired",
+        cost_usd=Decimal("0.02"),
+        input_tokens=100,
+        output_tokens=50,
+        duration_ms=900,
+    )
+    await _drain()
+
+    mock_client.capture.assert_called_once()
+    kwargs = mock_client.capture.call_args.kwargs
+    assert kwargs["event"] == "event_trigger_fired"
+    assert kwargs["distinct_id"] == "org-1"
+    props = kwargs["properties"]
+    assert props["trigger_name"] == "inbound_email_review"
+    assert props["source"] == "fastmail-email"
+    assert props["outcome"] == "fired"
+    assert props["cost_usd"] == 0.02
+    assert props["input_tokens"] == 100
+    assert props["output_tokens"] == 50
+    assert props["duration_ms"] == 900
+
+
+@pytest.mark.asyncio
+async def test_event_trigger_fired_nothing_to_send_outcome(mock_client):
+    await emitter.event_trigger_fired(
+        org_id="org-1",
+        user_id=None,
+        trigger_name="inbound_email_review",
+        source="fastmail-email",
+        outcome="nothing_to_send",
+        cost_usd=None,
+        input_tokens=10,
+        output_tokens=5,
+        duration_ms=200,
+    )
+    await _drain()
+
+    props = mock_client.capture.call_args.kwargs["properties"]
+    assert props["outcome"] == "nothing_to_send"
     assert props["cost_usd"] is None
 
 

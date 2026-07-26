@@ -17,6 +17,8 @@ ALLOWED_EVENTS: set[str] = {
     "eval_run_completed",
     "feedback_submitted",
     "transcription_completed",
+    "email_sent",
+    "event_trigger_fired",
 }
 
 _pending_tasks: set[asyncio.Task] = set()
@@ -167,6 +169,50 @@ async def transcription_completed(
         "latency_ms": latency_ms,
     }
     _fire("transcription_completed", org_id, props)
+
+
+async def email_sent(
+    *,
+    org_id: str,
+    user_id: str | None,
+    direction: str,
+    message_id: str,
+    thread_id: str,
+    body_length: int,
+    subject_length: int | None,
+) -> None:
+    props = {
+        "direction": direction,
+        "message_id": message_id,
+        "thread_id": thread_id,
+        "body_length": body_length,
+        "subject_length": subject_length,
+    }
+    _fire("email_sent", _resolve_distinct_id(user_id, org_id), props)
+
+
+async def event_trigger_fired(
+    *,
+    org_id: str,
+    user_id: str | None,
+    trigger_name: str,
+    source: str,
+    outcome: str,
+    cost_usd: Decimal | None,
+    input_tokens: int,
+    output_tokens: int,
+    duration_ms: int,
+) -> None:
+    props = {
+        "trigger_name": trigger_name,
+        "source": source,
+        "outcome": outcome,
+        "cost_usd": float(cost_usd) if cost_usd is not None else None,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "duration_ms": duration_ms,
+    }
+    _fire("event_trigger_fired", _resolve_distinct_id(user_id, org_id), props)
 
 
 async def feedback_submitted(

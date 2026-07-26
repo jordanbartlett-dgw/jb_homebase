@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.tools import email as email_tools
@@ -69,9 +70,11 @@ def _ctx(api_key: str = "test-am-key") -> SimpleNamespace:
 async def test_send_email_sends_from_own_inbox():
     fake = _fake_client()
     email_tools._clients["test-am-key"] = fake
-    result = await email_tools.send_email(
-        _ctx(), to="bob@example.com", subject="Hello", body="Hi Bob"
-    )
+    with patch("jordan_claw.tools.email.emitter.email_sent", new=AsyncMock()) as mock_emit:
+        result = await email_tools.send_email(
+            _ctx(), to="bob@example.com", subject="Hello", body="Hi Bob"
+        )
+        await email_tools.emitter.drain_pending_emits()
     assert "msg-1" in result and "th-1" in result
     assert fake.inboxes.messages.sent == [
         {
@@ -81,14 +84,33 @@ async def test_send_email_sends_from_own_inbox():
             "text": "Hi Bob",
         }
     ]
+    mock_emit.assert_awaited_once()
+    kwargs = mock_emit.call_args.kwargs
+    assert kwargs["org_id"] == "org-001"
+    assert kwargs["user_id"] is None
+    assert kwargs["direction"] == "send"
+    assert kwargs["message_id"] == "msg-1"
+    assert kwargs["thread_id"] == "th-1"
+    assert kwargs["body_length"] == len("Hi Bob")
+    assert kwargs["subject_length"] == len("Hello")
 
 
 async def test_reply_uses_message_id():
     fake = _fake_client()
     email_tools._clients["test-am-key"] = fake
-    result = await email_tools.reply_to_email(_ctx(), message_id="msg-0", body="Confirmed.")
+    with patch("jordan_claw.tools.email.emitter.email_sent", new=AsyncMock()) as mock_emit:
+        result = await email_tools.reply_to_email(_ctx(), message_id="msg-0", body="Confirmed.")
+        await email_tools.emitter.drain_pending_emits()
     assert "msg-2" in result
     assert fake.inboxes.messages.replies[0]["message_id"] == "msg-0"
+    mock_emit.assert_awaited_once()
+    kwargs = mock_emit.call_args.kwargs
+    assert kwargs["org_id"] == "org-001"
+    assert kwargs["direction"] == "reply"
+    assert kwargs["message_id"] == "msg-2"
+    assert kwargs["thread_id"] == "th-1"
+    assert kwargs["body_length"] == len("Confirmed.")
+    assert kwargs["subject_length"] is None
 
 
 async def test_list_email_threads_formats_summaries():
