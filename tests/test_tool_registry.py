@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import inspect
 
-from jordan_claw.agents.capabilities import CAPABILITY_REGISTRY
+from jordan_claw.agents.capabilities import CAPABILITY_REGISTRY, ToolGroup
 
 # All tools across every capability group, keyed by registered name.
 ALL_TOOLS = {
     name: tool
     for group in CAPABILITY_REGISTRY.values()
+    if isinstance(group, ToolGroup)
     for name, tool in group.toolset.tools.items()
 }
 

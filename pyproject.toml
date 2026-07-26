@@ -22,6 +22,7 @@ dependencies = [
     "posthog>=3.5.0",
     "pydantic-evals>=2.14.1,<3",
     "agentmail>=0.5.8",
+    "pydantic-ai-harness[codemode]>=0.11.0",
 ]
 
 [project.optional-dependencies]

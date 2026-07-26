@@ -8,16 +8,18 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.toolsets import FunctionToolset
 
-from jordan_claw.agents.capabilities import CAPABILITY_REGISTRY, resolve_capabilities
+from jordan_claw.agents.capabilities import CAPABILITY_REGISTRY, ToolGroup, resolve_capabilities
 from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.agents.factory import create_agent
 from jordan_claw.db.agents import AgentConfig
 
 
-def test_registry_covers_all_tools():
+def test_tool_counts_ignore_non_toolgroup_capabilities():
+    """CodeMode contributes no ToolGroup tools; counts cover ToolGroups only."""
     tool_names = set()
     for group in CAPABILITY_REGISTRY.values():
-        tool_names.update(group.toolset.tools)
+        if isinstance(group, ToolGroup):
+            tool_names.update(group.toolset.tools)
     assert len(tool_names) == 37
 
 
@@ -34,6 +36,7 @@ def test_expected_groups_exist():
         "reminders",
         "meds",
         "email",
+        "code_mode",
     }
 
 
@@ -151,6 +154,15 @@ async def test_email_capability_reaches_the_model():
         "list_email_threads",
         "read_email_thread",
     } <= sent
+
+
+@pytest.mark.asyncio
+async def test_code_mode_replaces_tools_with_run_code():
+    """Wiring proof: with code_mode granted, the model sees run_code and the
+    wrapped tools are no longer sent as individual function tools."""
+    sent = await _sent_tools(_prod_shaped_config("claw-main", ["core", "web", "code_mode"]))
+    assert "run_code" in sent
+    assert "search_web" not in sent
 
 
 @pytest.mark.asyncio
