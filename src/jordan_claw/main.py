@@ -148,7 +148,8 @@ async def lifespan(app: FastAPI):
     scheduler_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await scheduler_task
-    await drain_pending_writes()
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(drain_pending_writes(), timeout=5)
     await emitter.drain_pending_emits()
     shutdown_posthog()
     await app.state.anthropic.close()

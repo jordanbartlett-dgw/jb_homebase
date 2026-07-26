@@ -52,7 +52,7 @@ def build_analytics_router(*, token: str | None, org_id: str) -> APIRouter:
             await _dispatch(body.event, body.distinct_id, body.properties, org_id)
         except KeyError as exc:
             raise HTTPException(status_code=400, detail=f"missing_property: {exc.args[0]}") from exc
-        except ValueError as exc:
+        except (ValueError, TypeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"status": "accepted"}
 

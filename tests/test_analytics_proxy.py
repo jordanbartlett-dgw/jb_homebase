@@ -129,6 +129,33 @@ def test_bad_run_kind_returns_400():
     assert resp.status_code == 400
 
 
+def test_bad_prop_type_returns_400():
+    """A malformed prop type (cost_usd as a list) raises TypeError in the
+    emitter (float(cost_usd)); the proxy must map that to 400, not 500."""
+    client = TestClient(_app_with_token())
+    resp = client.post(
+        "/api/analytics/event",
+        json={
+            "event": "agent_run_completed",
+            "distinct_id": "user-42",
+            "properties": {
+                "agent_slug": "claw-main",
+                "run_kind": "user_message",
+                "channel": "web",
+                "model": "anthropic:claude-sonnet-5",
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "cost_usd": [1, 2],
+                "duration_ms": 1200,
+                "tool_call_count": 0,
+                "success": True,
+            },
+        },
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    )
+    assert resp.status_code == 400
+
+
 def test_missing_required_prop_returns_400():
     client = TestClient(_app_with_token())
     resp = client.post(
