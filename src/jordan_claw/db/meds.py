@@ -6,7 +6,13 @@ from supabase._async.client import AsyncClient
 
 from jordan_claw.meds.models import MedicationProfile
 
-PROFILE_FIELDS = ("medications", "allergies", "notes", "timeline_display_name")
+PROFILE_FIELDS = (
+    "medications",
+    "allergies",
+    "notes",
+    "timeline_display_name",
+    "date_of_birth",
+)
 
 
 async def get_medication_profile(client: AsyncClient, org_id: str) -> MedicationProfile | None:

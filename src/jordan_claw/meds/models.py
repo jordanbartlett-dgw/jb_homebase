@@ -36,6 +36,7 @@ class MedicationProfile(BaseModel):
     allergies: str | None = None
     notes: str | None = None
     timeline_display_name: str | None = None
+    date_of_birth: str | None = None
 
     def missing_fields(self) -> list[str]:
         missing: list[str] = []

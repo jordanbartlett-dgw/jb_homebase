@@ -52,6 +52,24 @@ def test_missing_fields_ignores_timeline_display_name():
     assert profile_with_name.missing_fields() == []
 
 
+def test_missing_fields_ignores_date_of_birth():
+    """date_of_birth is optional emergency-sheet content, not a core field.
+    It must never appear in missing_fields(), whether set or unset."""
+    profile = MedicationProfile(org_id="org-1")
+    assert "date_of_birth" not in profile.missing_fields()
+
+    profile_with_dob = MedicationProfile(
+        org_id="org-1",
+        medications=[
+            MedicationEntry(name="ondansetron", rxcui="26225", dose="4 mg PRN", prescriber="Dr. A")
+        ],
+        allergies="none known",
+        notes="cardiology: Dr. B, baseline QTc 470ms",
+        date_of_birth="2015-03-14",
+    )
+    assert profile_with_dob.missing_fields() == []
+
+
 def test_missing_fields_empty_when_populated():
     profile = MedicationProfile(
         org_id="org-1",
@@ -85,6 +103,29 @@ async def test_partial_save_only_writes_provided_fields(monkeypatch):
     out = await meds_tools.save_medication_profile(FakeCtx(), allergies="penicillin")
     assert "saved" in out.lower()
     assert captured == {"allergies": "penicillin"}
+
+
+@pytest.mark.asyncio
+async def test_save_medication_profile_passes_through_date_of_birth(monkeypatch):
+    """date_of_birth must reach the upsert call untouched, and a partial save
+    of it alone must not clobber other fields."""
+    captured: dict = {}
+
+    async def fake_upsert(client, org_id, **fields):
+        captured.update({k: v for k, v in fields.items() if v is not None})
+
+    from jordan_claw.tools import meds as meds_tools
+
+    monkeypatch.setattr(meds_tools, "upsert_medication_profile", fake_upsert)
+
+    class FakeCtx:
+        class deps:  # noqa: N801 — mirrors ctx.deps attribute access, not a real class
+            org_id = "org-1"
+            supabase_client = None
+
+    out = await meds_tools.save_medication_profile(FakeCtx(), date_of_birth="2015-03-14")
+    assert "saved" in out.lower()
+    assert captured == {"date_of_birth": "2015-03-14"}
 
 
 @pytest.mark.asyncio

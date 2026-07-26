@@ -265,6 +265,7 @@ async def save_medication_profile(
     allergies: str | None = None,
     notes: str | None = None,
     timeline_display_name: str | None = None,
+    date_of_birth: str | None = None,
 ) -> str:
     """Save medication profile fields when Jordan reports a change (started,
     stopped, or changed a med; new allergy; updated contacts). Partial saves are
@@ -272,6 +273,8 @@ async def save_medication_profile(
     list — read the profile first and pass the full updated list.
     timeline_display_name controls the name shown on shared documents; set it
     when Jordan says what name to use.
+    date_of_birth appears on the emergency one-pager; save it when Jordan
+    gives it.
     NOT for logging symptoms or events, and never invent doses or prescribers."""
     med_change_details: dict = {}
     if medications is not None:
@@ -300,6 +303,7 @@ async def save_medication_profile(
         allergies=allergies,
         notes=notes,
         timeline_display_name=timeline_display_name,
+        date_of_birth=date_of_birth,
     )
 
     if not med_change_details:
@@ -633,7 +637,19 @@ async def save_care_profile(
     full updated list, never just the delta. contacts is a list of
     {role, name, phone}. Never invent or infer content; only save what Jordan
     actually said.
+    critical_flags=[] is refused when the existing profile already has flags
+    on file - pass the reduced list to drop a specific flag instead; clearing
+    all of them requires Jordan's explicit confirmation.
     NOT for medications or allergies — use save_medication_profile."""
+    if critical_flags is not None and not critical_flags:
+        existing = await get_care_profile(ctx.deps.supabase_client, ctx.deps.org_id)
+        if existing is not None and existing.critical_flags:
+            return (
+                "Not saved: that would remove every critical flag. To remove a "
+                "specific flag, pass the reduced list; to clear them all, Jordan "
+                "must confirm explicitly - tell him what you are removing and why."
+            )
+
     await upsert_care_profile(
         ctx.deps.supabase_client,
         ctx.deps.org_id,
@@ -666,13 +682,12 @@ async def save_care_document(
     in over budget the tool refuses with the char count and does NOT write;
     cut routine detail, never safety content, and recompose. The handoff has
     no such gate.
-    An emergency doc requires a care profile with at least one critical_flags
+    Both doc types require a care profile with at least one critical_flags
     entry — with no critical flags on file the tool refuses outright rather
-    than writing an emergency sheet with no QT warning.
-    An emergency body must also reproduce every critical_flags entry from the
+    than writing a document with no QT warning.
+    Both doc types must also reproduce every critical_flags entry from the
     care profile VERBATIM (exact substring) — if any is missing or reworded,
     the tool refuses and names the flag that must be copied in word for word.
-    The handoff has no such gate.
     Same-day regeneration (the profile changed, Jordan asks to regenerate
     today) is versioned automatically — a second same-day save gets " - v2",
     a third " - v3", and so on — it never overwrites the same vault path.
@@ -693,22 +708,19 @@ async def save_care_document(
 
     care = await get_care_profile(ctx.deps.supabase_client, ctx.deps.org_id)
 
-    if doc_type == "emergency":
-        if care is None or not care.critical_flags:
-            return (
-                "Not written: the care profile has no critical_flags. The emergency "
-                "sheet must lead with the QT warning - confirm the critical flags "
-                "with Jordan first."
-            )
-        missing_flag = next(
-            (flag for flag in care.critical_flags if flag not in markdown_body), None
+    if care is None or not care.critical_flags:
+        return (
+            "Not written: the care profile has no critical_flags. The emergency "
+            "sheet must lead with the QT warning - confirm the critical flags "
+            "with Jordan first."
         )
-        if missing_flag is not None:
-            return (
-                f"Not written: the critical flag '{missing_flag}' must appear in the "
-                "document word for word. Rewrite the body and include it verbatim - "
-                "critical flags are never cut or paraphrased."
-            )
+    missing_flag = next((flag for flag in care.critical_flags if flag not in markdown_body), None)
+    if missing_flag is not None:
+        return (
+            f"Not written: the critical flag '{missing_flag}' must appear in the "
+            "document word for word. Rewrite the body and include it verbatim - "
+            "critical flags are never cut or paraphrased."
+        )
 
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     base_title = f"{display_name} - {CARE_DOC_LABELS[doc_type]} - {today}"

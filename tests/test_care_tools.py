@@ -240,6 +240,78 @@ async def test_save_care_profile_dumps_contacts_before_db_boundary(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# save_care_profile: critical_flags wipe guard
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_save_care_profile_refuses_wipe_when_flags_exist(monkeypatch):
+    """critical_flags=[] against a profile that already has flags on file
+    must refuse and never reach upsert_care_profile. Zero-write proof via
+    the AssertionError-raising stand-in."""
+    existing = CareProfile(org_id=ORG_ID, critical_flags=[DEFAULT_CRITICAL_FLAG])
+    monkeypatch.setattr(meds, "get_care_profile", lambda *a, **kw: _async_return(existing))
+
+    def _fail_upsert(*a, **kw):
+        raise AssertionError("must not upsert when the wipe guard refuses")
+
+    monkeypatch.setattr(meds, "upsert_care_profile", _fail_upsert)
+
+    out = await meds.save_care_profile(FakeCtx(), critical_flags=[])
+
+    assert out == (
+        "Not saved: that would remove every critical flag. To remove a specific "
+        "flag, pass the reduced list; to clear them all, Jordan must confirm "
+        "explicitly - tell him what you are removing and why."
+    )
+
+
+@pytest.mark.asyncio
+async def test_save_care_profile_allows_reduced_flag_list(monkeypatch):
+    """A non-empty replacement list (dropping one flag, keeping another) is
+    never a wipe, it must save normally."""
+    existing = CareProfile(org_id=ORG_ID, critical_flags=[DEFAULT_CRITICAL_FLAG, "second flag"])
+    monkeypatch.setattr(meds, "get_care_profile", lambda *a, **kw: _async_return(existing))
+
+    captured: dict = {}
+
+    async def fake_upsert(client, org_id, **fields):
+        captured.update(fields)
+
+    monkeypatch.setattr(meds, "upsert_care_profile", fake_upsert)
+
+    out = await meds.save_care_profile(FakeCtx(), critical_flags=[DEFAULT_CRITICAL_FLAG])
+
+    assert out == "Care profile saved."
+    assert captured["critical_flags"] == [DEFAULT_CRITICAL_FLAG]
+
+
+@pytest.mark.asyncio
+async def test_save_care_profile_allows_empty_when_no_existing_flags(monkeypatch):
+    """critical_flags=[] is not a wipe when there was nothing to wipe: no
+    existing profile, and a profile with an already-empty critical_flags,
+    must both save through."""
+    captured_calls: list[dict] = []
+
+    async def fake_upsert(client, org_id, **fields):
+        captured_calls.append(fields)
+
+    monkeypatch.setattr(meds, "upsert_care_profile", fake_upsert)
+
+    monkeypatch.setattr(meds, "get_care_profile", lambda *a, **kw: _async_return(None))
+    out = await meds.save_care_profile(FakeCtx(), critical_flags=[])
+    assert out == "Care profile saved."
+
+    existing_empty = CareProfile(org_id=ORG_ID, critical_flags=[])
+    monkeypatch.setattr(meds, "get_care_profile", lambda *a, **kw: _async_return(existing_empty))
+    out = await meds.save_care_profile(FakeCtx(), critical_flags=[])
+    assert out == "Care profile saved."
+
+    assert len(captured_calls) == 2
+    assert all(call["critical_flags"] == [] for call in captured_calls)
+
+
+# ---------------------------------------------------------------------------
 # save_care_document
 # ---------------------------------------------------------------------------
 
@@ -348,8 +420,11 @@ async def test_save_care_document_budget_gate_refuses_oversized_emergency(monkey
 
 @pytest.mark.asyncio
 async def test_save_care_document_budget_gate_allows_handoff_same_size(monkeypatch):
+    """The char-budget gate stays emergency-only even at 3,000 chars. This
+    body still carries the critical flag verbatim so the (now doc-type-
+    agnostic) critical-flags gate doesn't confound what this test checks."""
     captured = _patch_successful_write(monkeypatch)
-    body = "x" * 3000
+    body = f"{DEFAULT_CRITICAL_FLAG} " + "x" * 3000
     out = await meds.save_care_document(FakeCtx(), "handoff", body)
     assert "insert_note" in captured
     assert "created" in out
@@ -409,16 +484,31 @@ async def test_save_care_document_no_critical_flags_gate_refuses_when_flags_empt
 
 
 @pytest.mark.asyncio
-async def test_save_care_document_no_critical_flags_gate_does_not_apply_to_handoff(monkeypatch):
-    """The empty-critical_flags refusal is emergency-only pending a product
-    decision on whether a handoff needs the same guard."""
+async def test_save_care_document_no_critical_flags_gate_applies_to_handoff(monkeypatch):
+    """Jordan decided the empty-critical_flags refusal now applies to the
+    handoff too, not just the emergency sheet. Zero-write proof via the
+    AssertionError-raising insert_note stand-in."""
     care = CareProfile(org_id=ORG_ID, diagnoses=["Long QT syndrome"], critical_flags=[])
-    captured = _patch_successful_write(monkeypatch, care=care)
+    monkeypatch.setattr(
+        meds,
+        "get_medication_profile",
+        lambda *a, **kw: _async_return(
+            MedicationProfile(org_id=ORG_ID, timeline_display_name="Ellie")
+        ),
+    )
+    monkeypatch.setattr(meds, "get_care_profile", lambda *a, **kw: _async_return(care))
+
+    def _fail_insert_note(*a, **kw):
+        raise AssertionError("must not write a handoff when critical_flags is empty")
+
+    monkeypatch.setattr(meds, "insert_note", _fail_insert_note)
 
     out = await meds.save_care_document(FakeCtx(), "handoff", "handoff body, no flags on file")
 
-    assert "insert_note" in captured
-    assert "created" in out
+    assert out == (
+        "Not written: the care profile has no critical_flags. The emergency sheet "
+        "must lead with the QT warning - confirm the critical flags with Jordan first."
+    )
 
 
 @pytest.mark.asyncio
@@ -461,18 +551,27 @@ async def test_save_care_document_critical_flag_gate_allows_when_flag_present(mo
 
 
 @pytest.mark.asyncio
-async def test_save_care_document_critical_flag_gate_does_not_apply_to_handoff(monkeypatch):
-    """The handoff doc_type has no budget gate and no critical-flag gate —
-    a missing flag must not block the write."""
+async def test_save_care_document_critical_flag_gate_applies_to_handoff(monkeypatch):
+    """Jordan decided the verbatim critical-flags gate now applies to the
+    handoff too. A missing flag refuses the write, no budget gate involved.
+    Zero-write proof via the AssertionError-raising insert_note stand-in."""
     flag = "Congenital Long QT — avoid QT-prolonging medications (CredibleMeds list)."
     care = CareProfile(org_id=ORG_ID, critical_flags=[flag])
-    captured = _patch_successful_write(monkeypatch, care=care)
+    _patch_successful_write(monkeypatch, care=care)
+
+    def _fail_insert_note(*a, **kw):
+        raise AssertionError("must not write a handoff when a critical flag is missing")
+
+    monkeypatch.setattr(meds, "insert_note", _fail_insert_note)
 
     body = "Handoff body that never mentions the flag at all."
     out = await meds.save_care_document(FakeCtx(), "handoff", body)
 
-    assert "insert_note" in captured
-    assert "created" in out
+    assert out == (
+        f"Not written: the critical flag '{flag}' must appear in the document word "
+        "for word. Rewrite the body and include it verbatim - critical flags are "
+        "never cut or paraphrased."
+    )
 
 
 @pytest.mark.asyncio
@@ -507,7 +606,8 @@ async def test_save_care_document_success_writes_and_upserts_hash_bundle(monkeyp
 @pytest.mark.asyncio
 async def test_save_care_document_title_uses_handoff_label(monkeypatch):
     captured = _patch_successful_write(monkeypatch)
-    await meds.save_care_document(FakeCtx(), "handoff", "handoff body")
+    body = f"handoff body. {DEFAULT_CRITICAL_FLAG}"
+    await meds.save_care_document(FakeCtx(), "handoff", body)
     expected_title = "Ellie - Caregiver Handoff - 2026-07-25"
     assert captured["insert_note"]["title"] == expected_title
 
