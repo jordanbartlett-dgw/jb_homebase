@@ -56,6 +56,7 @@ from jordan_claw.gateway.voice import (
 )
 from jordan_claw.health import build_health_report
 from jordan_claw.proactive.scheduler import scheduler_loop
+from jordan_claw.utils.agent_runner import drain_pending_writes
 
 
 def configure_logging(environment: str, log_level: str) -> None:
@@ -147,6 +148,7 @@ async def lifespan(app: FastAPI):
     scheduler_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await scheduler_task
+    await drain_pending_writes()
     await emitter.drain_pending_emits()
     shutdown_posthog()
     await app.state.anthropic.close()
