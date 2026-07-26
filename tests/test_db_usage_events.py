@@ -46,10 +46,12 @@ async def test_save_usage_event_inserts_full_payload():
         success=True,
         error_type=None,
         error_severity=None,
+        trace_id="ab" * 16,
     )
 
     db.table.assert_called_once_with("usage_events")
     insert_payload = query.insert.call_args[0][0]
+    assert insert_payload["trace_id"] == "ab" * 16
     assert insert_payload["org_id"] == ORG_ID
     assert insert_payload["agent_slug"] == "claw-main"
     assert insert_payload["channel"] == "app"
@@ -92,6 +94,7 @@ async def test_save_usage_event_drops_none_fields():
     assert "conversation_id" not in payload
     assert "error_type" not in payload
     assert "error_severity" not in payload
+    assert "trace_id" not in payload
 
 
 @pytest.mark.asyncio

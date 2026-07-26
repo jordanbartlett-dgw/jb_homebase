@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic_ai import Agent
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from jordan_claw.analytics.types import AgentRunResult, RunKind
 from jordan_claw.utils.agent_runner import (
@@ -199,6 +201,113 @@ async def test_tool_call_count_extracted_from_messages():
     )
 
     assert result.tool_call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_usage_event_carries_trace_id(capfire):
+    """usage_events insert always carries a trace_id key; under capfire the
+    span context is real, so the join key is a valid 32-char lowercase hex
+    trace id.
+    """
+    agent = Agent("test")
+    db, query = _mock_db()
+
+    await run_agent_instrumented(
+        agent=agent,
+        prompt="hello",
+        deps=None,
+        db=db,
+        org_id=ORG_ID,
+        agent_slug="claw-main",
+        model="anthropic:claude-sonnet-4-5-20250929",
+        run_kind=RunKind.USER_MESSAGE,
+        channel="app",
+        conversation_id="conv-1",
+    )
+
+    await drain_pending_writes()
+    payload = query.insert.call_args[0][0]
+    assert "trace_id" in payload
+    assert re.fullmatch(r"[0-9a-f]{32}", payload["trace_id"])
+
+
+@pytest.mark.asyncio
+async def test_budget_path_span_has_cost_and_tool_count(capfire):
+    agent = MagicMock()
+    fake_usage = MagicMock(input_tokens=200_000, output_tokens=10_000, requests=1)
+    fake_result = MagicMock()
+    fake_result.output = "long output"
+    fake_result.usage = fake_usage
+    fake_result.all_messages = MagicMock(return_value=[])
+    agent.run = AsyncMock(return_value=fake_result)
+    db, _ = _mock_db()
+
+    with (
+        patch("jordan_claw.utils.agent_runner.compute_cost", return_value=Decimal("0.42")),
+        pytest.raises(TokenBudgetExceededError),
+    ):
+        await run_agent_instrumented(
+            agent=agent,
+            prompt="hello",
+            deps=None,
+            db=db,
+            org_id=ORG_ID,
+            agent_slug="claw-main",
+            model="anthropic:claude-sonnet-4-5-20250929",
+            run_kind=RunKind.USER_MESSAGE,
+            channel="app",
+            conversation_id="conv-1",
+            max_total_tokens=100_000,
+        )
+
+    await drain_pending_writes()
+    # Logfire also exports a "pending_span" placeholder when the span starts
+    # (for live-view); it lacks the attributes set at exit, so filter it out.
+    spans = [
+        s
+        for s in capfire.exporter.exported_spans
+        if s.name == "agent_run" and "outcome.success" in (s.attributes or {})
+    ]
+    assert len(spans) == 1
+    attrs = spans[0].attributes or {}
+    assert attrs["usage.cost_usd"] == 0.42
+    assert attrs["usage.tool_call_count"] == 0
+    assert attrs["outcome.error_severity"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_error_path_span_has_severity(capfire):
+    def _raise_timeout(messages: list, info: AgentInfo):
+        raise TimeoutError("upstream timeout")
+
+    agent = Agent(FunctionModel(_raise_timeout))
+    db, _ = _mock_db()
+
+    with pytest.raises(TimeoutError):
+        await run_agent_instrumented(
+            agent=agent,
+            prompt="hello",
+            deps=None,
+            db=db,
+            org_id=ORG_ID,
+            agent_slug="claw-main",
+            model="anthropic:claude-sonnet-4-5-20250929",
+            run_kind=RunKind.USER_MESSAGE,
+            channel="app",
+            conversation_id="conv-1",
+        )
+
+    await drain_pending_writes()
+    # Logfire also exports a "pending_span" placeholder when the span starts
+    # (for live-view); it lacks the attributes set at exit, so filter it out.
+    spans = [
+        s
+        for s in capfire.exporter.exported_spans
+        if s.name == "agent_run" and "outcome.success" in (s.attributes or {})
+    ]
+    assert len(spans) == 1
+    attrs = spans[0].attributes or {}
+    assert attrs["outcome.error_severity"] == "medium"
 
 
 def test_classify_error_known_signatures():

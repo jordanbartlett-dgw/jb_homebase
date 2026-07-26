@@ -114,6 +114,9 @@ async def run_agent_instrumented[OutputT](
     }
 
     with logfire.span("agent_run", **span_attrs) as span:
+        ctx = span.get_span_context()
+        trace_id = f"{ctx.trace_id:032x}" if ctx and ctx.trace_id else None
+
         start = time.monotonic()
         try:
             run_kwargs: dict[str, Any] = {}
@@ -130,6 +133,8 @@ async def run_agent_instrumented[OutputT](
             span.set_attribute("usage.duration_ms", duration_ms)
             span.set_attribute("outcome.success", False)
             span.set_attribute("outcome.error_type", error_type)
+            span.set_attribute("outcome.error_severity", error_severity)
+            span.record_exception(exc)
             log.exception(
                 "agent_run_failed",
                 agent_slug=agent_slug,
@@ -156,6 +161,7 @@ async def run_agent_instrumented[OutputT](
                     success=False,
                     error_type=error_type,
                     error_severity=error_severity,
+                    trace_id=trace_id,
                 )
             )
             await emitter.agent_run_completed(
@@ -174,6 +180,7 @@ async def run_agent_instrumented[OutputT](
                 tool_call_count=0,
                 success=False,
                 error_type=error_type,
+                error_severity=error_severity,
             )
             raise
 
@@ -191,9 +198,12 @@ async def run_agent_instrumented[OutputT](
             )
             span.set_attribute("usage.input_tokens", usage["input_tokens"])
             span.set_attribute("usage.output_tokens", usage["output_tokens"])
+            span.set_attribute("usage.cost_usd", float(cost) if cost is not None else None)
             span.set_attribute("usage.duration_ms", duration_ms)
+            span.set_attribute("usage.tool_call_count", tool_call_count)
             span.set_attribute("outcome.success", False)
             span.set_attribute("outcome.error_type", "token_budget_exceeded")
+            span.set_attribute("outcome.error_severity", "high")
             _fire_save(
                 save_usage_event(
                     db,
@@ -212,6 +222,7 @@ async def run_agent_instrumented[OutputT](
                     success=False,
                     error_type="token_budget_exceeded",
                     error_severity="high",
+                    trace_id=trace_id,
                 )
             )
             await emitter.agent_run_completed(
@@ -230,6 +241,7 @@ async def run_agent_instrumented[OutputT](
                 tool_call_count=tool_call_count,
                 success=False,
                 error_type="token_budget_exceeded",
+                error_severity="high",
             )
             raise TokenBudgetExceededError(
                 f"agent_run total_tokens={usage['total_tokens']} > budget={max_total_tokens}"
@@ -260,6 +272,7 @@ async def run_agent_instrumented[OutputT](
                 success=True,
                 error_type=None,
                 error_severity=None,
+                trace_id=trace_id,
             )
         )
         await emitter.agent_run_completed(
@@ -278,6 +291,7 @@ async def run_agent_instrumented[OutputT](
             tool_call_count=tool_call_count,
             success=True,
             error_type=None,
+            error_severity=None,
         )
 
         return AgentRunResult(

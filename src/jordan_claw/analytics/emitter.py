@@ -71,6 +71,7 @@ async def agent_run_completed(
     tool_call_count: int,
     success: bool,
     error_type: str | None,
+    error_severity: str | None,
 ) -> None:
     props = {
         "agent_slug": agent_slug,
@@ -86,6 +87,7 @@ async def agent_run_completed(
         "tool_call_count": tool_call_count,
         "success": success,
         "error_type": error_type,
+        "error_severity": error_severity,
     }
     _fire("agent_run_completed", _resolve_distinct_id(user_id, org_id), props)
 

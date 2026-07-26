@@ -70,6 +70,7 @@ async def _dispatch(event: str, distinct_id: str, props: dict, org_id: str) -> N
             tool_call_count=props["tool_call_count"],
             success=props["success"],
             error_type=props.get("error_type"),
+            error_severity=props.get("error_severity"),
         )
     elif event == "proactive_sent":
         await emitter.proactive_sent(
