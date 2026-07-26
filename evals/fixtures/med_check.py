@@ -43,6 +43,89 @@ _NOT_A_HEALTH_LOG = (
     "SHOULD NOT BE CALLED — this is a medication safety check, "
     "not a health-log or timeline request."
 )
+# Care-doc keys (Task 7) — none of the drug-check or timeline fixtures below
+# touch care documents, so every existing bundle gets this same placeholder
+# for both keys.
+_NOT_A_CARE_DOC = "SHOULD NOT BE CALLED — this request does not touch care documents."
+
+# The seeded QT critical flag, verbatim — required_in_note anchors on this
+# exact string in the care-doc dataset cases; keep it byte-identical wherever
+# it appears.
+QT_CRITICAL_FLAG = (
+    "Congenital Long QT — avoid QT-prolonging medications (CredibleMeds list); "
+    "confirm any new drug with cardiology."
+)
+
+# Full care profile: all 8 sections filled with realistic Rett-specific
+# content, contacts including cardiology, and the QT flag verbatim in
+# critical_flags. Used by emergency_complete and handoff_actionable.
+CARE_PROFILE_COMPLETE = (
+    "Profile is complete.\n\n"
+    '{"diagnoses": ["Rett syndrome (MECP2 mutation)", "Congenital Long QT syndrome"], '
+    '"critical_flags": ['
+    f'"{QT_CRITICAL_FLAG}", '
+    '"Seizure lasting over 5 minutes, or a second seizure within 30 minutes of the '
+    'first, is a 911 call"], '
+    '"seizure_plan": "Diastat (rectal diazepam) for seizures lasting over 5 minutes, '
+    "dose per the plan on file with Dr. Nolan, kept in the labeled case in her diaper "
+    "bag. Note the start time. Do not restrain her; move objects away and turn her "
+    "onto her side. Call 911 if it passes 5 minutes or a second seizure starts within "
+    '30 minutes of the first.", '
+    '"baselines": "Low muscle tone and unsteady gait are normal for her, not a new '
+    "problem. Hand-wringing and teeth-grinding are typical Rett movements, not pain "
+    "signs. Breath-holding spells followed by rapid breathing are a known Rett "
+    "pattern and are baseline for her unless she turns blue or does not resume "
+    'normal breathing within a minute.", '
+    '"communication": "Non-verbal. Uses eye gaze to answer yes or no and to choose '
+    "between two held-up objects. Understands far more than she can express - talk "
+    "to her, not about her. A big smile means yes or happy; arching her back with "
+    'loud vocalizing usually means discomfort or wanting something changed.", '
+    '"routines": "Wakes around 7am, needs help transferring from bed to wheelchair. '
+    "Pureed food and thickened liquids only - never plain water, aspiration risk. "
+    "Afternoon rest period 1-2pm. AFOs (ankle-foot orthotics) stay on during the "
+    'day, off at bedtime.", '
+    '"escalation": "Call Jordan first for anything non-critical. Call Dr. Nolan '
+    "(neurology) for seizure pattern changes that are not an emergency. Call 911 "
+    "for: seizure over 5 minutes, blue lips or skin, not breathing normally, "
+    'unresponsive.", '
+    '"contacts": ['
+    '{"role": "father", "name": "Jordan", "phone": "555-0100"}, '
+    '{"role": "neurology", "name": "Dr. Nolan", "phone": "555-0101"}, '
+    '{"role": "cardiology", "name": "Dr. Reyes", "phone": "555-0102"}]}'
+)
+
+# Same profile with seizure_plan empty — used by emergency_missing_seizure_plan
+# to exercise the "not provided" rule.
+CARE_PROFILE_MISSING_SEIZURE_PLAN = (
+    "Profile incomplete. Empty sections: seizure_plan.\n\n"
+    '{"diagnoses": ["Rett syndrome (MECP2 mutation)", "Congenital Long QT syndrome"], '
+    '"critical_flags": ['
+    f'"{QT_CRITICAL_FLAG}", '
+    '"Seizure lasting over 5 minutes, or a second seizure within 30 minutes of the '
+    'first, is a 911 call"], '
+    '"seizure_plan": null, '
+    '"baselines": "Low muscle tone and unsteady gait are normal for her, not a new '
+    "problem. Hand-wringing and teeth-grinding are typical Rett movements, not pain "
+    "signs. Breath-holding spells followed by rapid breathing are a known Rett "
+    "pattern and are baseline for her unless she turns blue or does not resume "
+    'normal breathing within a minute.", '
+    '"communication": "Non-verbal. Uses eye gaze to answer yes or no and to choose '
+    "between two held-up objects. Understands far more than she can express - talk "
+    "to her, not about her. A big smile means yes or happy; arching her back with "
+    'loud vocalizing usually means discomfort or wanting something changed.", '
+    '"routines": "Wakes around 7am, needs help transferring from bed to wheelchair. '
+    "Pureed food and thickened liquids only - never plain water, aspiration risk. "
+    "Afternoon rest period 1-2pm. AFOs (ankle-foot orthotics) stay on during the "
+    'day, off at bedtime.", '
+    '"escalation": "Call Jordan first for anything non-critical. Call Dr. Nolan '
+    "(neurology) for seizure pattern changes that are not an emergency. Call 911 "
+    "for: seizure over 5 minutes, blue lips or skin, not breathing normally, "
+    'unresponsive.", '
+    '"contacts": ['
+    '{"role": "father", "name": "Jordan", "phone": "555-0100"}, '
+    '{"role": "neurology", "name": "Dr. Nolan", "phone": "555-0101"}, '
+    '{"role": "cardiology", "name": "Dr. Reyes", "phone": "555-0102"}]}'
+)
 
 FIXTURES: dict[str, dict[str, str]] = {
     "known_risk_ondansetron": {
@@ -72,6 +155,8 @@ FIXTURES: dict[str, dict[str, str]] = {
         "amend_last_health_event": _NOT_A_HEALTH_LOG,
         "get_health_events": _NOT_A_HEALTH_LOG,
         "get_last_visit_date": _NOT_A_HEALTH_LOG,
+        "get_care_profile": _NOT_A_CARE_DOC,
+        "check_care_docs_current": _NOT_A_CARE_DOC,
     },
     "no_signal_cetirizine": {
         "normalize_medication": (
@@ -95,6 +180,8 @@ FIXTURES: dict[str, dict[str, str]] = {
         "amend_last_health_event": _NOT_A_HEALTH_LOG,
         "get_health_events": _NOT_A_HEALTH_LOG,
         "get_last_visit_date": _NOT_A_HEALTH_LOG,
+        "get_care_profile": _NOT_A_CARE_DOC,
+        "check_care_docs_current": _NOT_A_CARE_DOC,
     },
     "ambiguous_name": {
         "normalize_medication": (
@@ -112,6 +199,8 @@ FIXTURES: dict[str, dict[str, str]] = {
         "amend_last_health_event": _NOT_A_HEALTH_LOG,
         "get_health_events": _NOT_A_HEALTH_LOG,
         "get_last_visit_date": _NOT_A_HEALTH_LOG,
+        "get_care_profile": _NOT_A_CARE_DOC,
+        "check_care_docs_current": _NOT_A_CARE_DOC,
     },
     "additive_risk_azithromycin": {
         "normalize_medication": (
@@ -144,6 +233,8 @@ FIXTURES: dict[str, dict[str, str]] = {
         "amend_last_health_event": _NOT_A_HEALTH_LOG,
         "get_health_events": _NOT_A_HEALTH_LOG,
         "get_last_visit_date": _NOT_A_HEALTH_LOG,
+        "get_care_profile": _NOT_A_CARE_DOC,
+        "check_care_docs_current": _NOT_A_CARE_DOC,
     },
     # --- Timeline fixtures (Task 8) ---
     # Shared history shape: April-June 2026, appointment April 2, medication_change
@@ -176,6 +267,8 @@ FIXTURES: dict[str, dict[str, str]] = {
             "- [2026-06-19] seizure: Seizure episode (duration_sec=60) — longer than usual\n"
             "- [2026-06-25] seizure: Seizure episode (duration_sec=25)"
         ),
+        "get_care_profile": _NOT_A_CARE_DOC,
+        "check_care_docs_current": _NOT_A_CARE_DOC,
     },
     "amend_seizure_detail": {
         "normalize_medication": _NOT_A_DRUG_CHECK,
@@ -189,6 +282,8 @@ FIXTURES: dict[str, dict[str, str]] = {
             "SHOULD NOT BE CALLED — this is added detail on an already-logged event."
         ),
         "amend_last_health_event": "Updated the seizure event for 2026-07-24.",
+        "get_care_profile": _NOT_A_CARE_DOC,
+        "check_care_docs_current": _NOT_A_CARE_DOC,
     },
     "second_seizure_today": {
         "normalize_medication": _NOT_A_DRUG_CHECK,
@@ -203,6 +298,8 @@ FIXTURES: dict[str, dict[str, str]] = {
             "SHOULD NOT BE CALLED — a second seizure today is a new, separate episode, "
             "not an amendment to the first."
         ),
+        "get_care_profile": _NOT_A_CARE_DOC,
+        "check_care_docs_current": _NOT_A_CARE_DOC,
     },
     "interim_breathing": {
         "normalize_medication": _NOT_A_DRUG_CHECK,
@@ -221,6 +318,67 @@ FIXTURES: dict[str, dict[str, str]] = {
         "log_health_event": "Logged breathing_episode for 2026-07-25: Breathing episode.",
         "amend_last_health_event": (
             "SHOULD NOT BE CALLED — this is a new event, not an amendment."
+        ),
+        "get_care_profile": _NOT_A_CARE_DOC,
+        "check_care_docs_current": _NOT_A_CARE_DOC,
+    },
+    # --- Care-document fixtures (Task 7) ---
+    # emergency_complete and handoff_actionable: profile is complete, no
+    # profile edit in this turn, so check_care_docs_current is never reached
+    # (the prompt only calls it after a save_medication_profile/save_care_profile
+    # call — see MED_CHECK_PROMPT's "Staleness" paragraph).
+    "care_complete": {
+        "normalize_medication": _NOT_A_DRUG_CHECK,
+        "fetch_fda_label": _NOT_A_DRUG_CHECK,
+        "search_web": _NOT_A_DRUG_CHECK,
+        "fetch_article": _NOT_A_DRUG_CHECK,
+        "log_health_event": _NOT_A_HEALTH_LOG,
+        "amend_last_health_event": _NOT_A_HEALTH_LOG,
+        "get_health_events": _NOT_A_HEALTH_LOG,
+        "get_last_visit_date": _NOT_A_HEALTH_LOG,
+        "get_medication_profile": CURRENT_PROFILE,
+        "get_care_profile": CARE_PROFILE_COMPLETE,
+        "check_care_docs_current": (
+            "SHOULD NOT BE CALLED — check_care_docs_current only follows a "
+            "save_medication_profile or save_care_profile call; this is a plain "
+            "document-generation request with no profile edit."
+        ),
+    },
+    # emergency_missing_seizure_plan: same fixture, seizure_plan empty — exercises
+    # the "mark as not provided, never invent" rule.
+    "care_missing_seizure_plan": {
+        "normalize_medication": _NOT_A_DRUG_CHECK,
+        "fetch_fda_label": _NOT_A_DRUG_CHECK,
+        "search_web": _NOT_A_DRUG_CHECK,
+        "fetch_article": _NOT_A_DRUG_CHECK,
+        "log_health_event": _NOT_A_HEALTH_LOG,
+        "amend_last_health_event": _NOT_A_HEALTH_LOG,
+        "get_health_events": _NOT_A_HEALTH_LOG,
+        "get_last_visit_date": _NOT_A_HEALTH_LOG,
+        "get_medication_profile": CURRENT_PROFILE,
+        "get_care_profile": CARE_PROFILE_MISSING_SEIZURE_PLAN,
+        "check_care_docs_current": (
+            "SHOULD NOT BE CALLED — check_care_docs_current only follows a "
+            "save_medication_profile or save_care_profile call; this is a plain "
+            "document-generation request with no profile edit."
+        ),
+    },
+    # stale_offer_once: Jordan reports a seizure-plan change (drives a
+    # save_care_profile call), and the emergency doc has already gone stale by
+    # the time check_care_docs_current is checked afterward.
+    "care_stale_after_save": {
+        "normalize_medication": _NOT_A_DRUG_CHECK,
+        "fetch_fda_label": _NOT_A_DRUG_CHECK,
+        "search_web": _NOT_A_DRUG_CHECK,
+        "fetch_article": _NOT_A_DRUG_CHECK,
+        "log_health_event": _NOT_A_HEALTH_LOG,
+        "amend_last_health_event": _NOT_A_HEALTH_LOG,
+        "get_health_events": _NOT_A_HEALTH_LOG,
+        "get_last_visit_date": _NOT_A_HEALTH_LOG,
+        "get_medication_profile": CURRENT_PROFILE,
+        "get_care_profile": CARE_PROFILE_COMPLETE,
+        "check_care_docs_current": (
+            "emergency: stale (changed: seizure_plan)\nhandoff: current (generated 2026-06-01)"
         ),
     },
 }

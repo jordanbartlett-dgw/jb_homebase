@@ -13,7 +13,7 @@ from pydantic_ai.toolsets import FunctionToolset
 
 from evals.fixtures.med_check import FIXTURES
 from evals.types import MedCheckInputs
-from jordan_claw.meds.models import HealthCategory, MedicationEntry
+from jordan_claw.meds.models import CareContact, HealthCategory, MedicationEntry
 
 TARGET_MODEL = "anthropic:claude-sonnet-5"  # prod org default_model, pinned
 
@@ -162,6 +162,65 @@ def _build_toolset(fixture: dict[str, str], captured_notes: list[str]) -> Functi
         captured_notes.append(markdown_body)
         return f"Timeline note '{title}' created. It will appear in your vault after the next sync."
 
+    async def get_care_profile() -> str:
+        """Read her current care profile: diagnoses, critical flags, seizure
+        plan, baselines, communication style, daily routines, escalation path,
+        and care contacts. Call this before intake (to see what's still
+        missing) and before generating either care document (so it composes
+        from what's actually saved, not assumptions). Reports which sections
+        are still empty.
+        NOT for medications or allergies — use get_medication_profile."""
+        return fixture["get_care_profile"]
+
+    async def save_care_profile(
+        diagnoses: list[str] | None = None,
+        critical_flags: list[str] | None = None,
+        seizure_plan: str | None = None,
+        baselines: str | None = None,
+        communication: str | None = None,
+        routines: str | None = None,
+        escalation: str | None = None,
+        contacts: list[CareContact] | None = None,
+    ) -> str:
+        """Save one or more care-profile sections as Jordan reports them,
+        during intake or an update — one answer at a time is fine, this is a
+        partial save. diagnoses, critical_flags, and contacts each REPLACE
+        the whole list — read the current profile with get_care_profile
+        first and pass the full updated list, never just the delta. Never
+        invent or infer content; only save what Jordan actually said.
+        NOT for medications or allergies — use save_medication_profile."""
+        return "Care profile saved."
+
+    async def save_care_document(
+        doc_type: Literal["emergency", "handoff"], markdown_body: str
+    ) -> str:
+        """Write a composed care document (emergency one-pager or caregiver
+        handoff) into the vault. Compose the markdown body per the prompt's
+        rules FIRST — this tool only writes what you hand it, it does not
+        draft or edit content.
+        An emergency body must fit roughly one page (~2,500 chars) — if it
+        comes in over budget the tool refuses with the char count and does
+        NOT write; cut routine detail, never safety content, and recompose.
+        The handoff has no such gate.
+        Same-day regeneration is versioned automatically and never overwrites
+        the same vault path. Returns the note title.
+        NOT for drafting or editing the body, and NOT for the doctor timeline
+        — use create_timeline_note for that."""
+        captured_notes.append(markdown_body)
+        doc_label = "Emergency One-Pager" if doc_type == "emergency" else "Caregiver Handoff"
+        return (
+            f"'{doc_label} - 2026-07-25' created. It will appear in your vault after the next sync."
+        )
+
+    async def check_care_docs_current() -> str:
+        """Report whether the emergency one-pager and caregiver handoff are
+        still current: never_generated, current, or stale (profile or
+        medication data changed since the last generation — names which
+        sections changed). Call this before telling Jordan a document is up
+        to date, and before deciding whether a regenerate is needed.
+        NOT for generating or editing a document — use save_care_document."""
+        return fixture["check_care_docs_current"]
+
     for fn in (
         normalize_medication,
         fetch_fda_label,
@@ -175,6 +234,10 @@ def _build_toolset(fixture: dict[str, str], captured_notes: list[str]) -> Functi
         get_health_events,
         get_last_visit_date,
         create_timeline_note,
+        get_care_profile,
+        save_care_profile,
+        save_care_document,
+        check_care_docs_current,
     ):
         ts.add_function(fn, name=fn.__name__)
     return ts

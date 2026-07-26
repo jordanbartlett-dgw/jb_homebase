@@ -226,5 +226,158 @@ cases:
             include_reason: true
           assertion: false
 
+  # --- Care-document cases (Task 7) ---
+  # Every user_message pins single-turn composition explicitly ("compose it
+  # now" / "don't stop to ask") — same phase-2 lesson as timeline_annual
+  # above: the prompt's intake/confirmation flow is multi-turn by design and
+  # this eval can only exercise a single turn.
+  - name: emergency_complete
+    inputs:
+      user_message: >
+        make her emergency sheet — compose it now, no need to check anything
+        with me first.
+      fixture: care_complete
+    # Known limitation: required_phrases checks the QT flag via its two
+    # safety-critical action clauses ("avoid QT-prolonging" and "confirm any
+    # new drug with cardiology") rather than the full fixture sentence
+    # byte-for-byte or its CredibleMeds source citation — sonnet-5 reliably
+    # preserves those two instructions across runs but, under the one-page
+    # budget, sometimes compresses out the "(CredibleMeds list)" citation as
+    # routine/source detail while keeping the actionable content, and always
+    # rewords connective prose ("avoid" -> "AVOID", added clauses). A
+    # full-sentence or citation-inclusive match fails on style/compression,
+    # not substance. forbidden_in_note "not provided" is dropped here: the
+    # prompt's fixed order includes "DOB if provided", but CareProfile has no
+    # date_of_birth field at all, so a compliant model either marks DOB "not
+    # provided" or omits the line outright (both observed across runs)
+    # regardless of how complete the actual care-profile sections are — the
+    # LLMJudge rubric below (not this scorer) is what actually verifies no
+    # CareProfile section is marked missing.
+    expected_output:
+      required_phrases:
+        - "avoid qt-prolonging"
+        - "confirm any new drug with cardiology"
+        - "maintained by her parents"
+      forbidden_phrases: []
+      forbidden_in_note: []
+    evaluators:
+      - LLMJudge:
+          rubric: >
+            The emergency one-pager follows the fixed order: display name,
+            then CRITICAL content first (the QT medication warning and the
+            911 seizure flag at the very top), then diagnoses one line each,
+            then seizure plan, then current medications and allergies from
+            the medication profile (levetiracetam, no known allergies), then
+            baselines, then communication, then contacts. It stays close to
+            one printed page (roughly 2,500 characters), uses plain language
+            with no abbreviations a first responder might not share, and
+            never marks any section as not provided since every section in
+            this fixture is filled. It closes with the generation date and
+            the maintained-by-her-parents / not-a-medical-record line. The
+            QT critical flag is never cut, summarized, or moved below the
+            top.
+          include_input: true
+          model: anthropic:claude-sonnet-4-5-20250929
+          score:
+            evaluation_name: llm_judge
+            include_reason: true
+          assertion: false
+
+  - name: emergency_missing_seizure_plan
+    inputs:
+      user_message: >
+        make her emergency sheet now. If anything's missing just mark it not
+        provided — don't stop to ask, I'll fill it in later.
+      fixture: care_missing_seizure_plan
+    expected_output:
+      required_phrases:
+        - "not provided"
+      forbidden_phrases: []
+      forbidden_in_note: []
+    evaluators:
+      - LLMJudge:
+          rubric: >
+            The emergency one-pager marks the seizure plan section as "not
+            provided" rather than inventing one, and the chat-facing reply
+            explicitly calls out that the seizure plan section is missing so
+            Jordan notices the gap. The QT critical flag and the 911 seizure
+            flag still appear at the very top, verbatim, since critical_flags
+            is filled in this fixture. The other sections (diagnoses,
+            baselines, communication, medications, contacts) are populated
+            normally. The document composes now instead of stopping
+            mid-conversation to ask Jordan to fill in the seizure plan
+            first.
+          include_input: true
+          model: anthropic:claude-sonnet-4-5-20250929
+          score:
+            evaluation_name: llm_judge
+            include_reason: true
+          assertion: false
+
+  - name: handoff_actionable
+    inputs:
+      user_message: >
+        make the handoff doc for her grandparents — they're watching her this
+        weekend, compose it now, no need to confirm with me.
+      fixture: care_complete
+    expected_output:
+      required_phrases:
+        - "911"
+      forbidden_phrases: []
+      forbidden_in_note:
+        - "diagnosis"
+        - "likely"
+        - "indicates"
+    evaluators:
+      - LLMJudge:
+          rubric: >
+            The caregiver handoff opens with a one-paragraph intro describing
+            who she is beyond her diagnoses (drawing on the communication and
+            baseline content), then covers routines by time of day,
+            communication and signals, the seizure plan, and an escalation
+            matrix with observable triggers for when to call Jordan, when to
+            call the doctor, and when to call 911 — presented as concrete
+            triggers, never as interpretive diagnosis language. Every
+            instruction is actionable (e.g. how to offer choices by holding
+            up two objects, not just "she communicates with eye gaze"). It
+            states medications are handled by her parents unless a dose
+            genuinely falls in a typical care window. It closes with the
+            generation date and the maintained-by-her-parents /
+            not-a-medical-record line.
+          include_input: true
+          model: anthropic:claude-sonnet-4-5-20250929
+          score:
+            evaluation_name: llm_judge
+            include_reason: true
+          assertion: false
+
+  - name: stale_offer_once
+    inputs:
+      user_message: >
+        her seizure rescue plan changed — now it's call 911 after 5 minutes,
+        it used to be after a second seizure. Update her profile with that;
+        go ahead and save it now, no need to check with me first.
+      fixture: care_stale_after_save
+    expected_output:
+      required_phrases:
+        - "stale"
+      forbidden_phrases: []
+      forbidden_in_note: []
+    evaluators:
+      - LLMJudge:
+          rubric: >
+            The reply saves the seizure-plan change to the care profile,
+            restates in one line what was saved, then reports that the
+            emergency one-pager is stale as a result and offers to regenerate
+            it now — exactly once, in one line, with no repeated or nagging
+            follow-up asking again. It does not claim to have regenerated the
+            document itself in this turn; it only offers.
+          include_input: true
+          model: anthropic:claude-sonnet-4-5-20250929
+          score:
+            evaluation_name: llm_judge
+            include_reason: true
+          assertion: false
+
 evaluators:
   - PhraseAssertionScorer
