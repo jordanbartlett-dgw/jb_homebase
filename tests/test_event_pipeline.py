@@ -171,6 +171,49 @@ async def test_process_event_suppresses_nothing_to_send():
     mock_publish.assert_not_awaited()
 
 
+async def test_event_deps_never_carry_email_send_creds():
+    """Regression guard for the locked policy: autonomous (event) runs never
+    send email. Even when settings has real AgentMail creds, the AgentDeps
+    built for a triggered run must carry empty ones so the email tools
+    degrade to NOT_CONFIGURED.
+    """
+    from jordan_claw.events.pipeline import process_event
+
+    db = _mock_db()
+    settings = _settings()
+    settings.agentmail_api_key = "real-key"
+    settings.agentmail_inbox_id = "real-inbox@agentmail.to"
+
+    with (
+        patch(
+            "jordan_claw.events.pipeline.get_triggers",
+            new=AsyncMock(return_value=_triggers(1)),
+        ),
+        patch(
+            "jordan_claw.events.pipeline.build_agent",
+            new=AsyncMock(return_value=(MagicMock(), "model-x")),
+        ),
+        patch(
+            "jordan_claw.events.pipeline.run_agent_instrumented",
+            new=AsyncMock(return_value=_run_result("ok")),
+        ) as mock_run,
+        patch(
+            "jordan_claw.events.pipeline.publish_proactive_message",
+            new=AsyncMock(),
+        ),
+    ):
+        await process_event(
+            db,
+            source="fastmail-email",
+            payload={"from": "a@b.co", "subject": "Invoice"},
+            settings=settings,
+        )
+
+    deps = mock_run.call_args.kwargs["deps"]
+    assert deps.agentmail_api_key == ""
+    assert deps.agentmail_inbox_id == ""
+
+
 async def test_process_event_continues_after_trigger_failure():
     from jordan_claw.events.pipeline import process_event
 

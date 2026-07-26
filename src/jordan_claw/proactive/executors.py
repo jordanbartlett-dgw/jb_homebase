@@ -84,6 +84,10 @@ async def _run_agent_prompt(
 ) -> str:
     """Build the agent and run a single prompt through the instrumented wrapper."""
     agent, model_name = await build_agent(db, org_id, agent_slug)
+    # Locked policy: autonomous (proactive) runs never send email.
+    # agentmail_* fields default to "" on AgentDeps, so the email tools
+    # return their NOT_CONFIGURED string here. Structural enforcement, not
+    # prompt-only. Chat runs (gateway/router.py) still get real creds.
     deps = AgentDeps(
         org_id=org_id,
         tavily_api_key=settings.tavily_api_key,
@@ -91,8 +95,6 @@ async def _run_agent_prompt(
         fastmail_app_password=settings.fastmail_app_password,
         supabase_client=db,
         openai_api_key=settings.openai_api_key,
-        agentmail_api_key=settings.agentmail_api_key,
-        agentmail_inbox_id=settings.agentmail_inbox_id,
     )
     result = await run_agent_instrumented(
         agent=agent,

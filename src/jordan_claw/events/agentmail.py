@@ -44,20 +44,18 @@ async def poll_agentmail(db: AsyncClient, settings: Settings) -> int:
     after = cursor.get("after")
 
     client = get_agentmail_client(settings.agentmail_api_key)
-    page = await client.inboxes.messages.list(
-        inbox_id=settings.agentmail_inbox_id,
-        limit=1 if after is None else POLL_LIMIT,
-    )
-    inbound = [
-        m
-        for m in (getattr(page, "messages", None) or [])
-        if "received" in (getattr(m, "labels", None) or [])
-    ]
-    inbound.sort(key=lambda m: m.timestamp)  # normalize oldest first
 
     if after is None:
+        # First poll only wants the newest inbound message as the cursor
+        # seed. Newest first, limit 1: keep the no-backfill property.
+        page = await client.inboxes.messages.list(
+            inbox_id=settings.agentmail_inbox_id,
+            labels=["received"],
+            limit=1,
+        )
+        inbound = list(getattr(page, "messages", None) or [])
         if inbound:
-            newest = inbound[-1]
+            newest = inbound[0]
             await save_cursor(
                 db,
                 SOURCE,
@@ -66,14 +64,29 @@ async def poll_agentmail(db: AsyncClient, settings: Settings) -> int:
         log.info("agentmail.cursor_initialized", seeded=bool(inbound))
         return 0
 
+    # Cursor-filtered polls fetch server-side ascending (oldest first) so a
+    # >POLL_LIMIT burst truncates to the OLDEST messages; the cursor then
+    # parks at the newest PROCESSED one and the remainder arrives next poll
+    # (no loss). Same no-loss semantics as the fastmail watcher
+    # (events/fastmail.py), just with the AgentMail SDK's own after/ascending
+    # params instead of a JMAP filter.
+    after_dt = datetime.fromisoformat(after)
+    page = await client.inboxes.messages.list(
+        inbox_id=settings.agentmail_inbox_id,
+        labels=["received"],
+        after=after_dt,
+        ascending=True,
+        limit=POLL_LIMIT,
+    )
+    inbound = list(getattr(page, "messages", None) or [])
+
     # The listing window overlaps the cursor: keep at-or-after rows, drop the
     # cursor message itself by id (same pattern as the fastmail watcher).
-    after_dt = datetime.fromisoformat(after)
     last_id = cursor.get("last_id")
     new_items = [m for m in inbound if m.message_id != last_id and m.timestamp >= after_dt]
 
     processed = 0
-    for item in new_items:  # already oldest first
+    for item in new_items:  # already oldest first (ascending=True)
         await process_event(db, source=SOURCE, payload=_to_payload(item), settings=settings)
         processed += 1
 
