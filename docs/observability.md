@@ -43,6 +43,16 @@ Three call sites sit outside `run_agent_instrumented` because they are not agent
 - **Whisper** (`gateway/voice.py::transcribe`): `voice_transcribe` Logfire span plus a `usage_events` row (`agent_slug=whisper`, `run_kind=transcription`). Cost is duration-based (`compute_transcription_cost`, $0.006/min, from Whisper's `verbose_json` response), not token-based. Emits `transcription_completed` to PostHog. Row and event only fire when the caller passes `db`/`org_id`; draft-only transcription calls omit both and write nothing.
 - **Embeddings** (`obsidian/embeddings.py::generate_embeddings`): `generate_embeddings` Logfire span carries token count and cost as span attributes only. No `usage_events` row, no PostHog event. Documented decision: embedding spend is roughly $0.02 per 1M tokens, immaterial next to LLM cost, and vault ingest is a bulk job, not a per-user run worth a ledger row.
 
+## Manual spans
+
+Some call sites get no free span coverage from FastAPI/httpx/pydantic-ai autoinstrumentation, so they carry hand-written Logfire spans instead:
+
+- `voice_transcribe` (`gateway/voice.py::transcribe`): the Whisper HTTP call.
+- `fastmail.poll` / `agentmail.poll` (`events/fastmail.py`, `events/agentmail.py`): one watcher sweep, `processed` attribute.
+- `event.process` (`events/pipeline.py::process_event`): webhook/poll trigger fan-out, `triggers`/`started` attributes.
+- `proactive.dispatch` (`proactive/scheduler.py::dispatch_task`): one scheduler task execution, `task_type`/`schedule_id` attributes.
+- `caldav.search` / `caldav.save_event` (`tools/calendar.py`): calendar IO, `events` count (search only) and `cached_url` attributes. caldav rides niquests, so httpx/requests autoinstrumentation never sees these calls; hand spans are the only coverage.
+
 ## Logfire / structlog bridge
 
 `main.py::configure_logging` appends `logfire.StructlogProcessor(console_log=False)` to the structlog processor chain whenever a Logfire token is configured. Every structured log line (`log.info`, `log.warning`, `log.exception`, ...) now also lands in Logfire, correlated to the active trace/span. Console/JSON rendering is unchanged; `console_log=False` keeps the bridge additive so lines don't double-print.

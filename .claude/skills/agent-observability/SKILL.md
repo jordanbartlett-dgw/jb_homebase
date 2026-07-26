@@ -27,6 +27,12 @@ no PostHog emit) and Whisper transcription (`gateway/voice.py::transcribe`,
 Don't add a third without a reason; new agent-shaped work goes through
 `run_agent_instrumented`.
 
+A few non-agent call sites carry hand-written spans where autoinstrumentation
+doesn't reach: `voice_transcribe` (Whisper), `fastmail.poll`/`agentmail.poll`
+(watcher sweeps), `event.process` (trigger fan-out), `proactive.dispatch`
+(scheduler tasks), `caldav.search`/`caldav.save_event` (calendar IO; caldav
+rides niquests, so httpx/requests autoinstrumentation can't see it).
+
 ## pydantic-ai v2 API (the repo is v2; v1 forms are bugs)
 
 ```python
