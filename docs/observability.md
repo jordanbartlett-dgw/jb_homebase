@@ -10,17 +10,19 @@ How Jordan Claw is instrumented and how to read the data.
 | Per-run accounting | Supabase `usage_events` | Auditable cost ledger, BI joins, retention |
 | Product analytics | PostHog | Funnels, dashboards, regression detection |
 
-Every agent run produces all three: a Logfire trace, a `usage_events` row, and a PostHog `agent_run_completed` event. They share the same `agent_slug`, `run_kind`, `channel`, `cost_usd`, `duration_ms`, and `tool_call_count`, so cross-referencing is straightforward.
+Every agent run produces all three: a Logfire trace, a `usage_events` row, and a PostHog `agent_run_completed` event. They share the same `agent_slug`, `run_kind`, `channel`, `cost_usd`, `duration_ms`, and `tool_call_count`, so cross-referencing is straightforward. `usage_events.trace_id` (32-char hex OTel trace id of the `agent_run` span) is the join key from a usage row to its Logfire trace.
 
 ## PostHog event catalogue
 
 | Event | distinct_id | Props |
 |---|---|---|
-| `agent_run_completed` | user_id (Jordan today, else org_id) | `agent_slug, run_kind, channel, conversation_id?, schedule_name?, model, input_tokens, output_tokens, cost_usd?, duration_ms, tool_call_count, success, error_type?` |
+| `agent_run_completed` | user_id, else org_id | `agent_slug, run_kind, channel, conversation_id?, schedule_name?, model, input_tokens, output_tokens, cost_usd?, duration_ms, tool_call_count, success, error_type?, error_severity?` |
 | `proactive_sent` | user_id | `schedule_name?, task_type, channel, content_length, agent_slug?, trigger` |
 | `agent_session_started` | user_id | `channel, agent_slug` (emitted on conversation insert) |
 | `eval_run_completed` | `system:eval` | `dataset, total_cases, passed, score, prev_score?, regression, duration_ms` |
 | `feedback_submitted` | user_id | `agent_slug, rating, has_note, prompt_source, conversation_id?` |
+
+In-process runs always pass `user_id=None` to the emitter today (`utils/agent_runner.py` does not yet populate it), so `distinct_id` currently resolves to `org_id` for every in-process `agent_run_completed` event. The user_id path exists for the frontend proxy, which does supply a real user id.
 
 Event names are constants in `jordan_claw.analytics.emitter.ALLOWED_EVENTS`. Never inline an event string at a call site — use the typed emitter function.
 
@@ -54,9 +56,13 @@ Built via the PostHog MCP server (install: `npx @posthog/wizard mcp add`). Defin
 - **Add a new event**: define a typed function in `analytics/emitter.py`, append the name to `ALLOWED_EVENTS`, and (if you want it callable from the browser) handle it in `analytics_proxy._dispatch`.
 - **PostHog goes down**: emits become no-ops at WARN level. The agent never fails because PostHog is unavailable. Token usage is still captured in `usage_events` and Logfire.
 - **Disable PostHog locally**: unset `POSTHOG_API_KEY` or set `POSTHOG_ENABLED=false`.
-- **Drain the queue**: `posthog.shutdown()` is registered in the FastAPI lifespan teardown. Pending captures are awaited via `emitter.drain_pending_emits()` before shutdown.
+- **Drain the queue**: FastAPI lifespan teardown awaits `drain_pending_writes()` (pending `usage_events` inserts) first, then `emitter.drain_pending_emits()` (pending PostHog captures), then `posthog.shutdown()`.
 - **PostHog "Sessions" tab is empty by design**: we use the server-side Python SDK and don't emit `$session_id`. PostHog Sessions is a frontend-SDK concept. Use Live events / the Events explorer / the dashboard above instead.
 - **Project key vs. personal key**: `POSTHOG_API_KEY` must be the *Project* API key (`phc_*`) from PostHog → Project settings. The *Personal* API key (`phx_*`) from user settings will return 401 from the capture endpoint.
+
+## Content privacy
+
+Per-agent content export to Logfire is controlled by `InstrumentationSettings(include_content=...)`, granted as a capability (`private_content` in `agents/capabilities.py`). `med-check` carries it: prompts and completions for that agent no longer export to Logfire. Logfire's `ScrubbingOptions` (configured in `main.py`, patterns for `date_of_birth`, `dob`, `app_password`) do NOT apply to gen_ai message attributes, only to structured span attributes, so `include_content` is the only lever for message-level content.
 
 ## Verification log
 

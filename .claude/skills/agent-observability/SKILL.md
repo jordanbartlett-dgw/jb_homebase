@@ -8,7 +8,8 @@ description: Use when adding or debugging observability in jb_homebase — Logfi
 One run → three signals sharing keys (`agent_slug`, `run_kind`, `channel`,
 `cost_usd`, `duration_ms`, `tool_call_count`): **Logfire** (traces), **Supabase
 `usage_events`** (cost ledger — the canonical table, not `messages`), **PostHog**
-(product analytics). Operational catalogue and dashboard ids: `docs/observability.md`.
+(product analytics). `usage_events.trace_id` (32-char hex) joins a row to its
+Logfire trace. Operational catalogue and dashboard ids: `docs/observability.md`.
 
 ## The choke point — instrument here, nowhere else
 
@@ -37,6 +38,12 @@ Error taxonomy: `classify_error` returns `(error_type, severity)` with severity
 in `low/medium/high/critical` — this mirrors the `usage_events` CHECK
 constraint. Don't invent new severities without a migration.
 
+Per-agent content privacy: the `private_content` capability
+(`agents/capabilities.py`) grants `InstrumentationSettings(include_content=False)`,
+turning off prompt/completion export to Logfire for that agent. `med-check`
+carries it (medical data). Logfire scrubbing does not cover gen_ai message
+attributes, so `include_content` is the only content lever, not scrubbing.
+
 ## PostHog rules
 
 - Event names ONLY from `analytics/emitter.ALLOWED_EVENTS`; add new events as
@@ -62,7 +69,8 @@ one without a reason, the three-pillar setup covers it.
    and the error (if any) are on the span.
 2. `usage_events`: query by `run_kind`/`agent_slug`/`created_at` for cost,
    success flag, error_type/severity. Failed runs live here with
-   `success=false` (not as system-role messages).
+   `success=false` (not as system-role messages). `trace_id` on the row jumps
+   straight to the matching Logfire trace.
 3. PostHog `agent_run_completed` for trend context; dashboard 1543058.
 4. Background writes are fire-and-forget — in tests call
    `drain_pending_writes()` / `drain_pending_emits()` before asserting.
