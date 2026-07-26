@@ -118,8 +118,12 @@ ever list/cancel `source='reminder'` rows.
   workout-coach) that reuse the same tool fns — never grant a *_readonly group
   alongside its full group (duplicate names), plus **email** (4 tools:
   send_email, reply_to_email, list_email_threads, read_email_thread; the
-  agent's own AgentMail inbox, on claw-main). 37 distinct tools total. Unknown
-  ids are skipped with a warning (safe deploy ordering). log_workout refuses
+  agent's own AgentMail inbox, on claw-main), plus **code_mode** (a CodeMode
+  wrapper capability, not a ToolGroup: replaces the agent's granted tools with
+  a single sandboxed `run_code` tool that composes them in one step — loops,
+  parallel fan-out; rollback = `array_remove` on the agent row). 37 distinct
+  tools total. Unknown ids are skipped with a warning (safe deploy ordering).
+  log_workout refuses
   same-day same-activity duplicates unless allow_duplicate=true;
   amend_last_workout updates the latest log (follow-up detail was
   double-logging sessions). Med-check details, sources, and the deployed
