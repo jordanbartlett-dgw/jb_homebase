@@ -47,6 +47,26 @@ class CalendarEventPayload {
   final String? location;
 }
 
+class ProactiveArtifactPayload {
+  const ProactiveArtifactPayload({
+    required this.taskType,
+    required this.content,
+    required this.createdAt,
+  });
+
+  factory ProactiveArtifactPayload.fromJson(Map<String, dynamic> json) {
+    return ProactiveArtifactPayload(
+      taskType: json['task_type'] as String,
+      content: json['content'] as String,
+      createdAt: DateTime.parse(json['created_at'] as String),
+    );
+  }
+
+  final String taskType;
+  final String content;
+  final DateTime createdAt;
+}
+
 class TodayPayload {
   const TodayPayload({
     required this.date,
@@ -55,6 +75,7 @@ class TodayPayload {
     required this.calendarStatus,
     required this.calendarMessage,
     required this.events,
+    required this.artifacts,
   });
 
   factory TodayPayload.fromJson(Map<String, dynamic> json) {
@@ -69,6 +90,12 @@ class TodayPayload {
         for (final event in json['events'] as List<dynamic>)
           CalendarEventPayload.fromJson(event as Map<String, dynamic>),
       ],
+      artifacts: [
+        for (final artifact in json['artifacts'] as List<dynamic>? ?? const [])
+          ProactiveArtifactPayload.fromJson(
+            artifact as Map<String, dynamic>,
+          ),
+      ],
     );
   }
 
@@ -78,4 +105,5 @@ class TodayPayload {
   final String calendarStatus;
   final String? calendarMessage;
   final List<CalendarEventPayload> events;
+  final List<ProactiveArtifactPayload> artifacts;
 }

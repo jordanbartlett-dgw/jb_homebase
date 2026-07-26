@@ -244,13 +244,19 @@ exercise) and the sign-in screen shows. Agent ids in
 Live today: text chat (`ApiClient.sendMessage` → `/app/messages`, per-message
 idempotency key, 120s timeout, deliberate no-streaming), current-thread
 hydration, paginated read-only History, New Chat archiving, and Today
-(`ApiClient.fetchToday` → `/app/today`) with a real morning briefing and
-structured seven-day calendar. `TodayRepository` maps wire payloads to domain
-models; `TodayController` owns refresh/loading/error state; Home, digest
-detail, and Calendar remain lean views. Voice is live: `record` captures mono
-AAC into a temporary M4A, `permission_handler` owns runtime microphone access,
-live dBFS samples drive the capture waveform, `/voice/transcribe` creates an
-editable draft, `audio_waveforms` provides playback/seeking, and
+(`ApiClient.fetchToday` → `/app/today`) with a real morning briefing,
+structured seven-day calendar, and recent proactive-artifacts feed.
+`TodayRepository` maps wire payloads to domain models; Home shows the newest
+three artifacts and a full recent-updates sheet, including memory corrections,
+AgentMail event summaries, training reviews, and care-document nudges.
+`TodayController` owns refresh/loading/error state; Home, digest detail, and
+Calendar remain lean views. Assistant Markdown uses a shared branded renderer;
+fenced code becomes a syntax-highlighted, copyable, wrap/scroll code card.
+Code Mode still returns one final Markdown string — sandbox source, tool traces,
+and files are not part of the app contract. Voice is live: `record` captures
+mono AAC into a temporary M4A, `permission_handler` owns runtime microphone
+access, live dBFS samples drive the capture waveform, `/voice/transcribe`
+creates an editable draft, `audio_waveforms` provides playback/seeking, and
 `/voice/messages` sends the reviewed transcript into the classifier-selected
 agent thread. Any NEW live surface must branch on
 `GatewayConfig.isLive` and keep the mock path working — widget tests run in

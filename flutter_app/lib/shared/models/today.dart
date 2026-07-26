@@ -33,6 +33,19 @@ class CalendarEvent {
 }
 
 @immutable
+class ProactiveArtifact {
+  const ProactiveArtifact({
+    required this.taskType,
+    required this.content,
+    required this.createdAt,
+  });
+
+  final String taskType;
+  final String content;
+  final DateTime createdAt;
+}
+
+@immutable
 class TodayOverview {
   const TodayOverview({
     required this.date,
@@ -41,6 +54,7 @@ class TodayOverview {
     required this.calendarAvailable,
     required this.calendarMessage,
     required this.events,
+    required this.artifacts,
   });
 
   final DateTime date;
@@ -49,6 +63,7 @@ class TodayOverview {
   final bool calendarAvailable;
   final String? calendarMessage;
   final List<CalendarEvent> events;
+  final List<ProactiveArtifact> artifacts;
 
   List<CalendarEvent> upcomingEvents({DateTime? now}) {
     final current = now ?? DateTime.now();

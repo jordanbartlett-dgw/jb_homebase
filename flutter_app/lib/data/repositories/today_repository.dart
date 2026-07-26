@@ -32,6 +32,14 @@ class TodayRepository {
             location: event.location,
           ),
       ],
+      artifacts: [
+        for (final artifact in payload.artifacts)
+          ProactiveArtifact(
+            taskType: artifact.taskType,
+            content: artifact.content,
+            createdAt: artifact.createdAt,
+          ),
+      ],
     );
   }
 }

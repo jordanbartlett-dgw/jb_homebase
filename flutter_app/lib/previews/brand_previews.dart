@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/chat/widgets/agent_welcome.dart';
 import '../features/home/dashboard_screen.dart';
+import '../features/home/widgets/proactive_artifact_card.dart';
 import '../features/history/history_screen.dart';
 import '../features/voice/voice_capture.dart';
 import '../features/voice/voice_draft.dart';
@@ -12,6 +13,7 @@ import '../features/voice/voice_overlay.dart';
 import '../features/voice/voice_preview.dart';
 import '../features/voice/voice_providers.dart';
 import '../shared/models/agent.dart';
+import '../shared/models/today.dart';
 import '../shared/widgets/app_markdown.dart';
 import '../theme/app_theme.dart';
 
@@ -89,6 +91,7 @@ Widget agentsBrandPreview() => const ChatScreen();
 Widget historyBrandPreview() => const HistoryScreen();
 
 void selectPreviewPrompt(String _) {}
+void noopPreviewAction() {}
 
 @Preview(
   name: 'Med Check Welcome · Light',
@@ -149,6 +152,51 @@ summary = {
 
 The result is ready to use in the weekly review.
 ''',
+  ),
+);
+
+@Preview(
+  name: 'Updates · Light',
+  group: 'Today',
+  size: Size(390, 460),
+  brightness: Brightness.light,
+  theme: homebasePreviewTheme,
+  wrapper: homebasePreviewWrapper,
+)
+@Preview(
+  name: 'Updates · Dark',
+  group: 'Today',
+  size: Size(390, 460),
+  brightness: Brightness.dark,
+  theme: homebasePreviewTheme,
+  wrapper: homebasePreviewWrapper,
+)
+Widget proactiveUpdatesPreview() => Padding(
+  padding: const EdgeInsets.all(20),
+  child: Column(
+    children: [
+      ProactiveArtifactCard(
+        artifact: ProactiveArtifact(
+          taskType: 'memory_flag',
+          content:
+              'I updated my understanding: the vendor committed to a '
+              '36-hour lead time.',
+          createdAt: DateTime(2026, 7, 26, 8, 4),
+        ),
+        onTap: noopPreviewAction,
+      ),
+      const SizedBox(height: 10),
+      ProactiveArtifactCard(
+        artifact: ProactiveArtifact(
+          taskType: 'event_trigger',
+          content:
+              '**Agent inbox update:** A vendor replied about quote 4438 '
+              'and can meet the requested lead time.',
+          createdAt: DateTime(2026, 7, 26, 7, 48),
+        ),
+        onTap: noopPreviewAction,
+      ),
+    ],
   ),
 );
 
