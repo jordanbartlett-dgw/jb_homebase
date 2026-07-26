@@ -67,7 +67,9 @@ one-shot `run_at` timestamp — against `last_run_at`, dispatches to `EXECUTOR_M
 weekly_feedback_request, calendar_reminder, daily_workout, reminder (delivers
 `config.message` verbatim, no LLM), weekly_training_review (Sunday 6pm coach
 review of the week's logs vs plan; deterministic one-liner when there's no plan
-or no logs), plus fastmail_watch. One-shots are disabled by `dispatch_task`
+or no logs), care_docs_check (Sunday 5pm CT, LLM-free care-document staleness
+check, reuses `tools/meds.py::care_docs_status`, empty string = all current =
+nothing published), plus fastmail_watch. One-shots are disabled by `dispatch_task`
 after firing. Outputs are persisted as app artifacts with same-day dedup
 (`was_sent_today`) — except task_type `reminder`, which dedups on a 5-min
 `was_sent_within` window so sub-daily recurring reminders can fire. Morning
@@ -93,14 +95,16 @@ ever list/cancel `source='reminder'` rows.
   fetch_article), **calendar** (check_calendar, schedule_event), **memory**
   (recall_memory, forget_memory), **obsidian** (search_notes, read_note,
   create_source_note), **workout** (7 tools), **reminders** (set_reminder,
-  list_reminders, cancel_reminder), **meds** (9 tools, on med-check:
+  list_reminders, cancel_reminder), **meds** (13 tools, on med-check:
   normalize_medication, fetch_fda_label, get_medication_profile,
   save_medication_profile, log_health_event, amend_last_health_event,
-  get_health_events, get_last_visit_date, create_timeline_note), plus
+  get_health_events, get_last_visit_date, create_timeline_note,
+  get_care_profile, save_care_profile, save_care_document,
+  check_care_docs_current), plus
   read-only cross-agent views **workout_readonly** (3 read tools, on
   claw-main) and **obsidian_readonly** (search_notes + read_note, on
   workout-coach) that reuse the same tool fns — never grant a *_readonly group
-  alongside its full group (duplicate names). 29 distinct tools total. Unknown
+  alongside its full group (duplicate names). 33 distinct tools total. Unknown
   ids are skipped with a warning (safe deploy ordering). log_workout refuses
   same-day same-activity duplicates unless allow_duplicate=true;
   amend_last_workout updates the latest log (follow-up detail was
@@ -146,19 +150,21 @@ Observability details, event catalogue, dashboard ids: `docs/observability.md`.
 
 ## Database (Supabase, hosted)
 
-Migrations `001`–`024` (005 removed as a no-op), applied by hand in the SQL
-Editor. 016/019/021/023 are schema (run before their code deploy),
-015/017/018/020/022/024 are data grants/seeds (015 applied 2026-07-25;
-017/018/020/022/024 run only after deploy; headers state the ordering). 024
-is applied via `supabase-py`, not pasted into the SQL Editor, because the
-system-prompt literal is long enough that clipboard quote conversion mangles
-it. Tables:
+Migrations `001`–`027` (005 removed as a no-op), applied by hand in the SQL
+Editor. 016/019/021/023/025 are schema (run before their code deploy),
+015/017/018/020/022/024/026/027 are data grants/seeds (015 applied
+2026-07-25; the rest run only after their code deploy; headers state the
+ordering). 024 and 027 are applied via `supabase-py`, not pasted into the SQL
+Editor, because the system-prompt literal is long enough that clipboard quote
+conversion mangles it. Tables:
 organizations, agents, conversations, messages, memory_facts /
 memory_events / memory_context, obsidian_notes / obsidian_note_chunks
 (pgvector, 512-dim text-embedding-3-small, RPC `search_obsidian_notes`),
 proactive_schedules, proactive_messages, usage_events (cost ledger), feedback,
 workout_profiles / workout_plans / workout_logs, medication_profiles,
-health_events, event_triggers, watcher_cursors. RLS: deny-all on obsidian
+health_events, event_triggers, watcher_cursors, care_profiles / care_documents
+(medication-safety agent's phase-3 care-document sources and per-doc-type
+staleness fingerprints; `docs/med-check-agent.md`). RLS: deny-all on obsidian
 tables (service key bypasses).
 Pooling: pooler port 6543 with `?pgbouncer=true`.
 
@@ -183,23 +189,24 @@ disabled), `CLAW_APP_TOKEN` ("" = app/voice endpoints disabled),
 `claw-eval run <dataset>|--all` (`evals/run_eval.py`). Registry in
 `evals/registry.py`: `memory_recall` (20 cases, RequiredFactsScorer + pinned
 LLMJudge), `obsidian_retrieval` (20 cases, TopKMembershipScorer, no LLM —
-embeddings + RPC against the eval org), and `med_check` (8 cases: 4
-medication-check, 4 phase-2 health-log/timeline). Scored with
+embeddings + RPC against the eval org), and `med_check` (12 cases: 4
+medication-check, 4 phase-2 health-log/timeline, 4 phase-3 care-document
+composition/staleness). Scored with
 PhraseAssertionScorer (required/forbidden phrases plus a global forbidden
 list enforcing the asymmetry rule) plus a per-case pinned LLMJudge rubric.
-Timeline cases are graded on reply + note body via a `forbidden_in_note`
-scoping list, since the generated note and the chat reply need separate
-checks. Fixture-backed stub tools, live model. Task model pinned in
-`evals/tasks/memory_recall.py` deliberately, so evals stay green independent
-of DB agent config;
+Timeline and care-document cases are graded on reply + note body via a
+`forbidden_in_note` scoping list, since the generated note and the chat reply
+need separate checks. Fixture-backed stub tools, live model. Task model
+pinned in `evals/tasks/memory_recall.py` deliberately, so evals stay green
+independent of DB agent config;
 `evals/tasks/med_check.py::MED_CHECK_PROMPT` is a second copy of the deployed
 med-check prompt and must be kept in sync by hand (`docs/med-check-agent.md`
 has the drift note). Baselines committed in `evals/baselines/`; regression =
 score < baseline − 0.05 → exit 2 → Railway cron reports failure; PostHog
 `eval_run_completed` carries the flag. Fail-fast settings guard exists
 because pydantic-evals silently swallows task-fn exceptions. Costs:
-memory_recall ~$0.10/run, obsidian_retrieval ~$0.001, med_check ~$0.40/run
-(8 cases, sonnet-5 agent runs plus judge calls, baseline 0.934375). Full
+memory_recall ~$0.10/run, obsidian_retrieval ~$0.001, med_check ~$0.55/run
+(12 cases, sonnet-5 agent runs plus judge calls, baseline 0.917). Full
 runbook: `docs/evals.md`.
 
 ## Flutter app (thin client)

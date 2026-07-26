@@ -18,6 +18,7 @@ Special UI/data requirements:
 - On ambiguous drug names the agent asks which one before checking. Expect mid-check clarification turns.
 - Checks make several tool calls (RxNorm, openFDA, web); replies can take noticeably longer than claw-main. Existing 120s /app/messages timeout is sufficient.
 - Profile updates are conversational (no form needed); one medication_profiles row per org.
+- Care documents (emergency one-pager, caregiver handoff) live in the vault, not in the app; the weekly staleness check's nudges arrive as briefing artifacts (pull-only until push).
 Commit SHA: bf209b7 (main; includes the agent, the Flutter roster entry, and the history-trim fix)
 Production deployed: yes (deploy 80cd3981, commit bf209b7, /health green with three agents)
 Database row created and active: yes (agents row read back, prompt byte-identical to migration 022, model resolves to org default sonnet-5)

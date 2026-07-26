@@ -267,11 +267,184 @@ delivery channel for timeline output. Proactive artifacts (morning
 briefings, weekly reviews) are unrelated to this: they land in the app's
 Today/briefing surface, not in a med-check conversation.
 
+## Care documents (phase 3)
+
+Two living documents, composed by the model from structured profile data and
+written into the vault: an emergency one-pager for ER staff and first
+responders who likely know neither Rett syndrome nor congenital Long QT, and
+a caregiver handoff for grandparents, respite care, and the school nurse.
+"Living" is literal: both get regenerated whenever the profile or medication
+data they draw from changes, not written once and left to go stale silently.
+
+### Care profile schema
+
+Table `care_profiles` (migration 025), one row per org, same partial-upsert
+pattern as `medication_profiles`. Eight tracked sections:
+
+- `diagnoses` (list of strings).
+- `critical_flags` (list of strings): seeded at migration time with the QT
+  warning: "Congenital Long QT — avoid QT-prolonging medications
+  (CredibleMeds list); confirm any new drug with cardiology." Jordan can edit
+  or add more through the agent.
+- `seizure_plan`, `baselines`, `communication`, `routines`, `escalation`
+  (free text).
+- `contacts` (list of `{role, name, phone}`, model `CareContact`).
+
+`CareProfile.empty_sections()` names every falsy section; `get_care_profile`
+reports it so the agent knows what intake still needs before composing.
+
+### Tools
+
+- `get_care_profile`: profile plus an empty-sections report. Call before
+  intake and before composing either document. NOT for medications or
+  allergies (`get_medication_profile`).
+- `save_care_profile`: partial save, one or more sections at a time.
+  `diagnoses`, `critical_flags`, and `contacts` each REPLACE the whole list,
+  so read the current profile first and pass the full updated list, never a
+  delta. Never invents or infers content.
+- `save_care_document(doc_type, markdown_body)`: the only tool that writes a
+  composed document; it does not draft or edit content. Three gates run in
+  order before anything is written:
+  1. **Display-name refusal.** `timeline_display_name` (from the medication
+     profile) must already be set. If it isn't, the tool refuses and asks
+     what name to use, without writing anything.
+  2. **Emergency budget gate** (emergency doc only). Body over
+     `CARE_DOC_CHAR_BUDGET` = 2,600 characters (the roughly-2,500-char
+     one-page target plus slack) refuses with the char count and does not
+     write. The handoff has no such gate.
+  3. **Verbatim critical-flags gate** (emergency doc only). Every entry in
+     `care_profiles.critical_flags` must appear in the body as an exact
+     substring. A paraphrased or dropped flag refuses and names which flag
+     has to be copied in word for word. The handoff has no such gate: the
+     QT warning belongs on the emergency sheet, not the handoff.
+
+  Once the applicable gates pass, the title is `"{timeline_display_name} -
+  {Emergency One-Pager|Caregiver Handoff} - {YYYY-MM-DD}"`, written to
+  `Health/Documents/` through the same `insert_note`/`insert_chunks` path as
+  timeline notes (`note_type="care_document"`, `pending_export`). Same-day
+  regeneration is versioned, never overwritten: a second same-day save gets
+  " - v2", a third " - v3", by walking existing vault paths with that day's
+  title prefix. A successful write records the source-hash fingerprint
+  (below) and returns the note title.
+- `check_care_docs_current`: reports `never_generated | current | stale` per
+  doc_type; for stale, names which sections changed. NOT for generating or
+  editing a document, use `save_care_document`.
+
+### Hash / staleness mechanism
+
+`care_documents` (migration 025) stores one row per `(org_id, doc_type)`:
+`source_hash`, `note_title`, `generated_at`. `_care_source_hash`
+(`src/jordan_claw/tools/meds.py`) fingerprints the fields each doc_type is
+actually composed from. The two doc types do NOT cover the same fields:
+
+- **emergency**: full care profile + current medications + allergies +
+  `timeline_display_name`.
+- **handoff**: full care profile + `timeline_display_name` only. Medications
+  never appear on the handoff except as "handled by her parents" (unless a
+  dose falls in a typical care window), so a medication-only edit must not
+  flip the handoff stale.
+
+The hash is stored as a JSON string, not a bare digest:
+`{"total": <sha256 of the whole payload>, "sections": {<field name>:
+<sha256[:8] of that section alone>}}`. `total` gives a cheap current/stale
+check; `sections` lets `care_docs_status` name exactly which sections changed
+for a stale doc, without either caller needing to know the hash's internal
+shape.
+
+`care_docs_status(care, meds, rows)` is the one comparison function shared by
+`check_care_docs_current` (the on-demand tool) and the weekly `care_docs_check`
+executor (below), extracted so the two paths can never drift apart. A stored
+hash that fails to parse as the expected dict reports `unreadable` rather than
+crashing or silently treating it as current; both callers surface that as
+stale so a regenerate resets it.
+
+### Intake rules (prompt v3)
+
+One question at a time, in this fixed order: critical_flags and diagnoses
+confirmation, seizure_plan, baselines, escalation, communication, routines,
+contacts. Each answer is saved with `save_care_profile` as it arrives, so
+nothing is lost if the conversation drops, and restated in one line so
+transcription errors get caught. A skipped section is recorded as skipped,
+not silently left blank: the generated documents mark missing sections "not
+provided," never silently omit them, because a stranger reading the document
+should know the plan is incomplete.
+
+### Document composition order
+
+- **Emergency one-pager**: display name and DOB if provided, then CRITICAL
+  first (the QT warning and other critical_flags at the very top), then
+  diagnoses one line each, then seizure plan, then current medications and
+  allergies (live from the medication profile at generation time), then
+  baselines, then communication, then contacts. Plain language, no
+  abbreviations a first responder might not share. Written for someone with
+  thirty seconds.
+- **Handoff**: one-paragraph intro (who she is beyond diagnoses), routines by
+  time of day, communication and signals, seizure plan, an escalation matrix
+  (call Jordan, call the doctor, call 911, as observable triggers),
+  medications only if a dose falls in a typical care window (otherwise:
+  handled by her parents), then contacts. Every instruction actionable
+  ("hold up two objects and watch her eyes," not "she communicates with eye
+  gaze").
+
+Both documents close with the generation date and "maintained by her
+parents; not a medical record." The critical_flags QT warning is never cut,
+summarized, or moved below the top of either document: the model copies
+each entry in word for word, and `save_care_document`'s verbatim gate
+enforces it.
+
+### Weekly staleness check to app briefing
+
+`care_docs_check` (migration 026 seeds `America/Chicago` `0 17 * * 0`, Sunday
+5pm CT) runs `execute_care_docs_check`
+(`src/jordan_claw/proactive/executors.py`), LLM-free, reusing the exact
+`care_docs_status` hash-diff the on-demand tool uses so the two reports can
+never disagree. All-current returns `""`; `publish_proactive_message` treats
+a falsy return as do-not-send, so nothing is published when both documents
+are current. Anything stale or never_generated composes one short line per
+affected doc ("<name>'s <doc> is out of date (<reason>). Ask med-check to
+regenerate it." or "...has not been generated yet. Ask med-check to create
+it.") and that gets published as an app briefing artifact, pull-only (no
+push notification) until APNs is wired, same as every other proactive
+artifact today.
+
+The prompt also carries a live-conversation staleness rule: after any
+`save_medication_profile` or `save_care_profile` call, check
+`check_care_docs_current`; if something went stale, say so in one line and
+offer to regenerate, once, no nagging. The weekly check is the backstop for
+staleness that accrues between conversations, not a duplicate of the
+in-conversation nudge.
+
+### Migrations 025-027 (deploy order)
+
+- `025_care_profiles.sql`: schema (new `care_profiles` and `care_documents`
+  tables, RLS enabled, seeds the QT critical_flags row). Additive; run in the
+  SQL Editor BEFORE merging the phase-3 code.
+- `026_care_docs_check_schedule.sql`: data (seeds the weekly schedule row).
+  Run AFTER the code deploy is live: an unknown task_type never updates
+  `last_run_at`, so a pre-deploy row would warn every scheduler tick.
+- `027_med_check_prompt_v3.sql`: data (replaces `system_prompt` with v3,
+  adding the care-document rules above, appended after the phase-2 severity
+  paragraph; 8,025 bytes). Apply via supabase-py, not the SQL Editor (same
+  clipboard-mangling risk as 022/024); read back and byte-diff.
+
+### TODO hooks deliberately NOT built
+
+- **PDF export.** `create_timeline_note` and `save_care_document` both
+  compose once and write markdown; a PDF render would hook in at the same
+  point (compose once, render twice). Noted inline in code (`tools/meds.py`,
+  near `create_timeline_note`).
+- **Handoff audience parameter.** The handoff document has one fixed
+  composition today regardless of who it's actually for (family, school,
+  respite). An audience parameter that tunes tone or detail per recipient was
+  considered and deliberately not built this phase; no code hook exists for
+  it, and this is a scope decision, not an oversight.
+
 ## Eval coverage
 
-Dataset `med_check` (`evals/datasets/med_check.yaml`), 8 cases, run via
+Dataset `med_check` (`evals/datasets/med_check.yaml`), 12 cases, run via
 `claw-eval run med_check`. The first four cover the phase-1 medication check;
-the last four (added phase 2) cover the health log and timeline flows:
+the next four (phase 2) cover the health log and timeline flows; the last
+four (phase 3) cover care-document composition and staleness:
 
 - `known_risk_flagged` — ondansetron, CredibleMeds Known Risk, expects the
   flag and the pharmacist/cardiology close.
@@ -295,6 +468,20 @@ the last four (added phase 2) cover the health log and timeline flows:
 - `interim_prep` (phase 2): a breathing episode prompts an interim summary;
   expects the reply to lead with the triggering issue and the note to stay
   free of diagnosis or causal language.
+- `emergency_complete` (phase 3): a complete care profile fixture, "make her
+  emergency sheet"; expects the QT critical flag reproduced VERBATIM, the
+  fixed composition order, and the closing line. This is the case the
+  tool-level verbatim gate exists to guarantee, a compliant run passes
+  byte-for-byte, not by chance.
+- `emergency_missing_seizure_plan` (phase 3): same request with seizure_plan
+  empty in the fixture; expects "not provided" in the document and the reply
+  calling out the gap, composed now rather than stopping to ask.
+- `handoff_actionable` (phase 3): "make the handoff doc for her grandparents";
+  expects an intro paragraph, observable escalation triggers, and actionable
+  instructions, with the note free of diagnosis/likely/indicates language.
+- `stale_offer_once` (phase 3): a profile save that flips the emergency doc
+  stale; expects the save, a one-line restatement, and exactly one
+  regeneration offer with no repeated nagging.
 
 Each case scores on two evaluators: `PhraseAssertionScorer` (required phrases
 must all appear, per-case forbidden phrases plus the global forbidden list —
@@ -328,10 +515,26 @@ stopping to confirm. There is no rubric branch for a confirmation-only reply.
 A model that stops to ask scores as a failure here by design. That's the
 single-turn eval's limitation, not a prompt bug.
 
-**Baseline:** 0.934375 (`evals/baselines/med_check.json`), 8/8 cases passing.
-Committed with one judge flake absorbed deliberately. LLM judges are not
-perfectly deterministic, and a single flake shouldn't fail the regression
-gate. Real regressions still fire at score < baseline minus 0.05.
+**Baseline:** 0.917 (0.9166666666666666, `evals/baselines/med_check.json`),
+12/12 cases passing. Real regressions fire at score < baseline minus 0.05.
+
+## Known eval limitations
+
+- **Single-sample judge noise.** Every `LLMJudge`-scored case runs the judge
+  once; LLM judges are not perfectly deterministic, and an isolated flake can
+  swing a single case's score. The committed baseline absorbs that kind of
+  noise deliberately: the regression gate only fires when score drops more
+  than 0.05 below baseline (currently 0.867), not on every point of judge
+  jitter. N>1 judge sampling would reduce this but isn't built.
+- **DOB prompt/schema mismatch.** Prompt v3's emergency-doc order says
+  "display name and DOB if provided," but `CareProfile` has no
+  `date_of_birth` field. There is nothing for the model to provide or omit.
+  Today a compliant model either states DOB "not provided" or drops the line
+  outright; the `emergency_complete` case's LLMJudge rubric (not the phrase
+  scorer) is what actually verifies no real profile section is silently
+  marked missing, regardless of this mismatch. Ledgered for Jordan: either
+  add `date_of_birth` to `CareProfile` (and the intake order) or drop the DOB
+  clause from the prompt.
 
 ## Operational facts
 
@@ -365,3 +568,15 @@ gate. Real regressions still fire at score < baseline minus 0.05.
     clipboard quote conversion mangles it on paste (the failure mode from the
     022 rollout). Read the row back and diff against the migration file after
     applying.
+  - `025_care_profiles.sql`: schema (phase 3: new `care_profiles` and
+    `care_documents` tables, seeds the QT critical_flags row). Additive. Run
+    in the Supabase SQL Editor **before** merging the phase-3 code.
+  - `026_care_docs_check_schedule.sql`: data (phase 3: seeds the weekly
+    `care_docs_check` schedule, Sunday 5pm CT). Run **after** the deploy is
+    live — the executor must already exist or an unknown task_type never
+    updates `last_run_at`.
+  - `027_med_check_prompt_v3.sql`: data (phase 3: replaces `system_prompt`
+    with v3, adding the care-document intake, generation, and staleness
+    rules). Run **after** the phase-3 code deploy is live, applied via
+    `supabase-py` for the same clipboard-mangling reason as 024. Read the row
+    back and byte-diff against the migration file after applying.
