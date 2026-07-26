@@ -120,7 +120,7 @@ ever list/cancel `source='reminder'` rows.
   send_email, reply_to_email, list_email_threads, read_email_thread; the
   agent's own AgentMail inbox, on claw-main), plus **code_mode** (a CodeMode
   wrapper capability, not a ToolGroup: replaces the agent's granted tools with
-  a single sandboxed `run_code` tool that composes them in one step — loops,
+  a single sandboxed `run_code` tool that composes them in one step, loops,
   parallel fan-out; rollback = `array_remove` on the agent row). 37 distinct
   tools total. Unknown ids are skipped with a warning (safe deploy ordering).
   log_workout refuses
@@ -169,13 +169,13 @@ Observability details, event catalogue, dashboard ids: `docs/observability.md`.
 
 ## Database (Supabase, hosted)
 
-Migrations `001`–`029` (005 removed as a no-op), applied by hand in the SQL
+Migrations `001`–`031` (005 removed as a no-op), applied by hand in the SQL
 Editor. 016/019/021/023/025/028 are schema (run before their code deploy),
-015/017/018/020/022/024/026/027/029 are data grants/seeds (015 applied
+015/017/018/020/022/024/026/027/029/030/031 are data grants/seeds (015 applied
 2026-07-25; the rest run only after their code deploy; headers state the
-ordering). 024, 027, and 029 are applied via `supabase-py`, not pasted into
-the SQL Editor, because the system-prompt literal is long enough that
-clipboard quote conversion mangles it. Tables:
+ordering). 024, 027, 029, and 031 are applied via `supabase-py`, not pasted
+into the SQL Editor, because the system-prompt or trigger-prompt literal is
+long enough that clipboard quote conversion mangles it. Tables:
 organizations, agents, conversations, messages, memory_facts /
 memory_events / memory_context, obsidian_notes / obsidian_note_chunks
 (pgvector, 512-dim text-embedding-3-small, RPC `search_obsidian_notes`),
