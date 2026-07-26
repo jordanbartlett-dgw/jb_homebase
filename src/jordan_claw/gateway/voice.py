@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import time
+from typing import Any
 
 import httpx
 import structlog
@@ -226,6 +227,7 @@ async def handle_app_message(
     channel: str = VOICE_CHANNEL,
     channel_thread_id: str | None = None,
     run_kind: RunKind = RunKind.VOICE,
+    event_stream_handler: Any | None = None,
 ) -> GatewayResponse:
     """Run an app-originated utterance through the standard gateway flow.
 
@@ -258,6 +260,7 @@ async def handle_app_message(
         history_limit=settings.message_history_limit,
         environment=settings.environment,
         run_kind=run_kind,
+        event_stream_handler=event_stream_handler,
     )
     if result.conversation_id:
         return result

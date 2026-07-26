@@ -273,6 +273,141 @@ abstract class _$AgentTyping extends $Notifier<bool> {
   }
 }
 
+/// Ephemeral, safe-to-display activity for one live agent response.
+///
+/// This never enters conversation history. The gateway only sends
+/// argument-free tool labels and final answer text; private model thinking is
+/// not part of the stream contract.
+
+@ProviderFor(AgentStreamProgress)
+const agentStreamProgressProvider = AgentStreamProgressFamily._();
+
+/// Ephemeral, safe-to-display activity for one live agent response.
+///
+/// This never enters conversation history. The gateway only sends
+/// argument-free tool labels and final answer text; private model thinking is
+/// not part of the stream contract.
+final class AgentStreamProgressProvider
+    extends $NotifierProvider<AgentStreamProgress, AgentStreamProgressState> {
+  /// Ephemeral, safe-to-display activity for one live agent response.
+  ///
+  /// This never enters conversation history. The gateway only sends
+  /// argument-free tool labels and final answer text; private model thinking is
+  /// not part of the stream contract.
+  const AgentStreamProgressProvider._({
+    required AgentStreamProgressFamily super.from,
+    required String super.argument,
+  }) : super(
+         retry: null,
+         name: r'agentStreamProgressProvider',
+         isAutoDispose: false,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
+
+  @override
+  String debugGetCreateSourceHash() => _$agentStreamProgressHash();
+
+  @override
+  String toString() {
+    return r'agentStreamProgressProvider'
+        ''
+        '($argument)';
+  }
+
+  @$internal
+  @override
+  AgentStreamProgress create() => AgentStreamProgress();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(AgentStreamProgressState value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<AgentStreamProgressState>(value),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AgentStreamProgressProvider && other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
+}
+
+String _$agentStreamProgressHash() =>
+    r'd0be59ab9ebce61da519859043f38c9b8239bea1';
+
+/// Ephemeral, safe-to-display activity for one live agent response.
+///
+/// This never enters conversation history. The gateway only sends
+/// argument-free tool labels and final answer text; private model thinking is
+/// not part of the stream contract.
+
+final class AgentStreamProgressFamily extends $Family
+    with
+        $ClassFamilyOverride<
+          AgentStreamProgress,
+          AgentStreamProgressState,
+          AgentStreamProgressState,
+          AgentStreamProgressState,
+          String
+        > {
+  const AgentStreamProgressFamily._()
+    : super(
+        retry: null,
+        name: r'agentStreamProgressProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: false,
+      );
+
+  /// Ephemeral, safe-to-display activity for one live agent response.
+  ///
+  /// This never enters conversation history. The gateway only sends
+  /// argument-free tool labels and final answer text; private model thinking is
+  /// not part of the stream contract.
+
+  AgentStreamProgressProvider call(String agentId) =>
+      AgentStreamProgressProvider._(argument: agentId, from: this);
+
+  @override
+  String toString() => r'agentStreamProgressProvider';
+}
+
+/// Ephemeral, safe-to-display activity for one live agent response.
+///
+/// This never enters conversation history. The gateway only sends
+/// argument-free tool labels and final answer text; private model thinking is
+/// not part of the stream contract.
+
+abstract class _$AgentStreamProgress
+    extends $Notifier<AgentStreamProgressState> {
+  late final _$args = ref.$arg as String;
+  String get agentId => _$args;
+
+  AgentStreamProgressState build(String agentId);
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final created = build(_$args);
+    final ref =
+        this.ref as $Ref<AgentStreamProgressState, AgentStreamProgressState>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<AgentStreamProgressState, AgentStreamProgressState>,
+              AgentStreamProgressState,
+              Object?,
+              Object?
+            >;
+    element.handleValue(ref, created);
+  }
+}
+
 /// Chat thread per agent. Threads live for the whole session so switching
 /// agents (or tabs) never wipes a conversation.
 
@@ -321,7 +456,7 @@ final class AgentThreadProvider
   }
 }
 
-String _$agentThreadHash() => r'744e377e647e52f597329f86020c097aac774a8c';
+String _$agentThreadHash() => r'c127abfa7d51b8d3d612e9b30fe58e5a3757e764';
 
 /// Chat thread per agent. Threads live for the whole session so switching
 /// agents (or tabs) never wipes a conversation.

@@ -26,6 +26,39 @@ class MockData {
       ),
       calendarAvailable: true,
       calendarMessage: null,
+      artifacts: [
+        ProactiveArtifact(
+          taskType: 'memory_flag',
+          content:
+              'I updated my understanding:\n'
+              'Before: The vendor lead time is 48 hours.\n'
+              'Now: The vendor committed to a 36-hour lead time.\n\n'
+              'Let me know if that’s wrong.',
+          createdAt: day.add(const Duration(hours: 8, minutes: 4)),
+        ),
+        ProactiveArtifact(
+          taskType: 'event_trigger',
+          content:
+              '**Agent inbox update**\n\n'
+              'A vendor replied about quote 4438. They can meet the requested '
+              'lead time if artwork is approved before noon.',
+          createdAt: day.add(const Duration(hours: 7, minutes: 48)),
+        ),
+        ProactiveArtifact(
+          taskType: 'care_docs_check',
+          content:
+              'The caregiver handoff is out of date because care details '
+              'changed. Ask Med Check to regenerate it.',
+          createdAt: day.subtract(const Duration(hours: 10)),
+        ),
+        ProactiveArtifact(
+          taskType: 'weekly_training_review',
+          content:
+              'You completed three planned sessions this week. Keep Monday '
+              'easy after the hill work and protect the Wednesday recovery day.',
+          createdAt: day.subtract(const Duration(days: 1, hours: 2)),
+        ),
+      ],
       events: [
         CalendarEvent(
           id: 'event-board-call',

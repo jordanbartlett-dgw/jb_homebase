@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 from pydantic import ValidationError
+from pydantic_ai import (
+    FinalResultEvent,
+    FunctionToolCallEvent,
+    PartDeltaEvent,
+    PartStartEvent,
+    TextPart,
+    TextPartDelta,
+    ThinkingPart,
+)
+from pydantic_ai.messages import ToolCallPart
 
+from jordan_claw.gateway.app_chat import AppMessageResponse
 from jordan_claw.gateway.models import GatewayResponse
 
 BODY = {"text": "log my workout", "agent_slug": "workout", "idempotency_key": "utt-1"}
@@ -273,3 +285,112 @@ async def test_app_messages_replay_times_out_with_504(monkeypatch):
             )
 
     assert resp.status_code == 504
+
+
+# --- /app/messages/stream route ---
+
+
+async def _stream_events():
+    yield PartStartEvent(index=0, part=ThinkingPart(content="private reasoning"))
+    yield PartStartEvent(index=1, part=TextPart(content="I need to search first."))
+    yield FunctionToolCallEvent(
+        part=ToolCallPart(
+            tool_name="search_web",
+            args={"query": "secret arguments"},
+            tool_call_id="tool-1",
+        )
+    )
+    yield PartStartEvent(index=0, part=TextPart(content="Final "))
+    yield FinalResultEvent(tool_name=None, tool_call_id=None)
+    yield PartDeltaEvent(index=0, delta=TextPartDelta(content_delta="answer."))
+
+
+async def test_app_message_stream_emits_safe_activity_deltas_and_completion():
+    from jordan_claw.gateway import app_stream
+
+    _wire_app_state(app_token="app-token")
+
+    async def mock_handle(*args, **kwargs):
+        await kwargs["event_stream_handler"](None, _stream_events())
+        return GatewayResponse(content="Final answer.", conversation_id="c1")
+
+    with (
+        patch.object(app_stream, "get_message_by_channel_id", new=AsyncMock(return_value=None)),
+        patch.object(app_stream, "handle_app_message", new=mock_handle),
+    ):
+        async with _client() as client:
+            resp = await client.post(
+                "/app/messages/stream",
+                json=BODY,
+                headers={"Authorization": "Bearer app-token"},
+            )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/x-ndjson")
+    events = [json.loads(line) for line in resp.text.splitlines()]
+    assert events == [
+        {"type": "status", "message": "Working"},
+        {"type": "status", "message": "Searching the web"},
+        {"type": "delta", "text": "Final "},
+        {"type": "delta", "text": "answer."},
+        {
+            "type": "complete",
+            "agent_slug": "workout",
+            "reply": "Final answer.",
+            "conversation_id": "c1",
+        },
+    ]
+    assert "private reasoning" not in resp.text
+    assert "I need to search first." not in resp.text
+    assert "secret arguments" not in resp.text
+
+
+async def test_app_message_stream_replay_converges_without_rerunning_agent():
+    from jordan_claw.gateway import app_stream
+
+    _wire_app_state(app_token="app-token")
+    replay = AppMessageResponse(
+        agent_slug="workout",
+        reply="Logged it.",
+        conversation_id="c1",
+    )
+
+    with (
+        patch.object(
+            app_stream,
+            "get_message_by_channel_id",
+            new=AsyncMock(return_value=USER_ROW),
+        ),
+        patch.object(
+            app_stream,
+            "replay_app_response",
+            new=AsyncMock(return_value=replay),
+        ),
+        patch.object(app_stream, "handle_app_message", new=AsyncMock()) as mock_handle,
+    ):
+        async with _client() as client:
+            resp = await client.post(
+                "/app/messages/stream",
+                json=BODY,
+                headers={"Authorization": "Bearer app-token"},
+            )
+
+    events = [json.loads(line) for line in resp.text.splitlines()]
+    assert events[-1] == {
+        "type": "complete",
+        "agent_slug": "workout",
+        "reply": "Logged it.",
+        "conversation_id": "c1",
+    }
+    assert events[1] == {
+        "type": "status",
+        "message": "Reconnecting to your response",
+    }
+    mock_handle.assert_not_called()
+
+
+async def test_app_message_stream_requires_auth():
+    _wire_app_state(app_token="app-token")
+    async with _client() as client:
+        resp = await client.post("/app/messages/stream", json=BODY)
+    assert resp.status_code == 401

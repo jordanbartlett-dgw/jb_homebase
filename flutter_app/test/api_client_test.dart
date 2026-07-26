@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:jb_homebase_app/shared/api/api_client.dart';
+import 'package:jb_homebase_app/shared/api/message_stream_event.dart';
 
 Map<String, dynamic> conversationJson({
   String id = 'c1',
@@ -110,6 +111,120 @@ void main() {
           isA<ApiException>().having((e) => e.statusCode, 'statusCode', 401),
         ),
       );
+    });
+  });
+
+  group('sendMessageStream', () {
+    test('parses safe activity, deltas, and completion from NDJSON', () async {
+      late http.Request captured;
+      final client = ApiClient(
+        baseUrl: 'https://gateway.test',
+        appToken: 'claw-token',
+        inner: MockClient((request) async {
+          captured = request;
+          return http.Response(
+            [
+              jsonEncode({'type': 'status', 'message': 'Searching the web'}),
+              jsonEncode({'type': 'delta', 'text': 'Here is '}),
+              jsonEncode({'type': 'delta', 'text': 'the answer.'}),
+              jsonEncode({
+                'type': 'complete',
+                'agent_slug': 'claw-main',
+                'reply': 'Here is the answer.',
+                'conversation_id': 'c1',
+              }),
+              '',
+            ].join('\n'),
+            200,
+            headers: {'content-type': 'application/x-ndjson'},
+          );
+        }),
+      );
+
+      final events = await client
+          .sendMessageStream(agentSlug: 'claw-main', text: 'research this')
+          .toList();
+
+      expect(
+        captured.url.toString(),
+        'https://gateway.test/app/messages/stream',
+      );
+      expect(captured.headers['Authorization'], 'Bearer claw-token');
+      expect(captured.headers['Accept'], 'application/x-ndjson');
+      final body = jsonDecode(captured.body) as Map<String, dynamic>;
+      expect(body['text'], 'research this');
+      expect(body['agent_slug'], 'claw-main');
+      expect(body['idempotency_key'], isNotEmpty);
+      expect(
+        events.map((event) => event.type),
+        [
+          MessageStreamEventType.status,
+          MessageStreamEventType.delta,
+          MessageStreamEventType.delta,
+          MessageStreamEventType.complete,
+        ],
+      );
+      expect(events.first.message, 'Searching the web');
+      expect(events[1].text, 'Here is ');
+      expect(events.last.reply, 'Here is the answer.');
+      expect(events.last.conversationId, 'c1');
+    });
+
+    test('transport retry reuses the original idempotency key', () async {
+      final keys = <String>[];
+      var attempts = 0;
+      final client = ApiClient(
+        baseUrl: 'https://gateway.test',
+        appToken: 'claw-token',
+        inner: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          keys.add(body['idempotency_key'] as String);
+          attempts++;
+          if (attempts == 1) {
+            throw http.ClientException('connection dropped');
+          }
+          return http.Response(
+            '${jsonEncode({
+              'type': 'complete',
+              'agent_slug': 'claw-main',
+              'reply': 'Recovered.',
+              'conversation_id': 'c1',
+            })}\n',
+            200,
+          );
+        }),
+      );
+
+      final events = await client
+          .sendMessageStream(agentSlug: 'claw-main', text: 'keep going')
+          .toList();
+
+      expect(keys, hasLength(2));
+      expect(keys[0], keys[1]);
+      expect(events.single.reply, 'Recovered.');
+    });
+
+    test('surfaces a gateway stream error event', () async {
+      final client = ApiClient(
+        baseUrl: 'https://gateway.test',
+        appToken: 'claw-token',
+        inner: MockClient(
+          (_) async => http.Response(
+            '${jsonEncode({
+              'type': 'error',
+              'message': 'The response is still running.',
+            })}\n',
+            200,
+          ),
+        ),
+      );
+
+      final events = await client
+          .sendMessageStream(agentSlug: 'claw-main', text: 'keep going')
+          .toList();
+
+      expect(events.single.type, MessageStreamEventType.error);
+      expect(events.single.message, 'The response is still running.');
     });
   });
 

@@ -14,6 +14,7 @@ import '../../state/app_state.dart';
 import '../../state/today_state.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/colors.dart';
+import 'widgets/proactive_artifact_card.dart';
 
 /// Homebase landing view: server-truth digest, calendar, and agent dock.
 class DashboardScreen extends ConsumerWidget {
@@ -84,6 +85,13 @@ class DashboardScreen extends ConsumerWidget {
                     onViewCalendar: () => context.push(Routes.calendar),
                   ),
                 ),
+                if (overview.artifacts.isNotEmpty) ...[
+                  const SizedBox(height: 28),
+                  FadeSlideIn(
+                    delay: const Duration(milliseconds: 250),
+                    child: _UpdatesFeed(artifacts: overview.artifacts),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 32),
@@ -113,6 +121,112 @@ class DashboardScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UpdatesFeed extends StatelessWidget {
+  const _UpdatesFeed({required this.artifacts});
+
+  static const _visibleCount = 3;
+
+  final List<ProactiveArtifact> artifacts;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final visible = artifacts.take(_visibleCount).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text('UPDATES', style: theme.textTheme.titleSmall),
+            ),
+            if (artifacts.length > _visibleCount)
+              TextButton(
+                key: const ValueKey('view-all-updates'),
+                onPressed: () => _showAllUpdates(context),
+                child: Text('View all ${artifacts.length}'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        for (final (index, artifact) in visible.indexed)
+          Padding(
+            padding: EdgeInsets.only(
+              bottom: index == visible.length - 1 ? 0 : 10,
+            ),
+            child: ProactiveArtifactCard(
+              key: ValueKey('artifact-card-$index'),
+              artifact: artifact,
+              onTap: () => showProactiveArtifactDetail(context, artifact),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _showAllUpdates(BuildContext context) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      constraints: const BoxConstraints(maxWidth: 720),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => FractionallySizedBox(
+        heightFactor: 0.9,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 4, 16, 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Recent updates',
+                      style: Theme.of(sheetContext).textTheme.headlineSmall,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Close',
+                    onPressed: () => Navigator.pop(sheetContext),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            Divider(
+              color: Theme.of(sheetContext).colorScheme.outlineVariant,
+            ),
+            Expanded(
+              child: ListView.separated(
+                padding: AppTheme.pagePadding.copyWith(top: 20, bottom: 40),
+                itemCount: artifacts.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final artifact = artifacts[index];
+                  return ProactiveArtifactCard(
+                    key: ValueKey('all-artifact-card-$index'),
+                    artifact: artifact,
+                    onTap: () => showProactiveArtifactDetail(
+                      sheetContext,
+                      artifact,
+                    ),
+                  );
+                },
               ),
             ),
           ],

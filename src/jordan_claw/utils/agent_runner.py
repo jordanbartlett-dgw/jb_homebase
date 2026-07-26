@@ -90,6 +90,7 @@ async def run_agent_instrumented[OutputT](
     conversation_id: str | None = None,
     schedule_name: str | None = None,
     message_history: list | None = None,
+    event_stream_handler: Any | None = None,
     max_total_tokens: int = DEFAULT_MAX_TOTAL_TOKENS,
 ) -> AgentRunResult[OutputT]:
     """Run an agent with full instrumentation.
@@ -124,6 +125,8 @@ async def run_agent_instrumented[OutputT](
                 run_kwargs["deps"] = deps
             if message_history is not None:
                 run_kwargs["message_history"] = message_history
+            if event_stream_handler is not None:
+                run_kwargs["event_stream_handler"] = event_stream_handler
 
             result = await agent.run(prompt, **run_kwargs)
 

@@ -34,6 +34,18 @@ void main() {
                 'location': 'Zoom',
               },
             ],
+            'artifacts': [
+              {
+                'task_type': 'memory_flag',
+                'content': 'I updated my understanding.',
+                'created_at': '2026-07-25T08:04:00-05:00',
+              },
+              {
+                'task_type': 'event_trigger',
+                'content': 'A new message reached the agent inbox.',
+                'created_at': '2026-07-25T07:48:00-05:00',
+              },
+            ],
           }),
           200,
         );
@@ -48,5 +60,33 @@ void main() {
     expect(today.events.single.title, 'Board call');
     expect(today.events.single.allDay, isFalse);
     expect(today.events.single.location, 'Zoom');
+    expect(today.artifacts, hasLength(2));
+    expect(today.artifacts.first.taskType, 'memory_flag');
+    expect(today.artifacts.first.content, 'I updated my understanding.');
+    expect(today.artifacts.last.taskType, 'event_trigger');
+  });
+
+  test('repository accepts older Today payloads without artifacts', () async {
+    final apiClient = ApiClient(
+      baseUrl: 'https://gateway.test',
+      appToken: 'token',
+      inner: MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'date': '2026-07-25',
+            'timezone': 'America/Chicago',
+            'digest': null,
+            'calendar_status': 'ok',
+            'calendar_message': null,
+            'events': <Object>[],
+          }),
+          200,
+        );
+      }),
+    );
+
+    final today = await TodayRepository(apiClient).fetchToday();
+
+    expect(today.artifacts, isEmpty);
   });
 }

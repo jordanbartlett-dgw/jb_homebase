@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../shared/api/gateway_config.dart';
+import '../shared/api/message_stream_event.dart';
 import '../shared/api/mock_data.dart';
 import '../shared/models/agent.dart';
 import '../shared/models/message.dart';
@@ -52,6 +54,52 @@ class AgentTyping extends _$AgentTyping {
   void set(bool value) => state = value;
 }
 
+@immutable
+class AgentStreamProgressState {
+  const AgentStreamProgressState({
+    this.status = '',
+    this.partialReply = '',
+  });
+
+  final String status;
+  final String partialReply;
+}
+
+/// Ephemeral, safe-to-display activity for one live agent response.
+///
+/// This never enters conversation history. The gateway only sends
+/// argument-free tool labels and final answer text; private model thinking is
+/// not part of the stream contract.
+@Riverpod(keepAlive: true)
+class AgentStreamProgress extends _$AgentStreamProgress {
+  @override
+  AgentStreamProgressState build(String agentId) {
+    return const AgentStreamProgressState();
+  }
+
+  void begin() {
+    state = const AgentStreamProgressState(status: 'Working');
+  }
+
+  void updateStatus(String value) {
+    state = AgentStreamProgressState(
+      status: value,
+      partialReply: state.partialReply,
+    );
+  }
+
+  void appendText(String value) {
+    state = AgentStreamProgressState(
+      status: 'Writing response',
+      partialReply: '${state.partialReply}$value',
+    );
+  }
+
+  void clear() {
+    state = const AgentStreamProgressState();
+  }
+}
+
 /// Chat thread per agent. Threads live for the whole session so switching
 /// agents (or tabs) never wipes a conversation.
 @Riverpod(keepAlive: true)
@@ -78,6 +126,7 @@ class AgentThread extends _$AgentThread {
     );
     state = AsyncData([...messages, message]);
     ref.read(agentTypingProvider(agentId).notifier).set(true);
+    ref.read(agentStreamProgressProvider(agentId).notifier).begin();
 
     if (GatewayConfig.isLive) {
       unawaited(_sendToGateway(body));
@@ -91,14 +140,13 @@ class AgentThread extends _$AgentThread {
     _replyTimer = Timer(const Duration(milliseconds: 1400), () {
       if (!ref.mounted) return;
       ref.read(agentTypingProvider(agentId).notifier).set(false);
+      ref.read(agentStreamProgressProvider(agentId).notifier).clear();
       state = AsyncData([
         ...(state.asData?.value ?? const <Message>[]),
         Message(
           id: 'msg-${DateTime.now().microsecondsSinceEpoch}',
           role: MessageRole.assistant,
-          body:
-              'Got it. (Mock reply — live responses stream in from the '
-              'gateway in PR2.)',
+          body: 'Got it. (Mock reply — live builds stream from the gateway.)',
           timestamp: DateTime.now(),
         ),
       ]);
@@ -130,6 +178,7 @@ class AgentThread extends _$AgentThread {
       ),
     ]);
     ref.read(agentTypingProvider(agentId).notifier).set(false);
+    ref.read(agentStreamProgressProvider(agentId).notifier).clear();
     ref.invalidate(conversationHistoryProvider);
   }
 
@@ -150,24 +199,42 @@ class AgentThread extends _$AgentThread {
     }
   }
 
-  /// Blocking request/reply against POST /app/messages. The agent id IS the
-  /// gateway slug; the typing indicator covers the 30-60s agent run.
+  /// Stream safe progress and the final answer from POST /app/messages/stream.
+  ///
+  /// The agent id IS the gateway slug. Completion replaces any partial text
+  /// with the authoritative persisted reply.
   Future<void> _sendToGateway(String body) async {
-    String replyBody;
+    String? replyBody;
     try {
-      final reply = await ref.read(apiClientProvider).sendMessage(agentSlug: agentId, text: body);
-      replyBody = reply.reply;
+      await for (final event
+          in ref.read(apiClientProvider).sendMessageStream(agentSlug: agentId, text: body)) {
+        if (!ref.mounted) return;
+        switch (event.type) {
+          case MessageStreamEventType.status:
+            ref
+                .read(agentStreamProgressProvider(agentId).notifier)
+                .updateStatus(event.message ?? 'Working');
+          case MessageStreamEventType.delta:
+            ref.read(agentStreamProgressProvider(agentId).notifier).appendText(event.text ?? '');
+          case MessageStreamEventType.complete:
+            replyBody = event.reply ?? '';
+          case MessageStreamEventType.error:
+            replyBody =
+                event.message ?? 'Couldn’t reach the gateway. Check your connection and try again.';
+        }
+      }
     } on Exception {
       replyBody = 'Couldn’t reach the gateway. Check your connection and try again.';
     }
     if (!ref.mounted) return;
     ref.read(agentTypingProvider(agentId).notifier).set(false);
+    ref.read(agentStreamProgressProvider(agentId).notifier).clear();
     state = AsyncData([
       ...(state.asData?.value ?? const <Message>[]),
       Message(
         id: 'msg-${DateTime.now().microsecondsSinceEpoch}',
         role: MessageRole.assistant,
-        body: replyBody,
+        body: replyBody ?? 'Couldn’t reach the gateway. Check your connection and try again.',
         timestamp: DateTime.now(),
       ),
     ]);

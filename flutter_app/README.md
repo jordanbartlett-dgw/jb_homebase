@@ -13,8 +13,10 @@ JB Homebase design pivot — this README is current).
 - **Text chat for Claw Main, Workout Coach, and Med Check; conversation
   history; Daily Digest; and Calendar are live
   gateway surfaces**: sends go to
-  `POST /app/messages` with bearer `CLAW_APP_TOKEN` auth and one idempotency
-  key per message; active threads hydrate after relaunch. History lists
+  `POST /app/messages/stream` with bearer `CLAW_APP_TOKEN` auth and one
+  idempotency key per message. Safe tool activity and final-answer Markdown
+  stream into the active bubble; private model thinking and tool data are
+  never sent. Active threads hydrate after relaunch. History lists
   retained sessions, opens read-only transcripts, and New Chat archives the
   current session before the next send. Home reads `GET /app/today` for the
   existing morning briefing and structured seven-day Fastmail agenda; refresh
@@ -36,7 +38,7 @@ nav (NavigationRail on ≥ 840dp):
   refresh, and horizontal agent dock. Digest opens into a full selectable
   briefing; Calendar opens a grouped seven-day agenda with an Ask Claw action.
 - **Agents** — agent picker chips (Claw Main, Workout Coach, Med Check), asymmetric
-  chat bubbles, per-agent tinted typing indicator, tool-call chips,
+  chat bubbles, cobalt live-activity labels, streaming Markdown, tool-call chips,
   composer with mic (voice overlay) + send, and New Chat. Threads are
   per-agent Riverpod families, survive tab switches, and hydrate from the
   gateway after relaunch. Med Check adds a decision-support boundary and
@@ -116,7 +118,7 @@ lib/
   features/
     home/                      dashboard (digest, agent dock, previews)
                                + digest/calendar detail screens
-    chat/                      chat screen + typing indicator, tool chips
+    chat/                      chat + streaming activity/Markdown, tool chips
     history/                   history list + read-only transcript
     auth/                      passkey + magic link
     voice/                     capture overlay + preview
@@ -125,7 +127,7 @@ lib/
     widgets/                   BouncyButton, FadeSlideIn, MessageBubble, Entrance
     api/                       gateway client + wire payloads + mock data
   data/repositories/           API payload → domain model boundaries
-  state/app_state.dart         Riverpod: auth, active agent, threads, typing
+  state/app_state.dart         Riverpod: auth, active agent, threads, stream state
   state/conversation_state.dart Riverpod: history pages + transcript details
   state/today_state.dart       Riverpod: briefing/calendar loading + refresh
 test/
