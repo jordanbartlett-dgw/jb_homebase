@@ -149,6 +149,30 @@ async def get_latest_proactive_message(
     return result.data[0] if result.data else None
 
 
+async def get_recent_proactive_artifacts(
+    client: AsyncClient,
+    *,
+    org_id: str,
+    exclude_task_type: str,
+    since: datetime,
+    limit: int,
+) -> list[dict]:
+    """Recent proactive artifacts for the app's Today feed: every task_type
+    except exclude_task_type (morning_briefing already has its own digest
+    slot), delivered since the cutoff, newest first, capped at limit."""
+    result = (
+        await client.table("proactive_messages")
+        .select("task_type, content, delivered_at")
+        .eq("org_id", org_id)
+        .neq("task_type", exclude_task_type)
+        .gte("delivered_at", since.isoformat())
+        .order("delivered_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return result.data
+
+
 async def was_sent_today(
     client: AsyncClient,
     schedule_id: str,

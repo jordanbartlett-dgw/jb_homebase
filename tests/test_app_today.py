@@ -54,6 +54,10 @@ async def test_load_today_returns_existing_digest_and_calendar_without_agent_run
             new=AsyncMock(return_value=digest_row),
         ) as digest_query,
         patch(
+            "jordan_claw.gateway.app_today.get_recent_proactive_artifacts",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
             "jordan_claw.gateway.app_today.list_calendar_events",
             new=AsyncMock(return_value=[EVENT]),
         ) as calendar_query,
@@ -71,6 +75,7 @@ async def test_load_today_returns_existing_digest_and_calendar_without_agent_run
     assert response.digest.content == "You have one board call today."
     assert response.events == [EVENT]
     assert response.calendar_status == "ok"
+    assert response.artifacts == []
     assert digest_query.await_args.kwargs["task_type"] == "morning_briefing"
     assert calendar_query.await_args.args[2].date().isoformat() == "2026-07-25"
     assert calendar_query.await_args.args[3].date().isoformat() == "2026-08-01"
@@ -86,6 +91,10 @@ async def test_load_today_keeps_digest_when_calendar_is_unavailable():
         patch(
             "jordan_claw.gateway.app_today.get_latest_proactive_message",
             new=AsyncMock(return_value=digest_row),
+        ),
+        patch(
+            "jordan_claw.gateway.app_today.get_recent_proactive_artifacts",
+            new=AsyncMock(return_value=[]),
         ),
         patch(
             "jordan_claw.gateway.app_today.list_calendar_events",
@@ -105,6 +114,84 @@ async def test_load_today_keeps_digest_when_calendar_is_unavailable():
     assert response.calendar_status == "unavailable"
     assert response.calendar_message == "Calendar is temporarily unavailable."
     assert response.events == []
+
+
+async def test_load_today_includes_artifacts_excluding_briefing():
+    """Non-briefing proactive artifacts (weekly review, care-docs nudge) come
+    back in the artifacts list; morning_briefing is excluded since it already
+    has its own digest slot."""
+    artifact_rows = [
+        {
+            "task_type": "weekly_review",
+            "content": "Weekly review: 3 workouts logged.",
+            "delivered_at": "2026-07-24T18:00:00-05:00",
+        },
+        {
+            "task_type": "care_docs_check",
+            "content": "Ellie's handoff doc is out of date (routines changed).",
+            "delivered_at": "2026-07-23T17:00:00-05:00",
+        },
+    ]
+    with (
+        patch(
+            "jordan_claw.gateway.app_today.get_latest_proactive_message",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "jordan_claw.gateway.app_today.get_recent_proactive_artifacts",
+            new=AsyncMock(return_value=artifact_rows),
+        ) as artifacts_query,
+        patch(
+            "jordan_claw.gateway.app_today.list_calendar_events",
+            new=AsyncMock(return_value=[]),
+        ),
+    ):
+        response = await load_today(
+            MagicMock(),
+            org_id="org-1",
+            fastmail_username="jordan@example.com",
+            fastmail_app_password="password",
+            days=7,
+            now=NOW,
+        )
+
+    assert len(response.artifacts) == 2
+    assert response.artifacts[0].task_type == "weekly_review"
+    assert response.artifacts[0].content == "Weekly review: 3 workouts logged."
+    assert response.artifacts[1].task_type == "care_docs_check"
+    assert artifacts_query.await_args.kwargs["exclude_task_type"] == "morning_briefing"
+    assert artifacts_query.await_args.kwargs["limit"] == 10
+    assert artifacts_query.await_args.kwargs["org_id"] == "org-1"
+
+
+async def test_load_today_artifacts_cap_respected_by_query():
+    """The cap is enforced by the query layer (limit kwarg); load_today just
+    passes through whatever rows come back. Assert the limit it requests."""
+    with (
+        patch(
+            "jordan_claw.gateway.app_today.get_latest_proactive_message",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "jordan_claw.gateway.app_today.get_recent_proactive_artifacts",
+            new=AsyncMock(return_value=[]),
+        ) as artifacts_query,
+        patch(
+            "jordan_claw.gateway.app_today.list_calendar_events",
+            new=AsyncMock(return_value=[]),
+        ),
+    ):
+        response = await load_today(
+            MagicMock(),
+            org_id="org-1",
+            fastmail_username="jordan@example.com",
+            fastmail_app_password="password",
+            days=7,
+            now=NOW,
+        )
+
+    assert response.artifacts == []
+    assert artifacts_query.await_args.kwargs["limit"] == 10
 
 
 async def test_today_route_requires_app_auth():
