@@ -16,6 +16,7 @@ import pytest
 from evals.run_eval import _usage_event_kwargs
 from jordan_claw.analytics.types import RunKind
 from jordan_claw.db.usage_events import save_usage_event
+from jordan_claw.utils.pricing import compute_cost
 
 ORG_ID = "eaa1eaa1-eaa1-eaa1-eaa1-eaa1eaa1eaa1"
 
@@ -107,6 +108,58 @@ def test_usage_event_kwargs_zero_tokens_when_no_cases_report_metrics():
 
     assert kwargs["input_tokens"] == 0
     assert kwargs["output_tokens"] == 0
+    assert kwargs["cost_usd"] is None
+
+
+def test_usage_event_kwargs_falls_back_to_compute_cost_when_no_cost_metric():
+    """Logfire only sets operation.cost for models it prices — most real eval
+    runs will report tokens but no "cost" metric, so cost_usd must fall back
+    to our own price table rather than going NULL for every run."""
+    spec = _spec("memory_recall", "anthropic:claude-sonnet-4-5-20250929")
+    report = _report(
+        cases=[
+            _case(input_tokens=1000, output_tokens=200),
+            _case(input_tokens=500, output_tokens=100),
+        ],
+        failures=[],
+    )
+
+    kwargs = _usage_event_kwargs(spec=spec, report=report, duration_ms=1, org_id=ORG_ID)
+
+    expected = compute_cost("anthropic:claude-sonnet-4-5-20250929", 1500, 300)
+    assert expected is not None  # sanity: PRICING has a row for this model
+    assert kwargs["cost_usd"] == expected
+    assert isinstance(kwargs["cost_usd"], Decimal)
+
+
+@pytest.mark.asyncio
+async def test_save_usage_event_insert_payload_uses_compute_cost_fallback():
+    spec = _spec("memory_recall", "anthropic:claude-sonnet-4-5-20250929")
+    report = _report(
+        cases=[_case(input_tokens=1000, output_tokens=200)],
+        failures=[],
+        trace_id="trace-fallback",
+    )
+    kwargs = _usage_event_kwargs(spec=spec, report=report, duration_ms=42, org_id=ORG_ID)
+    expected_cost = compute_cost("anthropic:claude-sonnet-4-5-20250929", 1000, 200)
+    assert expected_cost is not None
+
+    db, query = _mock_db()
+    await save_usage_event(db, **kwargs)
+
+    inserted = query.insert.call_args.args[0]
+    assert inserted["cost_usd"] == float(expected_cost)
+
+
+def test_usage_event_kwargs_no_fallback_when_tokens_are_zero():
+    """obsidian_retrieval has no agent spans at all — zero tokens means no
+    fallback computation either (compute_cost(model, 0, 0) would misreport
+    a real $0.00 rather than "unknown")."""
+    spec = _spec("obsidian_retrieval", "anthropic:claude-sonnet-4-5-20250929")
+    report = _report(cases=[_case(input_tokens=0, output_tokens=0)], failures=[])
+
+    kwargs = _usage_event_kwargs(spec=spec, report=report, duration_ms=1, org_id=ORG_ID)
+
     assert kwargs["cost_usd"] is None
 
 

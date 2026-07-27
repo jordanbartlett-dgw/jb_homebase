@@ -30,6 +30,7 @@ from jordan_claw.analytics.types import RunKind
 from jordan_claw.config import get_settings
 from jordan_claw.db.client import close_supabase_client, get_supabase_client
 from jordan_claw.db.usage_events import save_usage_event
+from jordan_claw.utils.pricing import compute_cost
 
 log = structlog.get_logger()
 
@@ -189,8 +190,25 @@ def _usage_event_kwargs(
     duration_ms: int,
     org_id: str,
 ) -> dict[str, Any]:
-    """Pure kwargs builder for the eval's usage_events row — unit-testable without I/O."""
+    """Pure kwargs builder for the eval's usage_events row — unit-testable without I/O.
+
+    cost_usd prefers the summed "cost" metric (from span attributes), but that
+    metric is only set when Logfire prices the model — and obsidian_retrieval
+    has no agent spans at all. Whenever no case reported a cost but tokens are
+    known, fall back to our own price table so cost_usd isn't NULL for
+    effectively every real run. Unknown models (e.g. the embeddings-only
+    target) compute_cost() itself returns None for — a token-less eval run
+    correctly stays cost_usd=None either way.
+    """
+    input_tokens = _sum_metric(report.cases, "input_tokens") or 0
+    output_tokens = _sum_metric(report.cases, "output_tokens") or 0
     cost = _sum_metric(report.cases, "cost")
+    if cost is not None:
+        cost_usd: Decimal | None = Decimal(str(cost))
+    elif input_tokens and output_tokens:
+        cost_usd = compute_cost(spec.target_model, input_tokens, output_tokens)
+    else:
+        cost_usd = None
     return {
         "org_id": org_id,
         "agent_slug": f"eval:{spec.name}",
@@ -199,9 +217,9 @@ def _usage_event_kwargs(
         "run_kind": RunKind.EVAL,
         "schedule_name": None,
         "model": spec.target_model,
-        "input_tokens": _sum_metric(report.cases, "input_tokens") or 0,
-        "output_tokens": _sum_metric(report.cases, "output_tokens") or 0,
-        "cost_usd": Decimal(str(cost)) if cost is not None else None,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cost_usd": cost_usd,
         "duration_ms": duration_ms,
         "tool_call_count": 0,
         "success": len(report.failures) == 0,
@@ -259,22 +277,26 @@ async def _run_one(spec: EvalSpec) -> RunSummary:
         experiment_name=experiment_name,
     )
 
+    settings = get_settings()
+    usage_kwargs = _usage_event_kwargs(
+        spec=spec, report=report, duration_ms=duration_ms, org_id=settings.eval_test_org_id
+    )
+    cost_usd = usage_kwargs["cost_usd"]
+    # The compute_cost fallback in _usage_event_kwargs is the resolved cost of
+    # record — carry it into the report file too, not just the DB row.
+    report_dict["cost_usd"] = float(cost_usd) if cost_usd is not None else None
+
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     report_path = REPORTS_DIR / f"{spec.name}_{ts}.json"
     report_path.write_text(json.dumps(report_dict, indent=2, default=str) + "\n")
 
-    settings = get_settings()
-    usage_kwargs = _usage_event_kwargs(
-        spec=spec, report=report, duration_ms=duration_ms, org_id=settings.eval_test_org_id
-    )
     client = await get_supabase_client(settings.supabase_url, settings.supabase_service_key)
     try:
         await save_usage_event(client, **usage_kwargs)
     finally:
         await close_supabase_client()
 
-    cost_usd = usage_kwargs["cost_usd"]
     await emitter.eval_run_completed(
         dataset=spec.name,
         total_cases=total_cases,
