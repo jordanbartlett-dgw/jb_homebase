@@ -189,6 +189,8 @@ async def test_eval_run_completed_uses_system_distinct_id(mock_client):
         prev_score=0.85,
         regression=False,
         duration_ms=5000,
+        cost_usd=0.0123,
+        failures=1,
     )
     await _drain()
 
@@ -203,6 +205,28 @@ async def test_eval_run_completed_uses_system_distinct_id(mock_client):
     assert props["prev_score"] == 0.85
     assert props["regression"] is False
     assert props["duration_ms"] == 5000
+    assert props["cost_usd"] == 0.0123
+    assert props["failures"] == 1
+
+
+@pytest.mark.asyncio
+async def test_eval_run_completed_handles_none_cost(mock_client):
+    await emitter.eval_run_completed(
+        dataset="obsidian_retrieval",
+        total_cases=5,
+        passed=5,
+        score=1.0,
+        prev_score=None,
+        regression=False,
+        duration_ms=1200,
+        cost_usd=None,
+        failures=0,
+    )
+    await _drain()
+
+    props = mock_client.capture.call_args.kwargs["properties"]
+    assert props["cost_usd"] is None
+    assert props["failures"] == 0
 
 
 @pytest.mark.asyncio

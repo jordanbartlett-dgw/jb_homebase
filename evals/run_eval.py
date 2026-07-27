@@ -13,6 +13,7 @@ import json
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from statistics import mean
 from typing import Any
@@ -25,7 +26,10 @@ from pydantic_evals.reporting import EvaluationReport
 
 from evals.registry import BASELINES_DIR, REGISTRY, REPORTS_DIR, EvalSpec
 from jordan_claw.analytics import emitter
+from jordan_claw.analytics.types import RunKind
 from jordan_claw.config import get_settings
+from jordan_claw.db.client import close_supabase_client, get_supabase_client
+from jordan_claw.db.usage_events import save_usage_event
 
 log = structlog.get_logger()
 
@@ -178,6 +182,35 @@ def _build_report_dict(
     }
 
 
+def _usage_event_kwargs(
+    *,
+    spec: EvalSpec,
+    report: EvaluationReport,
+    duration_ms: int,
+    org_id: str,
+) -> dict[str, Any]:
+    """Pure kwargs builder for the eval's usage_events row — unit-testable without I/O."""
+    cost = _sum_metric(report.cases, "cost")
+    return {
+        "org_id": org_id,
+        "agent_slug": f"eval:{spec.name}",
+        "conversation_id": None,
+        "channel": "eval",
+        "run_kind": RunKind.EVAL,
+        "schedule_name": None,
+        "model": spec.target_model,
+        "input_tokens": _sum_metric(report.cases, "input_tokens") or 0,
+        "output_tokens": _sum_metric(report.cases, "output_tokens") or 0,
+        "cost_usd": Decimal(str(cost)) if cost is not None else None,
+        "duration_ms": duration_ms,
+        "tool_call_count": 0,
+        "success": len(report.failures) == 0,
+        "error_type": None,
+        "error_severity": None,
+        "trace_id": report.trace_id,
+    }
+
+
 def _exit_code(summaries: list[RunSummary]) -> int:
     """Regression (exit 2) takes precedence over a bare task_fn failure (exit 1)."""
     if any(s.regression for s in summaries):
@@ -231,6 +264,17 @@ async def _run_one(spec: EvalSpec) -> RunSummary:
     report_path = REPORTS_DIR / f"{spec.name}_{ts}.json"
     report_path.write_text(json.dumps(report_dict, indent=2, default=str) + "\n")
 
+    settings = get_settings()
+    usage_kwargs = _usage_event_kwargs(
+        spec=spec, report=report, duration_ms=duration_ms, org_id=settings.eval_test_org_id
+    )
+    client = await get_supabase_client(settings.supabase_url, settings.supabase_service_key)
+    try:
+        await save_usage_event(client, **usage_kwargs)
+    finally:
+        await close_supabase_client()
+
+    cost_usd = usage_kwargs["cost_usd"]
     await emitter.eval_run_completed(
         dataset=spec.name,
         total_cases=total_cases,
@@ -239,6 +283,8 @@ async def _run_one(spec: EvalSpec) -> RunSummary:
         prev_score=prev_score,
         regression=regression,
         duration_ms=duration_ms,
+        cost_usd=float(cost_usd) if cost_usd is not None else None,
+        failures=len(report.failures),
     )
     await emitter.drain_pending_emits()
 

@@ -14,7 +14,9 @@ from typing import Any
 from pydantic_evals.evaluators import Evaluator
 
 from evals.scorers import PhraseAssertionScorer, RequiredFactsScorer, TopKMembershipScorer
+from evals.tasks.med_check import TARGET_MODEL as MED_CHECK_TARGET_MODEL
 from evals.tasks.med_check import med_check_task
+from evals.tasks.memory_recall import TARGET_MODEL as MEMORY_RECALL_TARGET_MODEL
 from evals.tasks.memory_recall import memory_recall_task
 from evals.tasks.obsidian_retrieval import obsidian_retrieval_task
 from evals.types import (
@@ -26,6 +28,7 @@ from evals.types import (
     ObsidianRetrievalInputs,
     RetrievalOutput,
 )
+from jordan_claw.obsidian.embeddings import EMBEDDING_MODEL as OBSIDIAN_EMBEDDING_MODEL
 
 DATASETS_DIR = Path(__file__).parent / "datasets"
 BASELINES_DIR = Path(__file__).parent / "baselines"
@@ -41,6 +44,7 @@ class EvalSpec:
     expected_type: type
     output_type: type
     custom_evaluators: tuple[type[Evaluator], ...]
+    target_model: str
 
 
 REGISTRY: dict[str, EvalSpec] = {
@@ -52,6 +56,7 @@ REGISTRY: dict[str, EvalSpec] = {
         expected_type=MemoryRecallExpected,
         output_type=str,
         custom_evaluators=(RequiredFactsScorer,),
+        target_model=MEMORY_RECALL_TARGET_MODEL,
     ),
     "obsidian_retrieval": EvalSpec(
         name="obsidian_retrieval",
@@ -61,6 +66,8 @@ REGISTRY: dict[str, EvalSpec] = {
         expected_type=ObsidianRetrievalExpected,
         output_type=RetrievalOutput,
         custom_evaluators=(TopKMembershipScorer,),
+        # No LLM call — embeddings-only retrieval.
+        target_model=f"openai:{OBSIDIAN_EMBEDDING_MODEL}",
     ),
     "med_check": EvalSpec(
         name="med_check",
@@ -70,5 +77,6 @@ REGISTRY: dict[str, EvalSpec] = {
         expected_type=MedCheckExpected,
         output_type=str,
         custom_evaluators=(PhraseAssertionScorer,),
+        target_model=MED_CHECK_TARGET_MODEL,
     ),
 }
