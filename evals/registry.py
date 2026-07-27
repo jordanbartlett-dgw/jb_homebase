@@ -26,6 +26,8 @@ from evals.tasks.med_check import med_check_task
 from evals.tasks.memory_recall import TARGET_MODEL as MEMORY_RECALL_TARGET_MODEL
 from evals.tasks.memory_recall import memory_recall_task
 from evals.tasks.obsidian_retrieval import obsidian_retrieval_task
+from evals.tasks.tool_routing import TARGET_MODEL as TOOL_ROUTING_TARGET_MODEL
+from evals.tasks.tool_routing import tool_routing_task
 from evals.types import (
     EmailTriageExpected,
     EmailTriageInputs,
@@ -36,6 +38,7 @@ from evals.types import (
     ObsidianRetrievalExpected,
     ObsidianRetrievalInputs,
     RetrievalOutput,
+    ToolRoutingInputs,
 )
 from jordan_claw.obsidian.embeddings import EMBEDDING_MODEL as OBSIDIAN_EMBEDDING_MODEL
 
@@ -97,5 +100,17 @@ REGISTRY: dict[str, EvalSpec] = {
         output_type=str,
         custom_evaluators=(TriagePhraseScorer,),
         target_model=EMAIL_TRIAGE_TARGET_MODEL,
+    ),
+    "tool_routing": EvalSpec(
+        name="tool_routing",
+        yaml_path=DATASETS_DIR / "tool_routing.yaml",
+        task_fn=tool_routing_task,
+        inputs_type=ToolRoutingInputs,
+        expected_type=type(None),
+        output_type=str,
+        # Agentic evaluators only (ToolCorrectness, TrajectoryMatch,
+        # MaxToolCalls) — all built into pydantic_evals, no custom scorer.
+        custom_evaluators=(),
+        target_model=TOOL_ROUTING_TARGET_MODEL,
     ),
 }

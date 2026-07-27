@@ -81,3 +81,7 @@ class EmailTriageInputs(BaseModel):
 class EmailTriageExpected(BaseModel):
     required_phrases: list[str] = Field(default_factory=list)
     forbidden_phrases: list[str] = Field(default_factory=list)
+
+
+class ToolRoutingInputs(BaseModel):
+    user_message: str

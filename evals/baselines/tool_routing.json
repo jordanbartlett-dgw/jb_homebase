@@ -1,0 +1,14 @@
+{
+  "schema": 2,
+  "dataset": "tool_routing",
+  "ran_at": "2026-07-27T13:22:29.959274+00:00",
+  "git_sha": "7f67dee",
+  "composite": 0.8888888888888888,
+  "evaluators": {
+    "ToolCorrectness": 1.0,
+    "MaxToolCalls": 1.0,
+    "TrajectoryMatch": 0.6666666666666666
+  },
+  "cases_total": 10,
+  "cases_passed": 10
+}
