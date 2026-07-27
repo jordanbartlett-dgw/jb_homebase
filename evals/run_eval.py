@@ -4,12 +4,16 @@ Usage:
     claw-eval run memory_recall
     claw-eval run obsidian_retrieval --save-baseline
     claw-eval run --all
+    claw-eval run memory_recall --json
+    claw-eval list
+    claw-eval compare memory_recall
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -22,6 +26,7 @@ from typing import Any
 import click
 import logfire
 import structlog
+import yaml
 from pydantic_evals import Dataset
 from pydantic_evals.evaluators.llm_as_a_judge import set_default_judge_model
 from pydantic_evals.reporting import EvaluationReport
@@ -52,6 +57,8 @@ class RunSummary:
     report_path: Path
     failures: list[dict[str, Any]]
     regression_reasons: list[str] = field(default_factory=list)
+    cost_usd: float | None = None
+    experiment_name: str = ""
 
 
 def _load_baseline(name: str) -> dict | None:
@@ -460,26 +467,195 @@ async def _run_one(spec: EvalSpec, *, repeat: int = 1, max_concurrency: int = 4)
         report_path=report_path,
         failures=report_dict["failures"],
         regression_reasons=regression_reasons,
+        cost_usd=report_dict["cost_usd"],
+        experiment_name=experiment_name,
     )
 
 
-def _print_summary(s: RunSummary) -> None:
-    click.echo(f"\n[{s.dataset}]")
-    click.echo(f"  score:        {s.score:.3f}")
-    click.echo(f"  prev_score:   {s.prev_score if s.prev_score is not None else '—'}")
-    click.echo(f"  regression:   {s.regression}")
+def _print_summary(s: RunSummary, *, err: bool = False) -> None:
+    """Human-readable summary. Written to stderr when --json keeps stdout machine-parseable."""
+    click.echo(f"\n[{s.dataset}]", err=err)
+    click.echo(f"  score:        {s.score:.3f}", err=err)
+    click.echo(f"  prev_score:   {s.prev_score if s.prev_score is not None else '—'}", err=err)
+    click.echo(f"  regression:   {s.regression}", err=err)
     for reason in s.regression_reasons:
-        click.echo(f"    - {reason}")
-    click.echo(f"  cases:        {s.passed_cases}/{s.total_cases}")
-    click.echo(f"  duration:     {s.duration_ms} ms")
+        click.echo(f"    - {reason}", err=err)
+    click.echo(f"  cases:        {s.passed_cases}/{s.total_cases}", err=err)
+    click.echo(f"  duration:     {s.duration_ms} ms", err=err)
     for k, v in s.per_evaluator.items():
-        click.echo(f"  - {k}: {v:.3f}")
-    click.echo(f"  report:       {s.report_path}")
+        click.echo(f"  - {k}: {v:.3f}", err=err)
+    click.echo(f"  report:       {s.report_path}", err=err)
+
+
+def _summary_json(s: RunSummary) -> dict[str, Any]:
+    """Machine-readable summary for `--json` — same content as `_print_summary` plus
+    cost_usd/failures/experiment_name. Pure, so it's unit-testable without a CLI process."""
+    return {
+        "dataset": s.dataset,
+        "score": s.score,
+        "prev_score": s.prev_score,
+        "regression": s.regression,
+        "regression_reasons": s.regression_reasons,
+        "passed_cases": s.passed_cases,
+        "total_cases": s.total_cases,
+        "duration_ms": s.duration_ms,
+        "per_evaluator": s.per_evaluator,
+        "report_path": str(s.report_path),
+        "cost_usd": s.cost_usd,
+        "failures": s.failures,
+        "experiment_name": s.experiment_name,
+    }
+
+
+def _format_table(headers: list[str], rows: list[list[str]]) -> str:
+    """Minimal fixed-width table formatter — no dependency beyond stdlib."""
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell))
+
+    def _fmt_row(cells: list[str]) -> str:
+        return "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(cells))
+
+    lines = [_fmt_row(headers), _fmt_row(["-" * w for w in widths])]
+    lines.extend(_fmt_row(row) for row in rows)
+    return "\n".join(lines)
+
+
+def _dataset_evaluator_names(yaml_data: dict[str, Any], spec: EvalSpec) -> list[str]:
+    """Dataset-level evaluator names: the YAML's top-level `evaluators:` list plus any
+    custom evaluator classes registered on the spec (custom scorers can be referenced only
+    at case level, e.g. TriagePhraseScorer in email_triage.yaml, and would otherwise be
+    invisible from the dataset-level YAML alone)."""
+    names: list[str] = []
+    for entry in yaml_data.get("evaluators") or []:
+        if isinstance(entry, str):
+            names.append(entry)
+        elif isinstance(entry, dict):
+            names.extend(entry.keys())
+    for cls in spec.custom_evaluators:
+        if cls.__name__ not in names:
+            names.append(cls.__name__)
+    return names
+
+
+def _dataset_rows() -> list[list[str]]:
+    """One row per REGISTRY dataset for `claw-eval list` — pure, no I/O beyond reading the
+    dataset YAMLs and baseline files (no settings/API keys required)."""
+    rows: list[list[str]] = []
+    for spec in REGISTRY.values():
+        yaml_data = yaml.safe_load(spec.yaml_path.read_text())
+        case_count = len(yaml_data.get("cases") or [])
+        evaluator_names = _dataset_evaluator_names(yaml_data, spec)
+        baseline = _load_baseline(spec.name)
+        composite = f"{baseline['composite']:.3f}" if baseline else "—"
+        ran_at = (baseline.get("ran_at") if baseline else None) or "—"
+        rows.append(
+            [
+                spec.name,
+                str(case_count),
+                ", ".join(evaluator_names),
+                spec.target_model,
+                composite,
+                ran_at,
+            ]
+        )
+    return rows
+
+
+def _latest_report_pair(dataset: str) -> tuple[Path, Path]:
+    """The two most recent report JSONs for `dataset`, oldest first.
+
+    Filenames sort chronologically as-is (`{dataset}_YYYYmmddTHHMMSSZ.json`), so a plain
+    lexical sort on the glob matches run order.
+    """
+    reports = sorted(REPORTS_DIR.glob(f"{dataset}_*.json"))
+    if len(reports) < 2:
+        raise click.ClickException(
+            f"Need at least 2 reports for '{dataset}' to compare, found {len(reports)}."
+        )
+    return reports[-2], reports[-1]
+
+
+def _report_delta(older: dict[str, Any], newer: dict[str, Any]) -> dict[str, Any]:
+    """Pure delta computation between two report dicts — unit-testable without files."""
+    older_ev = older.get("per_evaluator") or {}
+    newer_ev = newer.get("per_evaluator") or {}
+    per_evaluator = []
+    for name in sorted(set(older_ev) | set(newer_ev)):
+        o = older_ev.get(name)
+        n = newer_ev.get(name)
+        delta = (n - o) if (o is not None and n is not None) else None
+        per_evaluator.append({"evaluator": name, "older": o, "newer": n, "delta": delta})
+
+    composite_older = older.get("score")
+    composite_newer = newer.get("score")
+    composite_delta = (
+        composite_newer - composite_older
+        if (composite_older is not None and composite_newer is not None)
+        else None
+    )
+
+    return {
+        "per_evaluator": per_evaluator,
+        "composite_older": composite_older,
+        "composite_newer": composite_newer,
+        "composite_delta": composite_delta,
+        "cases_older": f"{older.get('passed_cases')}/{older.get('total_cases')}",
+        "cases_newer": f"{newer.get('passed_cases')}/{newer.get('total_cases')}",
+        "cost_older": older.get("cost_usd"),
+        "cost_newer": newer.get("cost_usd"),
+    }
 
 
 @click.group()
 def cli() -> None:
     """claw-eval: run Pydantic Evals against Jordan Claw."""
+
+
+@cli.command(name="list")
+def list_datasets() -> None:
+    """List registered datasets: cases, evaluators, target model, baseline.
+
+    Import-only — does not call get_settings(), so it works with no API keys configured.
+    """
+    headers = ["dataset", "cases", "evaluators", "target_model", "baseline", "ran_at"]
+    click.echo(_format_table(headers, _dataset_rows()))
+
+
+@cli.command()
+@click.argument("dataset")
+def compare(dataset: str) -> None:
+    """Diff the two most recent reports/{dataset}_*.json reports.
+
+    Import-only — does not call get_settings(), so it works with no API keys configured.
+    """
+    older_path, newer_path = _latest_report_pair(dataset)
+    older = json.loads(older_path.read_text())
+    newer = json.loads(newer_path.read_text())
+    delta = _report_delta(older, newer)
+
+    click.echo(f"[{dataset}] {older_path.name}  ->  {newer_path.name}\n")
+    rows = [
+        [
+            r["evaluator"],
+            f"{r['older']:.3f}" if r["older"] is not None else "—",
+            f"{r['newer']:.3f}" if r["newer"] is not None else "—",
+            f"{r['delta']:+.3f}" if r["delta"] is not None else "—",
+        ]
+        for r in delta["per_evaluator"]
+    ]
+    click.echo(_format_table(["evaluator", "older", "newer", "delta"], rows))
+
+    composite_delta = delta["composite_delta"]
+    click.echo(
+        f"\ncomposite:  {delta['composite_older']:.3f} -> {delta['composite_newer']:.3f}"
+        f"  ({composite_delta:+.3f})"
+        if composite_delta is not None
+        else f"\ncomposite:  {delta['composite_older']} -> {delta['composite_newer']}"
+    )
+    click.echo(f"cases:      {delta['cases_older']} -> {delta['cases_newer']}")
+    click.echo(f"cost_usd:   {delta['cost_older']} -> {delta['cost_newer']}")
 
 
 @cli.command()
@@ -504,8 +680,19 @@ def cli() -> None:
     show_default=True,
     help="Max concurrent case evaluations passed to Dataset.evaluate(max_concurrency=...).",
 )
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Print one JSON summary line per dataset to stdout. Human output moves to stderr.",
+)
 def run(
-    dataset: str | None, run_all: bool, save_baseline: bool, repeat: int, concurrency: int
+    dataset: str | None,
+    run_all: bool,
+    save_baseline: bool,
+    repeat: int,
+    concurrency: int,
+    json_output: bool,
 ) -> None:
     if run_all and dataset:
         raise click.UsageError("Pass either a dataset name OR --all, not both.")
@@ -522,9 +709,18 @@ def run(
     except Exception as e:
         raise click.ClickException(f"Settings invalid — check env vars:\n{e}") from e
 
+    if json_output:
+        # structlog's unconfigured default PrintLogger writes to stdout, which would
+        # interleave operational log lines (e.g. posthog_client_initialized) with the
+        # JSON summary lines below and break machine parsing.
+        structlog.configure(logger_factory=structlog.PrintLoggerFactory(file=sys.stderr))
+
     # A real tracer provider must exist even without a token — later agentic
     # evaluators need span-tree capture regardless of whether we ship to Logfire.
     # scrubbing=False: eval fixtures are synthetic, scrubbing mangles fixture text.
+    # console=False in --json mode: Logfire's default console span printer writes to
+    # stdout, which would interleave with the JSON summary lines and break parsing.
+    console = False if json_output else None
     if settings.logfire_token:
         logfire.configure(
             token=settings.logfire_token,
@@ -532,6 +728,7 @@ def run(
             service_name="claw-eval",
             environment="evals",
             scrubbing=False,
+            console=console,
         )
     else:
         logfire.configure(
@@ -539,6 +736,7 @@ def run(
             service_name="claw-eval",
             environment="evals",
             scrubbing=False,
+            console=console,
         )
     logfire.instrument_pydantic_ai()
 
@@ -558,13 +756,15 @@ def run(
     summaries: list[RunSummary] = []
     sha = _git_sha()
     for spec in targets:
-        click.echo(f"Running {spec.name}…")
+        click.echo(f"Running {spec.name}…", err=json_output)
         summary = asyncio.run(_run_one(spec, repeat=repeat, max_concurrency=concurrency))
         summaries.append(summary)
         if save_baseline:
             path = _save_baseline(spec.name, summary, sha)
-            click.echo(f"  baseline → {path}")
-        _print_summary(summary)
+            click.echo(f"  baseline → {path}", err=json_output)
+        _print_summary(summary, err=json_output)
+        if json_output:
+            click.echo(json.dumps(_summary_json(summary)))
 
     failed = [s for s in summaries if s.failures]
     for s in failed:
