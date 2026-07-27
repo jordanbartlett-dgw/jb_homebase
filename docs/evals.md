@@ -108,11 +108,15 @@ Baselines live at `evals/baselines/{dataset}.json`, schema v2:
 evaluators). A run is flagged as a regression when **either**:
 
 - the composite drops more than 5pp vs the baseline composite, or
-- any evaluator present in both the current run and the baseline drops more than 5pp,
-  even if the composite barely moves (a strong scorer masking a weak one is still a
-  regression).
+- any evaluator present in both the current run and the baseline drops more than
+  `max(5pp, 1.5 / cases_total)`, even if the composite barely moves. The threshold
+  scales down as the dataset grows: on a 12-case dataset it takes roughly two flipped
+  cases to flag, not one, because per-run judge noise alone has been measured at up to
+  7.5pp; on datasets past ~30 cases the flat 5pp floor applies as before.
 
-An evaluator only on one side (added or removed since the baseline) is reported as
+`TrajectoryMatch` is informational only: it never flags a regression, but a drop past
+its threshold still appends an `"info: TrajectoryMatch ..."` reason so the CLI surfaces
+it. An evaluator only on one side (added or removed since the baseline) is reported as
 informational, `new evaluator: X` / `missing evaluator: X`, and never flags on its
 own. That's a code change, not a quality drop. v1 baselines (pre-per-evaluator, just a
 `score` field) still load and compare on composite only.

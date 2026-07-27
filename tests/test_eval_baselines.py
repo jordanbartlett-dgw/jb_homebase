@@ -111,8 +111,16 @@ def test_detect_regression_composite_drop_flags() -> None:
 
 
 def test_detect_regression_single_evaluator_drop_with_stable_composite() -> None:
-    """Composite barely moves, but one evaluator drops >0.05 — must still flag."""
-    baseline = {"composite": 0.925, "evaluators": {"required_facts": 1.0, "llm_judge": 0.95}}
+    """Composite barely moves, but one evaluator drops >0.05 — must still flag.
+
+    Large cases_total keeps the small-N guard's effective threshold at the
+    flat 5pp floor, matching the pre-guard behavior this test was written for.
+    """
+    baseline = {
+        "composite": 0.925,
+        "evaluators": {"required_facts": 1.0, "llm_judge": 0.95},
+        "cases_total": 100,
+    }
     current_evaluators = {"required_facts": 1.0, "llm_judge": 0.85}
     current_composite = mean(current_evaluators.values())
     assert abs(current_composite - baseline["composite"]) < 0.05  # composite alone wouldn't flag
@@ -162,3 +170,90 @@ def test_detect_regression_v1_baseline_no_drop_no_flag() -> None:
 
     assert regression is False
     assert reasons == []
+
+
+# --- small-N guard (two-flip regression) ---
+
+
+def test_detect_regression_small_n_one_flip_does_not_flag() -> None:
+    """12-case baseline: a one-case-sized drop (0.083) is under the 0.125 guard."""
+    baseline = {
+        "composite": 0.95,
+        "evaluators": {"llm_judge": 1.0, "other_metric": 0.9},
+        "cases_total": 12,
+    }
+    current_evaluators = {"llm_judge": 0.917, "other_metric": 0.9}
+    current_composite = 0.93  # composite drop 0.02, well under the 0.05 composite rule
+
+    regression, reasons = _detect_regression(current_composite, current_evaluators, baseline)
+
+    assert regression is False
+    assert not any("llm_judge" in r for r in reasons)
+
+
+def test_detect_regression_small_n_two_flips_flags_with_scaled_threshold() -> None:
+    """12-case baseline: a two-case-sized drop (0.167) exceeds the 0.125 guard."""
+    baseline = {
+        "composite": 0.95,
+        "evaluators": {"llm_judge": 1.0, "other_metric": 0.9},
+        "cases_total": 12,
+    }
+    current_evaluators = {"llm_judge": 0.833, "other_metric": 0.9}
+    current_composite = 0.93  # composite drop 0.02, well under the 0.05 composite rule
+
+    regression, reasons = _detect_regression(current_composite, current_evaluators, baseline)
+
+    assert regression is True
+    matching = [r for r in reasons if r.startswith("llm_judge")]
+    assert len(matching) == 1
+    assert "0.125" in matching[0]
+
+
+def test_detect_regression_large_n_falls_back_to_flat_threshold() -> None:
+    """100-case baseline: 1.5/100 (0.015) is below the 0.05 floor, so 0.05 applies."""
+    baseline = {
+        "composite": 0.95,
+        "evaluators": {"llm_judge": 0.95},
+        "cases_total": 100,
+    }
+    current_evaluators = {"llm_judge": 0.89}  # drop 0.06 > 0.05
+    current_composite = 0.93  # composite drop 0.02, under the 0.05 composite rule
+
+    regression, reasons = _detect_regression(current_composite, current_evaluators, baseline)
+
+    assert regression is True
+    matching = [r for r in reasons if r.startswith("llm_judge")]
+    assert len(matching) == 1
+    assert "0.05" in matching[0]
+
+
+def test_detect_regression_trajectory_match_is_informational_only() -> None:
+    """TrajectoryMatch never flags on its own, but a big drop surfaces as an info reason."""
+    baseline = {
+        "composite": 0.95,
+        "evaluators": {"TrajectoryMatch": 0.9},
+        "cases_total": 12,
+    }
+    current_evaluators = {"TrajectoryMatch": 0.6}  # drop 0.3, well past any guard
+    current_composite = 0.93  # composite drop 0.02, under the 0.05 composite rule
+
+    regression, reasons = _detect_regression(current_composite, current_evaluators, baseline)
+
+    assert regression is False
+    assert any(r.startswith("info: TrajectoryMatch") for r in reasons)
+
+
+def test_detect_regression_composite_flags_regardless_of_small_n_guard() -> None:
+    """Composite rule stays flat 5pp even when the baseline is small-N."""
+    baseline = {
+        "composite": 0.95,
+        "evaluators": {"llm_judge": 0.95},
+        "cases_total": 12,
+    }
+    current_evaluators = {"llm_judge": 0.95}  # no per-evaluator drop at all
+    current_composite = 0.84  # composite drop 0.11 > 0.05
+
+    regression, reasons = _detect_regression(current_composite, current_evaluators, baseline)
+
+    assert regression is True
+    assert any(r.startswith("composite") for r in reasons)

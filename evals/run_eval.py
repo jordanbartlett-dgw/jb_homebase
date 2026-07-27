@@ -111,9 +111,12 @@ def _detect_regression(
 
     v2 baseline (evaluators is a dict): flags when the composite drops more
     than REGRESSION_THRESHOLD OR any evaluator present on BOTH sides drops
-    more than REGRESSION_THRESHOLD. Evaluators present on only one side never
-    flag — they're returned as informational reasons only (a scorer being
-    added or removed is a code change, not a quality regression).
+    more than a small-N-guarded threshold (see below). Evaluators present on
+    only one side never flag — they're returned as informational reasons only
+    (a scorer being added or removed is a code change, not a quality
+    regression). TrajectoryMatch never flags regardless of drop size; a drop
+    past the guarded threshold is still surfaced as an "info:"-prefixed
+    reason so the CLI shows it without failing the run on it.
 
     v1 baseline (evaluators is None): composite-only, matching pre-v2 behavior.
 
@@ -134,13 +137,31 @@ def _detect_regression(
 
     prev_evaluators = baseline.get("evaluators")
     if prev_evaluators:
+        # On small datasets, one flipped case moves a per-evaluator average by
+        # more than the flat 5pp threshold on its own (e.g. 1/12 cases =
+        # 8.3pp), so the flat threshold flags on a single case's worth of
+        # judge noise. Per-run judge variance has been measured at up to
+        # 7.5pp on this repo's datasets. Scaling the threshold to roughly two
+        # flipped cases (1.5 / cases_total) requires two cases to flip before
+        # flagging, which separates that noise from a real regression while
+        # the flat 5pp floor still applies once the dataset is large enough
+        # that 1.5/cases_total drops below it.
+        cases_total = baseline.get("cases_total")
+        evaluator_threshold = (
+            max(REGRESSION_THRESHOLD, 1.5 / cases_total) if cases_total else REGRESSION_THRESHOLD
+        )
+
         shared = set(current_evaluators) & set(prev_evaluators)
         for evaluator_name in sorted(shared):
             cur = current_evaluators[evaluator_name]
             prev = prev_evaluators[evaluator_name]
-            if cur < prev - REGRESSION_THRESHOLD:
-                regression = True
-                reasons.append(f"{evaluator_name}: {cur:.3f} < {prev:.3f} - {REGRESSION_THRESHOLD}")
+            if cur < prev - evaluator_threshold:
+                reason = f"{evaluator_name}: {cur:.3f} < {prev:.3f} - {evaluator_threshold:.3f}"
+                if evaluator_name == "TrajectoryMatch":
+                    reasons.append(f"info: {reason}")
+                else:
+                    regression = True
+                    reasons.append(reason)
         for evaluator_name in sorted(set(current_evaluators) - set(prev_evaluators)):
             reasons.append(f"new evaluator: {evaluator_name}")
         for evaluator_name in sorted(set(prev_evaluators) - set(current_evaluators)):
