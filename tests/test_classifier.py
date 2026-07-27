@@ -8,11 +8,13 @@ from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 
 from jordan_claw.gateway.classifier import (
+    CLASSIFIER_MODEL,
     CONFIDENCE_FLOOR,
     DEFAULT_AGENT,
     RouteDecision,
     classify,
 )
+from jordan_claw.utils.agent_runner import drain_pending_writes
 
 ORG_ID = "org-1"
 
@@ -41,6 +43,21 @@ def _mock_db(rows: list[dict]) -> MagicMock:
     chain.eq.return_value = chain
     db.table.return_value = chain
     return db
+
+
+def _mock_db_with_insert(rows: list[dict]) -> tuple[MagicMock, MagicMock]:
+    """Like _mock_db, but the shared chain also records usage_events inserts."""
+    db = MagicMock()
+    result = MagicMock()
+    result.data = rows
+
+    chain = MagicMock()
+    chain.execute = AsyncMock(return_value=result)
+    chain.select.return_value = chain
+    chain.eq.return_value = chain
+    chain.insert.return_value = chain
+    db.table.return_value = chain
+    return db, chain
 
 
 def _test_classifier(agent_slug: str, confidence: float) -> Agent:
@@ -142,6 +159,31 @@ async def test_empty_catalog_falls_back_to_default():
         slug = await classify(db, "log my workout", ORG_ID)
 
     assert slug == DEFAULT_AGENT
+
+
+# --- usage_events ---
+
+
+async def test_successful_classify_writes_usage_event():
+    db, chain = _mock_db_with_insert(AGENT_ROWS)
+    with patch(
+        "jordan_claw.gateway.classifier.build_classifier",
+        return_value=_test_classifier("workout-coach", 0.92),
+    ):
+        await classify(db, "log my bench press, three sets of five at 185", ORG_ID)
+
+    await drain_pending_writes()
+
+    db.table.assert_any_call("usage_events")
+    payload = chain.insert.call_args[0][0]
+    assert payload["agent_slug"] == "voice-classifier"
+    assert payload["channel"] == "app-voice"
+    assert payload["run_kind"] == "classifier"
+    assert payload["model"] == CLASSIFIER_MODEL
+    assert payload["tool_call_count"] == 0
+    assert payload["success"] is True
+    assert "conversation_id" not in payload
+    assert "schedule_name" not in payload
 
 
 # --- failure fallback ---

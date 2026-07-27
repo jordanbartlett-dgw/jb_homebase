@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logfire
 import structlog
 from supabase._async.client import AsyncClient
 
 from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.agents.factory import build_agent
+from jordan_claw.analytics import emitter
 from jordan_claw.analytics.types import RunKind
 from jordan_claw.config import Settings
 from jordan_claw.db.event_triggers import EventTrigger, get_triggers
@@ -66,6 +68,17 @@ async def _run_trigger(
             trigger_name=trigger.name,
             source=trigger.source,
         )
+        await emitter.event_trigger_fired(
+            org_id=trigger.org_id,
+            user_id=None,
+            trigger_name=trigger.name,
+            source=trigger.source,
+            outcome="nothing_to_send",
+            cost_usd=result.cost_usd,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            duration_ms=result.duration_ms,
+        )
         return
 
     await publish_proactive_message(
@@ -77,6 +90,17 @@ async def _run_trigger(
         schedule_name=trigger.name,
         agent_slug=trigger.agent_slug,
     )
+    await emitter.event_trigger_fired(
+        org_id=trigger.org_id,
+        user_id=None,
+        trigger_name=trigger.name,
+        source=trigger.source,
+        outcome="fired",
+        cost_usd=result.cost_usd,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        duration_ms=result.duration_ms,
+    )
 
 
 async def process_event(
@@ -87,19 +111,22 @@ async def process_event(
     settings: Settings,
 ) -> int:
     """Run every enabled trigger for source against the payload. Returns runs started."""
-    triggers = await get_triggers(db, source)
-    started = 0
+    with logfire.span("event.process", source=source) as span:
+        triggers = await get_triggers(db, source)
+        started = 0
 
-    for trigger in triggers:
-        try:
-            await _run_trigger(db, trigger, payload, settings)
-            started += 1
-        except Exception:
-            log.exception(
-                "event.trigger_failed",
-                trigger_name=trigger.name,
-                source=source,
-            )
+        for trigger in triggers:
+            try:
+                await _run_trigger(db, trigger, payload, settings)
+                started += 1
+            except Exception:
+                log.exception(
+                    "event.trigger_failed",
+                    trigger_name=trigger.name,
+                    source=source,
+                )
 
-    log.info("event.processed", source=source, triggers=len(triggers), started=started)
-    return started
+        span.set_attribute("triggers", len(triggers))
+        span.set_attribute("started", started)
+        log.info("event.processed", source=source, triggers=len(triggers), started=started)
+        return started

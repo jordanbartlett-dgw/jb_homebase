@@ -4,6 +4,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import logfire
 import structlog
 from croniter import croniter
 from supabase._async.client import AsyncClient
@@ -50,6 +51,11 @@ WATCHER_MAP = {
 
 CHECK_INTERVAL_SECONDS = 60
 
+# Holds strong refs to fire-and-forget dispatch tasks so they aren't GC'd
+# mid-run (same pattern as utils/agent_runner._pending_writes). No drain
+# wiring: the scheduler loop is cancelled wholesale at shutdown.
+_pending_dispatch_tasks: set[asyncio.Task] = set()
+
 
 def should_run(schedule: ProactiveSchedule, now: datetime) -> bool:
     """Determine if a schedule should fire based on its cron expression and last run.
@@ -84,15 +90,71 @@ async def dispatch_task(
     settings: Settings,
 ) -> None:
     """Execute a scheduled task and persist its result for app surfaces."""
-    watcher = WATCHER_MAP.get(schedule.task_type)
-    if watcher is not None:
+    with logfire.span(
+        "proactive.dispatch", task_type=schedule.task_type, schedule_id=str(schedule.id)
+    ):
+        watcher = WATCHER_MAP.get(schedule.task_type)
+        if watcher is not None:
+            try:
+                await watcher(db, settings)
+                await update_last_run(db, schedule.id)
+                log.info(
+                    "proactive.task_complete",
+                    task_type=schedule.task_type,
+                    schedule_id=schedule.id,
+                )
+            except Exception:
+                log.exception(
+                    "proactive.task_failed",
+                    task_type=schedule.task_type,
+                    schedule_id=schedule.id,
+                )
+            return
+
+        executor = EXECUTOR_MAP.get(schedule.task_type)
+        if not executor:
+            log.warning("proactive.unknown_task_type", task_type=schedule.task_type)
+            return
+
+        agent_slug = schedule.config.get("agent_slug", settings.default_agent_slug)
+
         try:
-            await watcher(db, settings)
+            task_config = {**schedule.config, "timezone": schedule.timezone}
+            content = await executor(db, schedule.org_id, task_config, settings)
+
+            await publish_proactive_message(
+                db=db,
+                org_id=schedule.org_id,
+                content=content,
+                task_type=schedule.task_type,
+                trigger="scheduled",
+                schedule_id=schedule.id,
+                schedule_name=schedule.name,
+                agent_slug=agent_slug,
+                timezone=schedule.timezone,
+            )
+
             await update_last_run(db, schedule.id)
+
+            # One-shot schedules fire exactly once.
+            if schedule.run_at is not None:
+                await disable_schedule(db, schedule.id)
+
+            # After morning briefing, schedule calendar reminders for today
+            if schedule.task_type == "morning_briefing":
+                reminder_config = {**schedule.config, "timezone": schedule.timezone}
+                await schedule_calendar_reminders(
+                    db,
+                    schedule.org_id,
+                    reminder_config,
+                    settings,
+                )
+
             log.info(
                 "proactive.task_complete",
                 task_type=schedule.task_type,
                 schedule_id=schedule.id,
+                had_content=bool(content),
             )
         except Exception:
             log.exception(
@@ -100,59 +162,6 @@ async def dispatch_task(
                 task_type=schedule.task_type,
                 schedule_id=schedule.id,
             )
-        return
-
-    executor = EXECUTOR_MAP.get(schedule.task_type)
-    if not executor:
-        log.warning("proactive.unknown_task_type", task_type=schedule.task_type)
-        return
-
-    agent_slug = schedule.config.get("agent_slug", settings.default_agent_slug)
-
-    try:
-        task_config = {**schedule.config, "timezone": schedule.timezone}
-        content = await executor(db, schedule.org_id, task_config, settings)
-
-        await publish_proactive_message(
-            db=db,
-            org_id=schedule.org_id,
-            content=content,
-            task_type=schedule.task_type,
-            trigger="scheduled",
-            schedule_id=schedule.id,
-            schedule_name=schedule.name,
-            agent_slug=agent_slug,
-            timezone=schedule.timezone,
-        )
-
-        await update_last_run(db, schedule.id)
-
-        # One-shot schedules fire exactly once.
-        if schedule.run_at is not None:
-            await disable_schedule(db, schedule.id)
-
-        # After morning briefing, schedule calendar reminders for today
-        if schedule.task_type == "morning_briefing":
-            reminder_config = {**schedule.config, "timezone": schedule.timezone}
-            await schedule_calendar_reminders(
-                db,
-                schedule.org_id,
-                reminder_config,
-                settings,
-            )
-
-        log.info(
-            "proactive.task_complete",
-            task_type=schedule.task_type,
-            schedule_id=schedule.id,
-            had_content=bool(content),
-        )
-    except Exception:
-        log.exception(
-            "proactive.task_failed",
-            task_type=schedule.task_type,
-            schedule_id=schedule.id,
-        )
 
 
 async def schedule_calendar_reminders(
@@ -230,10 +239,12 @@ async def scheduler_loop(
 
             for schedule in schedules:
                 if should_run(schedule, now):
-                    asyncio.create_task(
+                    task = asyncio.create_task(
                         dispatch_task(schedule, db, settings),
                         name=f"proactive-{schedule.task_type}-{schedule.id}",
                     )
+                    _pending_dispatch_tasks.add(task)
+                    task.add_done_callback(_pending_dispatch_tasks.discard)
         except Exception:
             log.exception("proactive.scheduler_tick_failed")
 

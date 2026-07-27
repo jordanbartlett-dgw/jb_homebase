@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -44,9 +45,20 @@ def _settings() -> MagicMock:
     return settings
 
 
-def _run_result(output: str) -> MagicMock:
+def _run_result(
+    output: str,
+    *,
+    cost_usd: Decimal | None = Decimal("0.01"),
+    input_tokens: int = 100,
+    output_tokens: int = 50,
+    duration_ms: int = 900,
+) -> MagicMock:
     result = MagicMock()
     result.output = output
+    result.cost_usd = cost_usd
+    result.input_tokens = input_tokens
+    result.output_tokens = output_tokens
+    result.duration_ms = duration_ms
     return result
 
 
@@ -116,6 +128,10 @@ async def test_process_event_runs_each_trigger_and_publishes():
             "jordan_claw.events.pipeline.publish_proactive_message",
             new=AsyncMock(),
         ) as mock_publish,
+        patch(
+            "jordan_claw.events.pipeline.emitter.event_trigger_fired",
+            new=AsyncMock(),
+        ) as mock_emit,
     ):
         started = await process_event(
             db,
@@ -136,6 +152,17 @@ async def test_process_event_runs_each_trigger_and_publishes():
     assert publish_kwargs["content"] == "Heads up: invoice due."
     assert publish_kwargs["agent_slug"] == "claw-main"
 
+    assert mock_emit.await_count == 2
+    emit_kwargs = mock_emit.call_args.kwargs
+    assert emit_kwargs["outcome"] == "fired"
+    assert emit_kwargs["source"] == "fastmail-email"
+    assert emit_kwargs["cost_usd"] == Decimal("0.01")
+    assert emit_kwargs["input_tokens"] == 100
+    assert emit_kwargs["output_tokens"] == 50
+    assert emit_kwargs["duration_ms"] == 900
+    assert emit_kwargs["org_id"] == "org-1"
+    assert emit_kwargs["user_id"] is None
+
 
 async def test_process_event_suppresses_nothing_to_send():
     from jordan_claw.events.pipeline import process_event
@@ -153,12 +180,24 @@ async def test_process_event_suppresses_nothing_to_send():
         ),
         patch(
             "jordan_claw.events.pipeline.run_agent_instrumented",
-            new=AsyncMock(return_value=_run_result("NOTHING_TO_SEND")),
+            new=AsyncMock(
+                return_value=_run_result(
+                    "NOTHING_TO_SEND",
+                    cost_usd=None,
+                    input_tokens=10,
+                    output_tokens=5,
+                    duration_ms=200,
+                )
+            ),
         ),
         patch(
             "jordan_claw.events.pipeline.publish_proactive_message",
             new=AsyncMock(),
         ) as mock_publish,
+        patch(
+            "jordan_claw.events.pipeline.emitter.event_trigger_fired",
+            new=AsyncMock(),
+        ) as mock_emit,
     ):
         started = await process_event(
             db,
@@ -169,6 +208,13 @@ async def test_process_event_suppresses_nothing_to_send():
 
     assert started == 1
     mock_publish.assert_not_awaited()
+    mock_emit.assert_awaited_once()
+    emit_kwargs = mock_emit.call_args.kwargs
+    assert emit_kwargs["outcome"] == "nothing_to_send"
+    assert emit_kwargs["cost_usd"] is None
+    assert emit_kwargs["input_tokens"] == 10
+    assert emit_kwargs["output_tokens"] == 5
+    assert emit_kwargs["duration_ms"] == 200
 
 
 async def test_event_deps_never_carry_email_send_creds():

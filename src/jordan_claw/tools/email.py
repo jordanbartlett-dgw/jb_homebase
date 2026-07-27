@@ -4,6 +4,7 @@ from agentmail import AsyncAgentMail
 from pydantic_ai import RunContext
 
 from jordan_claw.agents.deps import AgentDeps
+from jordan_claw.analytics import emitter
 
 # Cached per key so the underlying connection pool is reused across calls
 # (same pattern as tools/web_search.py). Tests seed this dict with a fake.
@@ -40,6 +41,15 @@ async def send_email(ctx: RunContext[AgentDeps], to: str, subject: str, body: st
     sent = await client.inboxes.messages.send(
         inbox_id=ctx.deps.agentmail_inbox_id, to=to, subject=subject, text=body
     )
+    await emitter.email_sent(
+        org_id=ctx.deps.org_id,
+        user_id=None,
+        direction="send",
+        message_id=sent.message_id,
+        thread_id=sent.thread_id,
+        body_length=len(body),
+        subject_length=len(subject),
+    )
     return f"Sent. message_id={sent.message_id} thread_id={sent.thread_id}"
 
 
@@ -54,6 +64,15 @@ async def reply_to_email(ctx: RunContext[AgentDeps], message_id: str, body: str)
     client = get_agentmail_client(ctx.deps.agentmail_api_key)
     sent = await client.inboxes.messages.reply(
         inbox_id=ctx.deps.agentmail_inbox_id, message_id=message_id, text=body
+    )
+    await emitter.email_sent(
+        org_id=ctx.deps.org_id,
+        user_id=None,
+        direction="reply",
+        message_id=sent.message_id,
+        thread_id=sent.thread_id,
+        body_length=len(body),
+        subject_length=None,
     )
     return f"Replied. message_id={sent.message_id} thread_id={sent.thread_id}"
 

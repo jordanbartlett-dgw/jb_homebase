@@ -15,6 +15,7 @@ from jordan_claw.utils.agent_runner import (
     drain_pending_writes,
     run_agent_instrumented,
 )
+from jordan_claw.utils.token_counting import extract_usage
 
 ORG_ID = "00000000-0000-0000-0000-000000000001"
 
@@ -137,7 +138,13 @@ async def test_exception_classified_and_reraised():
 @pytest.mark.asyncio
 async def test_token_budget_exceeded_raises_and_records_failure():
     agent = MagicMock()
-    fake_usage = MagicMock(input_tokens=200_000, output_tokens=10_000, requests=1)
+    fake_usage = MagicMock(
+        input_tokens=200_000,
+        output_tokens=10_000,
+        cache_read_tokens=40_000,
+        cache_write_tokens=20_000,
+        requests=1,
+    )
     fake_result = MagicMock()
     fake_result.output = "long output"
     fake_result.usage = fake_usage
@@ -164,6 +171,8 @@ async def test_token_budget_exceeded_raises_and_records_failure():
     payload = query.insert.call_args[0][0]
     assert payload["success"] is False
     assert payload["error_type"] == "token_budget_exceeded"
+    assert payload["cache_read_tokens"] == 40_000
+    assert payload["cache_write_tokens"] == 20_000
 
 
 @pytest.mark.asyncio
@@ -172,7 +181,9 @@ async def test_tool_call_count_extracted_from_messages():
     from pydantic_ai.messages import ModelResponse, ToolCallPart
 
     agent = MagicMock()
-    fake_usage = MagicMock(input_tokens=100, output_tokens=50, requests=2)
+    fake_usage = MagicMock(
+        input_tokens=100, output_tokens=50, cache_read_tokens=0, cache_write_tokens=0, requests=2
+    )
     fake_msg = ModelResponse(
         parts=[
             ToolCallPart(tool_name="search_web", args={"q": "x"}, tool_call_id="t1"),
@@ -206,7 +217,9 @@ async def test_tool_call_count_extracted_from_messages():
 @pytest.mark.asyncio
 async def test_event_stream_handler_reaches_agent_run():
     agent = MagicMock()
-    fake_usage = MagicMock(input_tokens=10, output_tokens=5, requests=1)
+    fake_usage = MagicMock(
+        input_tokens=10, output_tokens=5, cache_read_tokens=0, cache_write_tokens=0, requests=1
+    )
     fake_result = MagicMock()
     fake_result.output = "done"
     fake_result.usage = fake_usage
@@ -262,7 +275,13 @@ async def test_usage_event_carries_trace_id(capfire):
 @pytest.mark.asyncio
 async def test_budget_path_span_has_cost_and_tool_count(capfire):
     agent = MagicMock()
-    fake_usage = MagicMock(input_tokens=200_000, output_tokens=10_000, requests=1)
+    fake_usage = MagicMock(
+        input_tokens=200_000,
+        output_tokens=10_000,
+        cache_read_tokens=30_000,
+        cache_write_tokens=5_000,
+        requests=1,
+    )
     fake_result = MagicMock()
     fake_result.output = "long output"
     fake_result.usage = fake_usage
@@ -301,6 +320,8 @@ async def test_budget_path_span_has_cost_and_tool_count(capfire):
     assert attrs["usage.cost_usd"] == 0.42
     assert attrs["usage.tool_call_count"] == 0
     assert attrs["outcome.error_severity"] == "high"
+    assert attrs["usage.cache_read_tokens"] == 30_000
+    assert attrs["usage.cache_write_tokens"] == 5_000
 
 
 @pytest.mark.asyncio
@@ -353,3 +374,148 @@ def test_classify_error_unknown_falls_back():
     kind, severity = classify_error(err)
     assert kind == "unknown"
     assert severity in ("low", "medium", "high", "critical")
+
+
+def test_extract_usage_includes_cache_fields():
+    fake_usage = MagicMock(
+        input_tokens=1000,
+        output_tokens=200,
+        cache_read_tokens=300,
+        cache_write_tokens=150,
+        requests=3,
+    )
+    usage = extract_usage(fake_usage)
+    assert usage["cache_read_tokens"] == 300
+    assert usage["cache_write_tokens"] == 150
+    assert usage["input_tokens"] == 1000
+    assert usage["output_tokens"] == 200
+
+
+def test_extract_usage_defaults_cache_fields_to_zero_when_falsy():
+    fake_usage = MagicMock(
+        input_tokens=1000,
+        output_tokens=200,
+        cache_read_tokens=0,
+        cache_write_tokens=None,
+        requests=1,
+    )
+    usage = extract_usage(fake_usage)
+    assert usage["cache_read_tokens"] == 0
+    assert usage["cache_write_tokens"] == 0
+
+
+@pytest.mark.asyncio
+async def test_success_path_carries_cache_tokens_to_payload_and_span(capfire):
+    agent = MagicMock()
+    fake_usage = MagicMock(
+        input_tokens=1000,
+        output_tokens=200,
+        cache_read_tokens=300,
+        cache_write_tokens=150,
+        requests=1,
+    )
+    fake_result = MagicMock()
+    fake_result.output = "done"
+    fake_result.usage = fake_usage
+    fake_result.all_messages = MagicMock(return_value=[])
+    agent.run = AsyncMock(return_value=fake_result)
+    db, query = _mock_db()
+
+    await run_agent_instrumented(
+        agent=agent,
+        prompt="hello",
+        deps=None,
+        db=db,
+        org_id=ORG_ID,
+        agent_slug="claw-main",
+        model="anthropic:claude-sonnet-4-5-20250929",
+        run_kind=RunKind.USER_MESSAGE,
+        channel="app",
+        conversation_id="conv-1",
+    )
+
+    await drain_pending_writes()
+    payload = query.insert.call_args[0][0]
+    assert payload["cache_read_tokens"] == 300
+    assert payload["cache_write_tokens"] == 150
+
+    spans = [
+        s
+        for s in capfire.exporter.exported_spans
+        if s.name == "agent_run" and "outcome.success" in (s.attributes or {})
+    ]
+    assert len(spans) == 1
+    attrs = spans[0].attributes or {}
+    assert attrs["usage.cache_read_tokens"] == 300
+    assert attrs["usage.cache_write_tokens"] == 150
+
+
+@pytest.mark.asyncio
+async def test_success_path_passes_cache_tokens_to_compute_cost():
+    agent = MagicMock()
+    fake_usage = MagicMock(
+        input_tokens=1000,
+        output_tokens=200,
+        cache_read_tokens=300,
+        cache_write_tokens=150,
+        requests=1,
+    )
+    fake_result = MagicMock()
+    fake_result.output = "done"
+    fake_result.usage = fake_usage
+    fake_result.all_messages = MagicMock(return_value=[])
+    agent.run = AsyncMock(return_value=fake_result)
+    db, _ = _mock_db()
+
+    with patch(
+        "jordan_claw.utils.agent_runner.compute_cost", return_value=Decimal("0.01")
+    ) as mock_cost:
+        await run_agent_instrumented(
+            agent=agent,
+            prompt="hello",
+            deps=None,
+            db=db,
+            org_id=ORG_ID,
+            agent_slug="claw-main",
+            model="anthropic:claude-sonnet-4-5-20250929",
+            run_kind=RunKind.USER_MESSAGE,
+            channel="app",
+            conversation_id="conv-1",
+        )
+
+    await drain_pending_writes()
+    assert mock_cost.call_args.kwargs["cache_read_tokens"] == 300
+    assert mock_cost.call_args.kwargs["cache_write_tokens"] == 150
+
+
+@pytest.mark.asyncio
+async def test_exception_path_emits_zero_cache_tokens():
+    agent = MagicMock()
+    agent.run = AsyncMock(side_effect=TimeoutError("upstream timeout"))
+    db, query = _mock_db()
+
+    with (
+        patch(
+            "jordan_claw.utils.agent_runner.emitter.agent_run_completed", new=AsyncMock()
+        ) as mock_emit,
+        pytest.raises(TimeoutError),
+    ):
+        await run_agent_instrumented(
+            agent=agent,
+            prompt="hello",
+            deps=None,
+            db=db,
+            org_id=ORG_ID,
+            agent_slug="claw-main",
+            model="anthropic:claude-sonnet-4-5-20250929",
+            run_kind=RunKind.USER_MESSAGE,
+            channel="app",
+            conversation_id="conv-1",
+        )
+
+    await drain_pending_writes()
+    assert mock_emit.call_args.kwargs["cache_read_tokens"] == 0
+    assert mock_emit.call_args.kwargs["cache_write_tokens"] == 0
+    payload = query.insert.call_args[0][0]
+    assert payload["cache_read_tokens"] == 0
+    assert payload["cache_write_tokens"] == 0

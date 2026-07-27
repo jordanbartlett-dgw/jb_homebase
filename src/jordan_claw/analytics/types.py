@@ -6,7 +6,7 @@ from enum import StrEnum
 
 
 class RunKind(StrEnum):
-    """Mirrors the CHECK constraint on usage_events.run_kind (migrations 006, 013)."""
+    """Mirrors the CHECK constraint on usage_events.run_kind (migrations 006, 013, 033)."""
 
     USER_MESSAGE = "user_message"
     PROACTIVE = "proactive"
@@ -14,6 +14,8 @@ class RunKind(StrEnum):
     EVAL = "eval"
     EVENT = "event"
     VOICE = "voice"
+    CLASSIFIER = "classifier"
+    TRANSCRIPTION = "transcription"
 
 
 @dataclass(frozen=True, slots=True)

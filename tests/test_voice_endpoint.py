@@ -72,16 +72,116 @@ def _install_fake_httpx(monkeypatch, *, status_code=200, json_body=None, exc=Non
 async def test_transcribe_posts_multipart_and_returns_text(monkeypatch):
     from jordan_claw.gateway.voice import transcribe
 
-    recorder = _install_fake_httpx(monkeypatch, json_body={"text": "log my workout"})
+    recorder = _install_fake_httpx(
+        monkeypatch, json_body={"text": "log my workout", "duration": 12.5}
+    )
 
     text = await transcribe(AUDIO, "note.m4a", "audio/m4a", _settings())
 
     assert text == "log my workout"
     assert recorder["url"] == "https://api.openai.com/v1/audio/transcriptions"
     assert recorder["headers"]["Authorization"] == "Bearer oa-key"
-    assert recorder["data"] == {"model": "whisper-1"}
+    assert recorder["data"] == {"model": "whisper-1", "response_format": "verbose_json"}
     assert recorder["files"]["file"] == ("note.m4a", AUDIO, "audio/m4a")
     assert recorder["client_kwargs"]["timeout"] == 60.0
+
+
+async def test_transcribe_treats_missing_duration_as_none(monkeypatch):
+    """verbose_json normally carries duration, but the field is not contractually
+    guaranteed -- absence must not crash transcription."""
+    from jordan_claw.gateway.voice import transcribe
+
+    _install_fake_httpx(monkeypatch, json_body={"text": "no duration here"})
+
+    text = await transcribe(AUDIO, "note.m4a", "audio/m4a", _settings())
+
+    assert text == "no duration here"
+
+
+async def test_transcribe_writes_usage_event_and_emits_when_db_and_org_provided(monkeypatch):
+    from jordan_claw.analytics import emitter
+    from jordan_claw.gateway import voice
+    from jordan_claw.utils.agent_runner import drain_pending_writes
+
+    _install_fake_httpx(monkeypatch, json_body={"text": "log my workout", "duration": 12.5})
+
+    query = MagicMock()
+    query.execute = AsyncMock(return_value=MagicMock(data=[{"id": "u1"}]))
+    query.insert.return_value = query
+    db = MagicMock()
+    db.table.return_value = query
+
+    mock_posthog = MagicMock()
+    monkeypatch.setattr(emitter, "get_posthog", lambda: mock_posthog)
+
+    text = await voice.transcribe(
+        AUDIO, "note.m4a", "audio/m4a", _settings(), db=db, org_id="org-1"
+    )
+    await drain_pending_writes()
+    await emitter.drain_pending_emits()
+
+    assert text == "log my workout"
+    db.table.assert_called_with("usage_events")
+    payload = query.insert.call_args[0][0]
+    assert payload["agent_slug"] == "whisper"
+    assert payload["channel"] == "app-voice"
+    assert payload["run_kind"] == "transcription"
+    assert payload["model"] == "whisper-1"
+    assert payload["input_tokens"] == 0
+    assert payload["output_tokens"] == 0
+    assert payload["success"] is True
+    assert payload["duration_ms"] >= 0
+    assert payload["cost_usd"] == pytest.approx(0.00125)
+
+    mock_posthog.capture.assert_called_once()
+    kwargs = mock_posthog.capture.call_args.kwargs
+    assert kwargs["event"] == "transcription_completed"
+    assert kwargs["distinct_id"] == "org-1"
+    props = kwargs["properties"]
+    assert props["duration_s"] == 12.5
+    assert props["audio_bytes"] == len(AUDIO)
+    assert props["cost_usd"] == pytest.approx(0.00125)
+    assert props["latency_ms"] >= 0
+
+
+async def test_transcribe_without_db_or_org_writes_and_emits_nothing(monkeypatch):
+    from jordan_claw.analytics import emitter
+    from jordan_claw.gateway import voice
+    from jordan_claw.utils.agent_runner import drain_pending_writes
+
+    _install_fake_httpx(monkeypatch, json_body={"text": "log my workout", "duration": 12.5})
+    mock_posthog = MagicMock()
+    monkeypatch.setattr(emitter, "get_posthog", lambda: mock_posthog)
+
+    text = await voice.transcribe(AUDIO, "note.m4a", "audio/m4a", _settings())
+    await drain_pending_writes()
+    await emitter.drain_pending_emits()
+
+    assert text == "log my workout"
+    mock_posthog.capture.assert_not_called()
+
+
+async def test_transcribe_once_forwards_db_and_org_to_transcribe(monkeypatch):
+    from jordan_claw.gateway import voice
+
+    voice._transcription_cache.clear()
+    voice._transcription_tasks.clear()
+    mock_transcribe = AsyncMock(return_value="draft transcript")
+    monkeypatch.setattr(voice, "transcribe", mock_transcribe)
+
+    db = MagicMock()
+    await voice.transcribe_once(
+        AUDIO,
+        "note.m4a",
+        "audio/m4a",
+        _settings(),
+        key="app-voice-draft-2",
+        db=db,
+        org_id="org-1",
+    )
+
+    assert mock_transcribe.call_args.kwargs["db"] is db
+    assert mock_transcribe.call_args.kwargs["org_id"] == "org-1"
 
 
 async def test_transcribe_raises_on_non_200(monkeypatch):
@@ -330,6 +430,8 @@ async def test_voice_happy_path_returns_transcript_slug_and_reply():
     assert audio_arg == AUDIO
     assert filename_arg == "note.m4a"
     assert content_type_arg == "audio/m4a"
+    assert mock_transcribe.call_args.kwargs["db"] is main.app.state.db
+    assert mock_transcribe.call_args.kwargs["org_id"] == "org-1"
     assert mock_cls.call_args.args[1] == "log my workout"
     assert mock_cls.call_args.args[2] == "org-1"
     handle_kwargs = mock_handle.call_args.kwargs
@@ -396,6 +498,8 @@ async def test_voice_transcribe_returns_draft_without_running_agent():
     args = mock_transcribe.call_args.args
     assert args[:4] == (AUDIO, "draft.m4a", "audio/m4a", settings)
     assert mock_transcribe.call_args.kwargs["key"] == "app-voice-draft-1"
+    assert mock_transcribe.call_args.kwargs["db"] is main.app.state.db
+    assert mock_transcribe.call_args.kwargs["org_id"] == "org-1"
     mock_classify.assert_not_awaited()
     mock_handle.assert_not_awaited()
 

@@ -19,6 +19,20 @@ count, cost, 200k token budget guardrail, error classification, fire-and-forget
 `save_usage_event` + PostHog emit. If you need a new per-run signal, add it
 there — never in individual callers.
 
+Two sanctioned exceptions write their own `usage_events` row outside this
+choke point, because they aren't `Agent.run` calls: the voice classifier
+(`gateway/classifier.py::classify`, haiku routing call, `agent_slug=voice-classifier`,
+no PostHog emit) and Whisper transcription (`gateway/voice.py::transcribe`,
+`agent_slug=whisper`, duration-based cost, emits `transcription_completed`).
+Don't add a third without a reason; new agent-shaped work goes through
+`run_agent_instrumented`.
+
+A few non-agent call sites carry hand-written spans where autoinstrumentation
+doesn't reach: `voice_transcribe` (Whisper), `fastmail.poll`/`agentmail.poll`
+(watcher sweeps), `event.process` (trigger fan-out), `proactive.dispatch`
+(scheduler tasks), `caldav.search`/`caldav.save_event` (calendar IO; caldav
+rides niquests, so httpx/requests autoinstrumentation can't see it).
+
 ## pydantic-ai v2 API (the repo is v2; v1 forms are bugs)
 
 ```python
@@ -34,6 +48,17 @@ model name (`compute_cost` strips `anthropic:`). Retired models stay in the
 table for historical pricing. **Adding/changing a model in the DB means adding
 its pricing row**, or cost silently becomes None (logged warning).
 
+Cost is cache-aware. pydantic-ai's `usage.input_tokens` is cache-INCLUSIVE:
+cache_read_tokens/cache_write_tokens are folded into it. `compute_cost` backs
+both out before applying the base input rate, then reprices cache reads at
+0.10x and cache writes at 1.25x (Anthropic's published multipliers). Passing
+raw `input_tokens` without the cache kwargs overcounts cost. Always pass
+`cache_read_tokens`/`cache_write_tokens` from `extract_usage`.
+
+Non-token costs use their own helpers, not `compute_cost`:
+`compute_transcription_cost` (USD per audio minute, Whisper) and
+`compute_embedding_cost` (USD per 1M tokens, `text-embedding-3-small`).
+
 Error taxonomy: `classify_error` returns `(error_type, severity)` with severity
 in `low/medium/high/critical` — this mirrors the `usage_events` CHECK
 constraint. Don't invent new severities without a migration.
@@ -47,7 +72,10 @@ attributes, so `include_content` is the only content lever, not scrubbing.
 ## PostHog rules
 
 - Event names ONLY from `analytics/emitter.ALLOWED_EVENTS`; add new events as
-  typed functions in `emitter.py`, never inline strings.
+  typed functions in `emitter.py`, never inline strings. Current catalogue (8):
+  `agent_run_completed`, `proactive_sent`, `agent_session_started`,
+  `eval_run_completed`, `feedback_submitted`, `transcription_completed`,
+  `email_sent`, `event_trigger_fired`. Full props: `docs/observability.md`.
 - Emits are fire-and-forget (`asyncio.to_thread`, strong-ref set); PostHog down
   = WARN no-op, an agent run must never fail on analytics.
 - Project key `phc_*`, never a personal `phx_*` key.
@@ -62,6 +90,12 @@ pydantic-ai instrumentation, structlog with stdlib `BoundLogger`. Prod check is
 `settings.environment == "production"` (there is no `railway_environment`).
 Health surface is `/health` only — there is no `/metrics` endpoint; don't add
 one without a reason, the three-pillar setup covers it.
+
+When a Logfire token is configured, `configure_logging` appends
+`logfire.StructlogProcessor(console_log=False)` to the structlog chain, so
+every structured log line also lands in Logfire correlated to the active
+trace/span. `console_log=False` keeps it additive; Logfire does its own stdout
+export, so the bridge must not also print or lines double up.
 
 ## Debugging a production run
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import httpx
+import logfire
 import structlog
 from supabase._async.client import AsyncClient
 
@@ -104,40 +105,45 @@ async def poll_fastmail(
             _no_token_logged = True
         return 0
 
-    cursor = await get_cursor(db, SOURCE)
-    after = cursor.get("after")
+    with logfire.span("fastmail.poll") as span:
+        cursor = await get_cursor(db, SOURCE)
+        after = cursor.get("after")
 
-    headers = {"Authorization": f"Bearer {settings.fastmail_api_token}"}
-    async with httpx.AsyncClient(timeout=30) as client:
-        emails = await _fetch_emails(client, headers, after)
+        headers = {"Authorization": f"Bearer {settings.fastmail_api_token}"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            emails = await _fetch_emails(client, headers, after)
 
-    if after is None:
-        if emails:
-            newest = emails[-1]
+        if after is None:
+            if emails:
+                newest = emails[-1]
+                await save_cursor(
+                    db, SOURCE, {"after": newest["receivedAt"], "last_id": newest["id"]}
+                )
+            log.info("fastmail.cursor_initialized", seeded=bool(emails))
+            span.set_attribute("processed", 0)
+            return 0
+
+        # JMAP "after" is inclusive (receivedAt on-or-after), so the cursor
+        # email echoes back: drop it by id; the >= filter keeps at-or-newer rows.
+        last_id = cursor.get("last_id")
+        new_emails = [e for e in emails if e["id"] != last_id and e["receivedAt"] >= after]
+
+        processed = 0
+        for email in new_emails:  # already oldest first
+            await process_event(
+                db,
+                source=SOURCE,
+                payload=_to_payload(email),
+                settings=settings,
+            )
+            processed += 1
+
+        if new_emails:
+            # Park the cursor at the newest email we actually processed; any
+            # overflow past POLL_LIMIT is picked up by the next poll.
+            newest = new_emails[-1]
             await save_cursor(db, SOURCE, {"after": newest["receivedAt"], "last_id": newest["id"]})
-        log.info("fastmail.cursor_initialized", seeded=bool(emails))
-        return 0
 
-    # JMAP "after" is inclusive (receivedAt on-or-after), so the cursor
-    # email echoes back: drop it by id; the >= filter keeps at-or-newer rows.
-    last_id = cursor.get("last_id")
-    new_emails = [e for e in emails if e["id"] != last_id and e["receivedAt"] >= after]
-
-    processed = 0
-    for email in new_emails:  # already oldest first
-        await process_event(
-            db,
-            source=SOURCE,
-            payload=_to_payload(email),
-            settings=settings,
-        )
-        processed += 1
-
-    if new_emails:
-        # Park the cursor at the newest email we actually processed; any
-        # overflow past POLL_LIMIT is picked up by the next poll.
-        newest = new_emails[-1]
-        await save_cursor(db, SOURCE, {"after": newest["receivedAt"], "last_id": newest["id"]})
-
-    log.info("fastmail.poll_complete", processed=processed)
-    return processed
+        span.set_attribute("processed", processed)
+        log.info("fastmail.poll_complete", processed=processed)
+        return processed

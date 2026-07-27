@@ -79,6 +79,8 @@ async def _dispatch(event: str, distinct_id: str, props: dict, org_id: str) -> N
             success=props["success"],
             error_type=props.get("error_type"),
             error_severity=props.get("error_severity"),
+            cache_read_tokens=props.get("cache_read_tokens", 0),
+            cache_write_tokens=props.get("cache_write_tokens", 0),
         )
     elif event == "proactive_sent":
         await emitter.proactive_sent(

@@ -12,6 +12,8 @@ How Jordan Claw is instrumented and how to read the data.
 
 Every agent run produces all three: a Logfire trace, a `usage_events` row, and a PostHog `agent_run_completed` event. They share the same `agent_slug`, `run_kind`, `channel`, `cost_usd`, `duration_ms`, and `tool_call_count`, so cross-referencing is straightforward. `usage_events.trace_id` (32-char hex OTel trace id of the `agent_run` span) is the join key from a usage row to its Logfire trace.
 
+`usage_events` also carries `cache_read_tokens` and `cache_write_tokens` (migration 033), and `run_kind` gained two values: `classifier` and `transcription`. Cost is cache-aware. pydantic-ai's `usage.input_tokens` is cache-INCLUSIVE, meaning cache reads and writes are folded into it. `compute_cost` (`utils/pricing.py`) backs both out before applying the base input rate, then reprices them at Anthropic's cache multipliers: 0.10x for reads, 1.25x for writes. Spans, `usage_events` rows, and the `agent_run_completed` PostHog event all carry the two cache token counts.
+
 ## PostHog event catalogue
 
 | Event | distinct_id | Props |
@@ -21,14 +23,39 @@ Every agent run produces all three: a Logfire trace, a `usage_events` row, and a
 | `agent_session_started` | user_id | `channel, agent_slug` (emitted on conversation insert) |
 | `eval_run_completed` | `system:eval` | `dataset, total_cases, passed, score, prev_score?, regression, duration_ms` |
 | `feedback_submitted` | user_id | `agent_slug, rating, has_note, prompt_source, conversation_id?` |
+| `transcription_completed` | org_id | `duration_s?, audio_bytes, cost_usd?, latency_ms` |
+| `email_sent` | user_id, else org_id | `direction, message_id, thread_id, body_length, subject_length?` |
+| `event_trigger_fired` | user_id, else org_id | `trigger_name, source, outcome, cost_usd?, input_tokens, output_tokens, duration_ms` |
 
-In-process runs always pass `user_id=None` to the emitter today (`utils/agent_runner.py` does not yet populate it), so `distinct_id` currently resolves to `org_id` for every in-process `agent_run_completed` event. The user_id path exists for the frontend proxy, which does supply a real user id.
+In-process runs always pass `user_id=None` to the emitter today (`utils/agent_runner.py` does not yet populate it), so `distinct_id` currently resolves to `org_id` for every in-process `agent_run_completed` event. Same today for `email_sent` and `event_trigger_fired`: both call sites pass `user_id=None`. The user_id path exists for the frontend proxy, which does supply a real user id.
 
-Event names are constants in `jordan_claw.analytics.emitter.ALLOWED_EVENTS`. Never inline an event string at a call site — use the typed emitter function.
+Event names are constants in `jordan_claw.analytics.emitter.ALLOWED_EVENTS` (8 events, table above). Never inline an event string at a call site. Use the typed emitter function.
 
 ## Frontend proxy
 
 Browser / Flutter clients hit `POST /api/analytics/event` with `Authorization: Bearer <FRONTEND_ANALYTICS_TOKEN>`. The route validates the event against `ALLOWED_EVENTS`, enriches with the server-side `org_id`, and dispatches to the same emitter functions used in-process. There is no second emission path.
+
+## Coverage: classifier, whisper, embeddings
+
+Three call sites sit outside `run_agent_instrumented` because they are not agent runs. Each is a deliberate, documented exception:
+
+- **Classifier** (`gateway/classifier.py::classify`, the voice-routing haiku call): own Logfire span (`voice_classify`) and its own `usage_events` row, `agent_slug=voice-classifier`, `run_kind=classifier`. No PostHog emit by design. It is a per-utterance routing decision, not a user-facing run; cost still lands in the ledger.
+- **Whisper** (`gateway/voice.py::transcribe`): `voice_transcribe` Logfire span plus a `usage_events` row (`agent_slug=whisper`, `run_kind=transcription`). Cost is duration-based (`compute_transcription_cost`, $0.006/min, from Whisper's `verbose_json` response), not token-based. Emits `transcription_completed` to PostHog. Both voice endpoints (`/voice` and the draft endpoint `/voice/transcribe`) pass `db`/`org_id` and write a usage row; the provider call costs money either way, so draft-only transcription is not exempt. Only a `transcribe()` call made without `db`/`org_id` (tests, other callers) skips the row and event.
+- **Embeddings** (`obsidian/embeddings.py::generate_embeddings`): `generate_embeddings` Logfire span carries token count and cost as span attributes only. No `usage_events` row, no PostHog event. Documented decision: embedding spend is roughly $0.02 per 1M tokens, immaterial next to LLM cost, and vault ingest is a bulk job, not a per-user run worth a ledger row.
+
+## Manual spans
+
+Some call sites get no free span coverage from FastAPI/httpx/pydantic-ai autoinstrumentation, so they carry hand-written Logfire spans instead:
+
+- `voice_transcribe` (`gateway/voice.py::transcribe`): the Whisper HTTP call.
+- `fastmail.poll` / `agentmail.poll` (`events/fastmail.py`, `events/agentmail.py`): one watcher sweep, `processed` attribute.
+- `event.process` (`events/pipeline.py::process_event`): webhook/poll trigger fan-out, `triggers`/`started` attributes.
+- `proactive.dispatch` (`proactive/scheduler.py::dispatch_task`): one scheduler task execution, `task_type`/`schedule_id` attributes.
+- `caldav.search` / `caldav.save_event` (`tools/calendar.py`): calendar IO, `events` count (search only) and `cached_url` attributes. caldav rides niquests, so httpx/requests autoinstrumentation never sees these calls; hand spans are the only coverage.
+
+## Logfire / structlog bridge
+
+`main.py::configure_logging` appends `logfire.StructlogProcessor(console_log=False)` to the structlog processor chain whenever a Logfire token is configured. Every structured log line (`log.info`, `log.warning`, `log.exception`, ...) now also lands in Logfire, correlated to the active trace/span. Console/JSON rendering is unchanged; `console_log=False` keeps the bridge additive so lines don't double-print.
 
 ## Production dashboard
 
