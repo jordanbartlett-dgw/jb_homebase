@@ -17,8 +17,10 @@ from click.testing import CliRunner
 import evals.run_eval as run_eval_module
 from evals.registry import REGISTRY
 from evals.run_eval import (
+    REPORTS_KEEP,
     RunSummary,
     _dataset_rows,
+    _prune_reports,
     _report_delta,
     _summary_json,
     cli,
@@ -176,3 +178,49 @@ def test_summary_json_defaults_are_present_when_not_set() -> None:
     assert payload["cost_usd"] is None
     assert payload["experiment_name"] == ""
     json.dumps(payload)  # still valid JSON
+
+
+# --- report pruning ---
+
+
+def _write_reports(reports_dir: Path, dataset: str, count: int) -> list[Path]:
+    """Write `count` fake report files with lexicographically-increasing names."""
+    paths = []
+    for i in range(count):
+        ts = f"202601{(i // 24) % 28 + 1:02d}T{i % 24:02d}0000Z"
+        path = reports_dir / f"{dataset}_{ts}.json"
+        path.write_text("{}")
+        paths.append(path)
+    return paths
+
+
+def test_prune_reports_keeps_only_newest_n(tmp_path: Path) -> None:
+    paths = _write_reports(tmp_path, "memory_recall", 10)
+
+    _prune_reports(tmp_path, keep=4)
+
+    remaining = sorted(p.name for p in tmp_path.glob("*.json"))
+    expected = sorted(p.name for p in paths)[-4:]
+    assert remaining == expected
+
+
+def test_prune_reports_noop_when_under_limit(tmp_path: Path) -> None:
+    _write_reports(tmp_path, "memory_recall", 3)
+
+    _prune_reports(tmp_path, keep=60)
+
+    assert len(list(tmp_path.glob("*.json"))) == 3
+
+
+def test_prune_reports_ignores_non_json_files(tmp_path: Path) -> None:
+    _write_reports(tmp_path, "memory_recall", 5)
+    (tmp_path / "notes.txt").write_text("keep me")
+
+    _prune_reports(tmp_path, keep=2)
+
+    assert (tmp_path / "notes.txt").exists()
+    assert len(list(tmp_path.glob("*.json"))) == 2
+
+
+def test_reports_keep_default_is_sixty() -> None:
+    assert REPORTS_KEEP == 60

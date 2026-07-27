@@ -42,6 +42,7 @@ from jordan_claw.utils.pricing import compute_cost
 log = structlog.get_logger()
 
 REGRESSION_THRESHOLD = 0.05  # 5pp drop
+REPORTS_KEEP = 60  # ~10 days of 6-dataset nightlies
 
 
 @dataclass
@@ -100,6 +101,19 @@ def _save_baseline(name: str, summary: RunSummary, git_sha: str | None) -> Path:
     }
     path.write_text(json.dumps(payload, indent=2) + "\n")
     return path
+
+
+def _prune_reports(reports_dir: Path, keep: int = REPORTS_KEEP) -> None:
+    """Delete all but the newest `keep` report files in `reports_dir`.
+
+    Only touches `*.json` files (report files); baselines and anything else in
+    the directory are left alone. Filenames are `{dataset}_YYYYmmddTHHMMSSZ.json`,
+    so lexicographic sort on the name is chronological order — no need to stat
+    mtimes.
+    """
+    reports = sorted(reports_dir.glob("*.json"))
+    for path in reports[:-keep] if keep > 0 else reports:
+        path.unlink()
 
 
 def _detect_regression(
@@ -456,6 +470,7 @@ async def _run_one(spec: EvalSpec, *, repeat: int = 1, max_concurrency: int = 4)
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     report_path = REPORTS_DIR / f"{spec.name}_{ts}.json"
     report_path.write_text(json.dumps(report_dict, indent=2, default=str) + "\n")
+    _prune_reports(REPORTS_DIR)
 
     client = await get_supabase_client(settings.supabase_url, settings.supabase_service_key)
     try:

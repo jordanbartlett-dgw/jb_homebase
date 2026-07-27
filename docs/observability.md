@@ -22,14 +22,13 @@ Every agent run produces all three: a Logfire trace, a `usage_events` row, and a
 | `proactive_sent` | user_id | `schedule_name?, task_type, channel, content_length, agent_slug?, trigger` |
 | `agent_session_started` | user_id | `channel, agent_slug` (emitted on conversation insert) |
 | `eval_run_completed` | `system:eval` | `dataset, total_cases, passed, score, prev_score?, regression, duration_ms` |
-| `feedback_submitted` | user_id | `agent_slug, rating, has_note, prompt_source, conversation_id?` |
 | `transcription_completed` | org_id | `duration_s?, audio_bytes, cost_usd?, latency_ms` |
 | `email_sent` | user_id, else org_id | `direction, message_id, thread_id, body_length, subject_length?` |
 | `event_trigger_fired` | user_id, else org_id | `trigger_name, source, outcome, cost_usd?, input_tokens, output_tokens, duration_ms` |
 
 In-process runs always pass `user_id=None` to the emitter today (`utils/agent_runner.py` does not yet populate it), so `distinct_id` currently resolves to `org_id` for every in-process `agent_run_completed` event. Same today for `email_sent` and `event_trigger_fired`: both call sites pass `user_id=None`. The user_id path exists for the frontend proxy, which does supply a real user id.
 
-Event names are constants in `jordan_claw.analytics.emitter.ALLOWED_EVENTS` (8 events, table above). Never inline an event string at a call site. Use the typed emitter function.
+Event names are constants in `jordan_claw.analytics.emitter.ALLOWED_EVENTS` (7 events, table above). Never inline an event string at a call site. Use the typed emitter function.
 
 ## Frontend proxy
 
@@ -86,6 +85,8 @@ Built via the PostHog MCP server (install: `npx @posthog/wizard mcp add`). Defin
 - **Drain the queue**: FastAPI lifespan teardown awaits `drain_pending_writes()` (pending `usage_events` inserts) first, then `emitter.drain_pending_emits()` (pending PostHog captures), then `posthog.shutdown()`.
 - **PostHog "Sessions" tab is empty by design**: we use the server-side Python SDK and don't emit `$session_id`. PostHog Sessions is a frontend-SDK concept. Use Live events / the Events explorer / the dashboard above instead.
 - **Project key vs. personal key**: `POSTHOG_API_KEY` must be the *Project* API key (`phc_*`) from PostHog → Project settings. The *Personal* API key (`phx_*`) from user settings will return 401 from the capture endpoint.
+- **`usage_events` retention**: migration 035 schedules a daily `pg_cron` job (`usage-events-retention`, 04:30 UTC) that deletes rows older than 180 days. If `pg_cron` is unavailable on the Supabase plan, the migration skips the schedule and the delete becomes a manual runbook line — run `delete from usage_events where created_at < now() - interval '180 days';` periodically by hand.
+- **Eval report retention**: `evals/run_eval.py` prunes `evals/reports/*.json` to the newest `REPORTS_KEEP` (60, ~10 days of 6-dataset nightlies) after every write, by filename sort (timestamps in the name make lexicographic order chronological).
 
 ## Content privacy
 
@@ -176,9 +177,10 @@ Flutter UI for submitting feedback is deferred to the TestFlight track. The
 endpoint exists, nothing in the app calls it yet.
 
 The old PostHog `feedback_submitted` path (`/feedback` bot command →
-`feedback` table → `most_recent_agent`) still runs today but is superseded by
-this trace-attached path. Phase 4 retires it: drops the `feedback` table,
-`save_feedback`, and `most_recent_agent`.
+`feedback` table → `most_recent_agent`) is retired (migration 035): the
+`feedback` table is dropped, `save_feedback` and `most_recent_agent` are
+deleted, and `feedback_submitted` is removed from `ALLOWED_EVENTS`. This
+trace-attached path is the only feedback surface now.
 
 ## Verification log
 
