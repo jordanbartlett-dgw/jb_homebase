@@ -359,6 +359,60 @@ async def test_error_path_span_has_severity(capfire):
     assert attrs["outcome.error_severity"] == "medium"
 
 
+@pytest.mark.asyncio
+async def test_success_path_carries_traceparent(capfire):
+    """Under capfire the span context is real, so get_traceparent() succeeds and
+    returns a W3C traceparent string joined to the same trace as trace_id.
+    """
+    agent = Agent("test")
+    db, _ = _mock_db()
+
+    result = await run_agent_instrumented(
+        agent=agent,
+        prompt="hello",
+        deps=None,
+        db=db,
+        org_id=ORG_ID,
+        agent_slug="claw-main",
+        model="anthropic:claude-sonnet-4-5-20250929",
+        run_kind=RunKind.USER_MESSAGE,
+        channel="app",
+        conversation_id="conv-1",
+    )
+
+    assert result.traceparent is not None
+    assert re.fullmatch(r"00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}", result.traceparent)
+
+
+@pytest.mark.asyncio
+async def test_traceparent_none_when_get_traceparent_raises():
+    """Unconfigured logfire (no capfire, no token) makes get_traceparent()'s
+    internal assert fire; the runner must swallow that and return None rather
+    than blow up an otherwise-successful run.
+    """
+    agent = Agent("test")
+    db, _ = _mock_db()
+
+    with patch(
+        "jordan_claw.utils.agent_runner.get_traceparent",
+        side_effect=AssertionError("span not started"),
+    ):
+        result = await run_agent_instrumented(
+            agent=agent,
+            prompt="hello",
+            deps=None,
+            db=db,
+            org_id=ORG_ID,
+            agent_slug="claw-main",
+            model="anthropic:claude-sonnet-4-5-20250929",
+            run_kind=RunKind.USER_MESSAGE,
+            channel="app",
+            conversation_id="conv-1",
+        )
+
+    assert result.traceparent is None
+
+
 def test_classify_error_known_signatures():
     assert classify_error(TimeoutError("x")) == ("timeout", "medium")
     assert classify_error(ConnectionError("x")) == ("network", "medium")

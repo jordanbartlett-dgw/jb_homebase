@@ -35,6 +35,11 @@ ASSISTANT_ROW = {
     "content": "Logged it.",
     "created_at": "2026-07-05T10:00:33+00:00",
 }
+ASSISTANT_ROW_WITH_TRACEPARENT = {
+    "content": "Logged it.",
+    "created_at": "2026-07-05T10:00:33+00:00",
+    "metadata": {"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"},
+}
 
 
 def _settings(app_token: str = "app-token") -> MagicMock:
@@ -119,6 +124,37 @@ async def test_replay_falls_back_to_request_slug_when_metadata_missing():
 
     assert result.agent_slug == "claw-main"
     assert result.reply == "Logged it."
+
+
+async def test_replay_returns_traceparent_from_assistant_message_metadata():
+    """The feedback surface (POST /app/feedback) annotates a run by its
+    traceparent, so a replay must recover it from the stored assistant row
+    rather than leaving it None."""
+    from jordan_claw.gateway import voice
+    from jordan_claw.gateway.app_chat import replay_app_response
+
+    db = MagicMock()
+    with patch.object(
+        voice,
+        "get_assistant_reply_after",
+        new=AsyncMock(return_value=ASSISTANT_ROW_WITH_TRACEPARENT),
+    ):
+        result = await replay_app_response(db, USER_ROW, fallback_slug="claw-main")
+
+    assert result.traceparent == "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+
+
+async def test_replay_traceparent_none_when_assistant_metadata_absent():
+    from jordan_claw.gateway import voice
+    from jordan_claw.gateway.app_chat import replay_app_response
+
+    db = MagicMock()
+    with patch.object(
+        voice, "get_assistant_reply_after", new=AsyncMock(return_value=ASSISTANT_ROW)
+    ):
+        result = await replay_app_response(db, USER_ROW, fallback_slug="claw-main")
+
+    assert result.traceparent is None
 
 
 # --- handle_app_message channel overrides (generalized for text) ---
@@ -212,7 +248,11 @@ async def test_app_messages_happy_path_runs_gateway_and_returns_reply():
     from jordan_claw.analytics.types import RunKind
 
     _wire_app_state(app_token="app-token")
-    gateway_response = GatewayResponse(content="Logged it.", conversation_id="c1")
+    gateway_response = GatewayResponse(
+        content="Logged it.",
+        conversation_id="c1",
+        traceparent="00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+    )
 
     with (
         patch.object(main, "get_message_by_channel_id", new=AsyncMock(return_value=None)),
@@ -230,6 +270,7 @@ async def test_app_messages_happy_path_runs_gateway_and_returns_reply():
         "agent_slug": "workout",
         "reply": "Logged it.",
         "conversation_id": "c1",
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
     }
     kwargs = mock_handle.call_args.kwargs
     assert kwargs["org_id"] == "org-1"
@@ -250,7 +291,11 @@ async def test_app_messages_replay_converges_without_rerunning_agent():
 
     with (
         patch.object(main, "get_message_by_channel_id", new=AsyncMock(return_value=USER_ROW)),
-        patch.object(voice, "get_assistant_reply_after", new=AsyncMock(return_value=ASSISTANT_ROW)),
+        patch.object(
+            voice,
+            "get_assistant_reply_after",
+            new=AsyncMock(return_value=ASSISTANT_ROW_WITH_TRACEPARENT),
+        ),
         patch.object(main, "handle_app_message", new=AsyncMock()) as mock_handle,
     ):
         async with _client() as client:
@@ -263,6 +308,7 @@ async def test_app_messages_replay_converges_without_rerunning_agent():
         "agent_slug": "workout",
         "reply": "Logged it.",
         "conversation_id": "c1",
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
     }
     mock_handle.assert_not_called()
 
@@ -312,7 +358,11 @@ async def test_app_message_stream_emits_safe_activity_deltas_and_completion():
 
     async def mock_handle(*args, **kwargs):
         await kwargs["event_stream_handler"](None, _stream_events())
-        return GatewayResponse(content="Final answer.", conversation_id="c1")
+        return GatewayResponse(
+            content="Final answer.",
+            conversation_id="c1",
+            traceparent="00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        )
 
     with (
         patch.object(app_stream, "get_message_by_channel_id", new=AsyncMock(return_value=None)),
@@ -338,6 +388,7 @@ async def test_app_message_stream_emits_safe_activity_deltas_and_completion():
             "agent_slug": "workout",
             "reply": "Final answer.",
             "conversation_id": "c1",
+            "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
         },
     ]
     assert "private reasoning" not in resp.text
@@ -353,6 +404,7 @@ async def test_app_message_stream_replay_converges_without_rerunning_agent():
         agent_slug="workout",
         reply="Logged it.",
         conversation_id="c1",
+        traceparent="00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
     )
 
     with (
@@ -381,6 +433,7 @@ async def test_app_message_stream_replay_converges_without_rerunning_agent():
         "agent_slug": "workout",
         "reply": "Logged it.",
         "conversation_id": "c1",
+        "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
     }
     assert events[1] == {
         "type": "status",

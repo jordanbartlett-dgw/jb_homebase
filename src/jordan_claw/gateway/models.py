@@ -21,3 +21,4 @@ class GatewayResponse(BaseModel):
     conversation_id: str
     token_count: int | None = None
     model: str | None = None
+    traceparent: str | None = None

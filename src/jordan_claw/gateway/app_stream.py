@@ -219,6 +219,7 @@ def start_app_message_stream(
                     "agent_slug": agent_slug,
                     "reply": reply,
                     "conversation_id": conversation_id,
+                    "traceparent": response.traceparent,
                 }
             )
         except OriginalRunIncompleteError:

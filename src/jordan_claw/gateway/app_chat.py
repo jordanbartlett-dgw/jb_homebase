@@ -39,6 +39,7 @@ class AppMessageResponse(BaseModel):
     agent_slug: str
     reply: str
     conversation_id: str
+    traceparent: str | None = None
 
 
 def channel_message_id(agent_slug: str, idempotency_key: str) -> str:
@@ -64,13 +65,15 @@ async def replay_app_response(
         conversation_id=original["conversation_id"],
         agent_slug=agent_slug,
     )
-    reply = await voice.await_original_reply(
+    reply_row = await voice.await_original_reply(
         db,
         conversation_id=original["conversation_id"],
         after=original["created_at"],
     )
+    reply_metadata = reply_row.get("metadata") or {}
     return AppMessageResponse(
         agent_slug=agent_slug,
-        reply=reply,
+        reply=reply_row["content"],
         conversation_id=original["conversation_id"],
+        traceparent=reply_metadata.get("traceparent"),
     )

@@ -305,6 +305,7 @@ async def app_text_message(body: AppMessageRequest, request: Request) -> AppMess
         agent_slug=body.agent_slug,
         reply=response.content,
         conversation_id=response.conversation_id,
+        traceparent=response.traceparent,
     )
 
 
