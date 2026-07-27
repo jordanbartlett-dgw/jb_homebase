@@ -75,6 +75,8 @@ async def test_successful_message_flow(mock_db):
     mock_usage = MagicMock()
     mock_usage.input_tokens = 10
     mock_usage.output_tokens = 5
+    mock_usage.cache_read_tokens = 0
+    mock_usage.cache_write_tokens = 0
     mock_usage.requests = 1
 
     mock_result = MagicMock()
@@ -174,6 +176,8 @@ async def test_memory_context_injected_into_agent(mock_db):
     mock_usage = MagicMock()
     mock_usage.input_tokens = 10
     mock_usage.output_tokens = 5
+    mock_usage.cache_read_tokens = 0
+    mock_usage.cache_write_tokens = 0
     mock_usage.requests = 1
 
     mock_result = MagicMock()
