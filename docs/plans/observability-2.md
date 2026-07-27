@@ -537,16 +537,48 @@ Files: `src/jordan_claw/gateway/app_feedback.py` (new: request model + handler f
 - PR `feat/online-evals`; migration 034 applied BEFORE merge (data-only); merge; deploy-verify: real `/app/messages` round-trip then check (a) response carries `traceparent`, (b) assistant message row metadata has it, (c) `curl POST /app/feedback` with that traceparent returns 202; judge sampling stays 0 until Jordan sets `ONLINE_EVAL_SAMPLE_RATE` on Railway (with `-s jb_homebase`!) after a billing-checked trickle — document the enable procedure in the PR body.
 - Commit: `docs(observability): phase-3 accuracy pass`.
 
-# Phase 4 — `chore/alerts-and-docs` (detailed plan at phase start)
+# Phase 4 — `chore/alerts-and-docs` (detailed 2026-07-27 at phase start)
 
-Close the loop: alerting, tooling, truth.
+Close the loop: alerting, tooling, truth, cleanup. Branch: `chore/alerts-and-docs`. Tasks 32-36. Migration 035 (feedback drop + retention) applied before merge. Two Jordan-assisted steps are isolated in Task 34 (Logfire auth is interactive).
 
-- Logfire SQL alerts: agent error rate, daily cost ceiling (from `operation.cost` metrics/usage_events), trace-silence heartbeat (catches the polling-liveness class of outage), online-eval failure rate. Channel: email (Fastmail) or Slack webhook, Jordan picks at phase start.
-- PostHog action/alert on `eval_run_completed regression=true` (the hook docs/evals.md already promises).
-- Logfire MCP server added to Claude Code (read-scoped token — already flagged in next-steps memory) so future sessions query traces/alerts directly.
-- Retire the orphaned feedback surface: drop `feedback` table + `save_feedback` + `most_recent_agent` (superseded by phase 3 trace-attached feedback). Migration 03x.
-- Retention: pg_cron delete on `usage_events` (>180d) per the migration 006 comment; `evals/reports/` keep-last-N pruning in the CLI.
-- Full doc refresh: `docs/observability.md`, `docs/evals.md`, `docs/architecture.md` (runner coverage claims, med_check baseline figure), root `CLAUDE.md` (Telegram removal — code is already Telegram-free), `README.md` observability section, `.claude/skills/agent-observability/SKILL.md`.
+### Task 32: Retire the orphaned feedback surface + retention
+
+Files: `supabase/migrations/035_feedback_retirement_and_retention.sql`, `src/jordan_claw/db/feedback.py` (delete), `src/jordan_claw/db/usage_events.py` (delete `most_recent_agent`), `src/jordan_claw/analytics/emitter.py` (delete `feedback_submitted`, ALLOWED_EVENTS → 7), `src/jordan_claw/gateway/analytics_proxy.py` (delete its branch), `evals/run_eval.py` (reports keep-last-N), tests (`test_db_feedback.py` delete; `test_db_usage_events.py` most_recent_agent tests delete; `test_emitter.py`/`test_analytics_proxy.py` updates; new pruning test), `docs/observability.md` (event table row removal + retention note).
+- Migration 035: `drop table if exists feedback;` + usage_events retention via pg_cron: `create extension if not exists pg_cron;` then `select cron.schedule('usage-events-retention', '30 4 * * *', $$delete from usage_events where created_at < now() - interval '180 days'$$);` with an idempotent guard (`cron.unschedule` if exists pattern or a `where not exists` check on `cron.job`) and a header NOTE: if the extension is unavailable on this Supabase plan, skip the cron block and keep the delete SQL as a documented manual runbook line. pg_notify at end.
+- `evals/run_eval.py`: after writing a report, prune `evals/reports/` to the newest 60 files (module const, comment: ~10 days of 6-dataset nightlies). Unit test with tmp dir.
+- Rationale comments: trace-attached feedback (phase 3) supersedes the 007-era path; `most_recent_agent`'s only consumer was the retired /feedback command.
+- Commit: `chore(observability): retire feedback surface + usage/report retention (migration 035)`.
+
+### Task 33: PostHog regression alerting + dashboard truth
+
+Implementer uses the PostHog MCP (`mcp__posthog__exec` via ToolSearch; project 409412, dashboard 1543058).
+- Create insight "Eval regressions" (`eval_run_completed` filtered `regression = true`, count, daily, 30d, breakdown `dataset`) pinned to dashboard 1543058; create a PostHog alert on it (threshold: count > 0, daily check) — if insight-alerts aren't available via MCP, document the two-click manual path in docs/observability.md and say so in the report.
+- Remove the two feedback tiles (insights `j8ldY5Dv`, `Qa0lS17U`) — their event is retired by Task 32.
+- Add one tile "Non-agent run cost" (`agent_run_completed` is unaffected; use a usage-events-shaped proxy: sum `cost_usd` where... PostHog only sees `agent_run_completed` + `transcription_completed` — tile: sum of `transcription_completed.cost_usd` daily; note classifier/eval costs live in usage_events/Logfire, not PostHog). Keep it honest, no fabricated series.
+- Update the dashboard table in `docs/observability.md` to match reality after the changes.
+- Commit: `docs(observability): dashboard + regression alert refresh` (docs part; MCP changes are server-side).
+
+### Task 34: Alert runbook + Logfire MCP (Jordan-assisted)
+
+Files: `docs/alerts.md` (new), `docs/observability.md` (pointer).
+- `docs/alerts.md`: the four Logfire alerts as ready-to-paste SQL + config, each with rationale and threshold: (1) agent error rate — `agent_run` spans with `outcome.success = false` > 3 in 15m; (2) daily cost ceiling — sum of `usage.cost_usd` on `agent_run` spans over 24h > $10; (3) trace-silence heartbeat — zero `agent_run`+`proactive.dispatch` spans in 45m (catches polling-liveness outages; scheduler ticks every 60s so silence means the process is wedged); (4) online-eval failures — `gen_ai.evaluation.result` events with `error.type` present or score.value = 0 for OutputSanity > 2 in 1h. Channel: email to Jordan's Fastmail (Logfire supports email; Slack webhook noted as alternative).
+- Logfire MCP section: the exact `claude mcp add logfire --transport http https://logfire-us.pydantic.dev/mcp` command, the `/mcp` auth step (Jordan runs it — interactive), and what becomes possible (querying traces/alerts from sessions; the med-check content-absence check from phase 0 finally verifiable by Claude).
+- These are prepared-not-executed: creating the alerts needs Jordan's Logfire auth. The task's deliverable is the runbook; execution is a 10-minute Jordan pass, checklist included.
+- Commit: `docs(observability): logfire alert runbook + mcp setup`.
+
+### Task 35: Truth sweep across stale docs
+
+Files: `docs/architecture.md`, `CLAUDE.md` (project), `README.md`, `evals/run_eval.py` + `tests/test_evals_cli.py` (em-dash docstring sweep), `src/jordan_claw/utils/pricing.py` (source-comment provenance line).
+- `docs/architecture.md`: observability section reflects phases 0-3 (choke point + sanctioned exceptions, trace_id/traceparent, online evals, six datasets, v2 baselines); fix the stale med_check baseline figure; "ALL agent runs go through run_agent_instrumented" claim corrected (evals task fns and classifier are sanctioned self-instrumenting exceptions).
+- `CLAUDE.md`: remove the Telegram-bots description (code is Telegram-free since 2026-07-25); fix the header description; check invariants mentioning bots/channels.
+- `README.md`: observability section rewrite (three pillars + evals + online evals, current table/test counts only if quick to verify — otherwise drop hardcoded counts entirely, they rot); remove retired-surface mentions.
+- Deferred-minors sweep from the ledger: em dashes in run_eval/test docstrings → periods; pricing.py comment cites the aggregator-verified provenance.
+- Commit: `docs: truth sweep (architecture, readme, project claude.md) + deferred minors`.
+
+### Task 36: PR, final review, merge, wrap
+
+- Whole-branch review; PR `chore/alerts-and-docs`; migration 035 applied BEFORE merge; merge; deploy-verify (health + one /app/messages round-trip; `select jobname from cron.job` shows the retention job if pg_cron available; PostHog dashboard reflects Task 33).
+- Post-merge wrap: update memory (project file marks the five-phase build COMPLETE, remaining Jordan handoffs listed: Logfire alert 10-minute pass, MCP auth, ONLINE_EVAL_SAMPLE_RATE enable, prod-findings triage), append final ledger lines, delete the SDD workspace (git history is the record).
 
 ## Cost notes (LLM cost discipline)
 
