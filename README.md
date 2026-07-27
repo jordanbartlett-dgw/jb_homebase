@@ -34,7 +34,6 @@ The scheduler persists proactive artifacts for app surfaces:
 - **Calendar reminders** 30 minutes before meetings with attendee context
 - **Memory corrections** notifies when a remembered fact is updated
 - **Daily scan** alerts on calendar conflicts (quiet, only messages if something found)
-- **Weekly feedback request** (Sundays 7pm Central) sends a static prompt asking for a 1-5 rating on the week's interactions; the old `/feedback` command it references is retired, see Observability below for the current feedback surface
 - **Daily workout** (6am Central) sends the day's session from the active training plan; silent on rest days
 
 Beyond schedules, events can trigger agents:

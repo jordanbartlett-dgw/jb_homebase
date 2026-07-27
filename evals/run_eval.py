@@ -756,7 +756,7 @@ def run(
         # JSON summary lines below and break machine parsing.
         structlog.configure(logger_factory=structlog.PrintLoggerFactory(file=sys.stderr))
 
-    # A real tracer provider must exist even without a token — later agentic
+    # A real tracer provider must exist even without a token. Later agentic
     # evaluators need span-tree capture regardless of whether we ship to Logfire.
     # scrubbing=False: eval fixtures are synthetic, scrubbing mangles fixture text.
     # console=False in --json mode: Logfire's default console span printer writes to

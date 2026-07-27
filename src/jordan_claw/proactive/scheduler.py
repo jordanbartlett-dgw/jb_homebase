@@ -22,7 +22,6 @@ from jordan_claw.proactive.executors import (
     execute_daily_workout,
     execute_morning_briefing,
     execute_reminder,
-    execute_weekly_feedback_request,
     execute_weekly_review,
     execute_weekly_training_review,
 )
@@ -35,7 +34,6 @@ EXECUTOR_MAP = {
     "morning_briefing": execute_morning_briefing,
     "weekly_review": execute_weekly_review,
     "daily_scan": execute_daily_scan,
-    "weekly_feedback_request": execute_weekly_feedback_request,
     "daily_workout": execute_daily_workout,
     "reminder": execute_reminder,
     "weekly_training_review": execute_weekly_training_review,

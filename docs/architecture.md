@@ -83,7 +83,7 @@ Every inbound message, regardless of channel, funnels into
 `proactive_schedules` row — cron expression (croniter, per-schedule timezone) or
 one-shot `run_at` timestamp — against `last_run_at`, dispatches to `EXECUTOR_MAP`
 (`proactive/executors.py`): morning_briefing, weekly_review, daily_scan,
-weekly_feedback_request, calendar_reminder, daily_workout, reminder (delivers
+calendar_reminder, daily_workout, reminder (delivers
 `config.message` verbatim, no LLM), weekly_training_review (Sunday 6pm coach
 review of the week's logs vs plan; deterministic one-liner when there's no plan
 or no logs), care_docs_check (Sunday 5pm CT, LLM-free care-document staleness
