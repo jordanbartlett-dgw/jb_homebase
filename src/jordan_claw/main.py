@@ -12,11 +12,13 @@ import structlog
 from anthropic import AsyncAnthropic
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic_evals.evaluators.llm_as_a_judge import set_default_judge_model
+from pydantic_evals.online import configure as configure_online_evals
 
 from jordan_claw.analytics import emitter
 from jordan_claw.analytics.posthog_client import shutdown_posthog
 from jordan_claw.analytics.types import RunKind
-from jordan_claw.config import get_settings
+from jordan_claw.config import Settings, get_settings
 from jordan_claw.db.client import close_supabase_client, get_supabase_client
 from jordan_claw.db.conversations import archive_active_conversation
 from jordan_claw.db.messages import get_message_by_channel_id
@@ -104,6 +106,23 @@ def configure_logging(environment: str, log_level: str, *, logfire_enabled: bool
     )
 
 
+def configure_eval_defaults(settings: Settings) -> None:
+    """Wire pydantic-evals' online judge model and sampling defaults.
+
+    `default_sample_rate` gates judge-sampled online evals (0 = off, the
+    Settings default); deterministic per-evaluator checks run regardless,
+    pinned at 1.0 at the evaluator level. `sampling_mode="correlated"` keeps
+    a run's online-eval decisions consistent across evaluators within that
+    run rather than flipping a coin per evaluator.
+    """
+    set_default_judge_model(settings.eval_judge_model)
+    configure_online_evals(
+        default_sample_rate=settings.online_eval_sample_rate,
+        sampling_mode="correlated",
+        metadata={"service": "jordan-claw"},
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -133,6 +152,8 @@ async def lifespan(app: FastAPI):
 
     if settings.logfire_token:
         logger.info("logfire_configured", environment=settings.environment)
+
+    configure_eval_defaults(settings)
 
     # Initialize Supabase client
     db = await get_supabase_client(settings.supabase_url, settings.supabase_service_key)

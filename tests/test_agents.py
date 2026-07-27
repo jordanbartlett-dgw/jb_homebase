@@ -224,6 +224,26 @@ async def test_build_agent_uses_db_config():
     assert sent_tools == {"current_datetime", "search_web", "fetch_article"}
 
 
+def test_create_agent_sets_name_from_slug():
+    """Without an explicit name, pydantic-ai infers it from the caller's local
+    variable ("agent" everywhere create_agent is called), collapsing every
+    online-eval target into one bucket. name must come from config.slug."""
+    fake_config = AgentConfig(
+        id="agent-001",
+        org_id="org-001",
+        name="Test Agent",
+        slug="test-agent",
+        system_prompt="Be helpful.",
+        model="test",
+        capabilities=[],
+        is_active=True,
+    )
+
+    agent, _ = create_agent(fake_config)
+
+    assert agent.name == "test-agent"
+
+
 @pytest.mark.asyncio
 async def test_build_agent_skips_unknown_capabilities():
     fake_config = AgentConfig(
