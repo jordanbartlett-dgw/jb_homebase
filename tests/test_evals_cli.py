@@ -1,7 +1,7 @@
 """Tests for `claw-eval list`, `claw-eval compare`, and the `--json` summary helper.
 
 `list` and `compare` must work with no API keys configured (no get_settings() call), so
-these tests never touch Settings — they either exercise the pure helpers directly or run
+these tests never touch Settings. They either exercise the pure helpers directly or run
 the CliRunner against a real REGISTRY import with report files monkeypatched into a tmp
 dir. `--json` is covered via the pure serialization helper, not by spawning the CLI
 process, per the task brief.
@@ -256,7 +256,7 @@ def test_prune_reports_is_scoped_per_dataset_not_global_sort(tmp_path: Path) -> 
 
 def test_prune_reports_only_touches_its_own_dataset(tmp_path: Path) -> None:
     """Pruning dataset A must never delete dataset B's files, even when B is
-    over ITS OWN limit — each call is scoped to one dataset's glob."""
+    over ITS OWN limit. Each call is scoped to one dataset's glob."""
     _write_reports(tmp_path, "memory_recall", 15)
     _write_reports(tmp_path, "obsidian_retrieval", 15)
 

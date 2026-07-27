@@ -49,7 +49,7 @@ REPORTS_KEEP_PER_DATASET = 10  # ~10 days of nightlies, per dataset
 class RunSummary:
     dataset: str
     score: float
-    total_cases: int  # cases + failures — a task_fn exception must not vanish from the count
+    total_cases: int  # cases + failures. A task_fn exception must not vanish from the count
     passed_cases: int
     duration_ms: int
     prev_score: float | None
@@ -66,7 +66,7 @@ def _load_baseline(name: str) -> dict | None:
     """Load a baseline file, normalizing v1 (no "schema" key) to the v2 internal shape.
 
     v2 files already have "composite"/"evaluators" keys and are returned as-is.
-    v1 files only ever recorded a single composite "score" — normalized to
+    v1 files only ever recorded a single composite "score", normalized to
     {"composite": <score>, "evaluators": None, ...} so callers (in particular
     _detect_regression) only ever see one shape.
     """
@@ -106,14 +106,14 @@ def _save_baseline(name: str, summary: RunSummary, git_sha: str | None) -> Path:
 def _prune_reports(reports_dir: Path, dataset: str, keep: int = REPORTS_KEEP_PER_DATASET) -> None:
     """Delete all but the newest `keep` report files for one `dataset`.
 
-    Scoped to `{dataset}_*.json` (mirrors the glob in `_latest_report_pair`) —
+    Scoped to `{dataset}_*.json` (mirrors the glob in `_latest_report_pair`).
     NOT a glob over every `*.json` in the directory. Filenames are
     `{dataset}_YYYYmmddTHHMMSSZ.json`, so lexicographic sort within one
-    dataset's prefix is chronological order — no need to stat mtimes. Pruning
+    dataset's prefix is chronological order, no need to stat mtimes. Pruning
     across all datasets in one lexicographic pass would sort purely on the
     dataset-name prefix (e.g. every `code_mode_*` before any `tool_routing_*`
     regardless of date), deleting fresh reports from alphabetically-early
-    datasets while keeping stale ones from late datasets — so each dataset
+    datasets while keeping stale ones from late datasets, so each dataset
     must be pruned independently, against only its own files.
     """
     reports = sorted(reports_dir.glob(f"{dataset}_*.json"))
@@ -131,7 +131,7 @@ def _detect_regression(
     v2 baseline (evaluators is a dict): flags when the composite drops more
     than REGRESSION_THRESHOLD OR any evaluator present on BOTH sides drops
     more than a small-N-guarded threshold (see below). Evaluators present on
-    only one side never flag — they're returned as informational reasons only
+    only one side never flag. They're returned as informational reasons only
     (a scorer being added or removed is a code change, not a quality
     regression). TrajectoryMatch never flags regardless of drop size; a drop
     past the guarded threshold is still surfaced as an "info:"-prefixed
@@ -210,7 +210,7 @@ def _case_score_floats(case) -> dict[str, float]:
     (bool-valued evaluators). pydantic-evals routes any evaluator whose
     EvaluationReason.value is a bool into a separate `assertions` channel,
     never `scores` (see `_group_evaluator_outputs_by_type` in
-    pydantic_evals.dataset) — this applies to ToolCorrectness and
+    pydantic_evals.dataset). This applies to ToolCorrectness and
     MaxToolCalls, which always return bool. Without reading assertions too,
     those evaluators would silently vanish from the composite, from
     per-case pass/fail, and from the baseline.
@@ -231,7 +231,7 @@ def _flat_evaluator_averages(cases: list[Any]) -> dict[str, float]:
     scores + assertions) uniformly across `cases`.
 
     Equivalent to `report.averages().scores` under a uniform repeat count
-    (every case runs the same number of times) — two-stage averaging
+    (every case runs the same number of times). Two-stage averaging
     (per-group, then across groups of equal size) equals a flat average
     over all runs. Used instead of `report.averages()` because that method
     only exposes `.scores`; `.assertions` is pooled into one blended float
@@ -259,17 +259,17 @@ def _case_accounting(report: EvaluationReport) -> tuple[int, int]:
 
     With repeat==1, pydantic-evals never sets `source_case_name`
     (ReportCase/ReportCaseFailure docstrings: "None when repeat == 1"), so
-    `report.case_groups()` returns None and cases map 1:1 onto runs — fall
+    `report.case_groups()` returns None and cases map 1:1 onto runs, fall
     back to the original run-level counting.
 
     With repeat>1, every run/failure carries the same `source_case_name`, so
     `case_groups()` (pydantic_evals/reporting/__init__.py) returns exactly
-    one `ReportCaseGroup` per source case — a case that failed on every
+    one `ReportCaseGroup` per source case. A case that failed on every
     repeat still surfaces as a single group (runs=[], failures=[...]), so
     `len(groups)` is "source cases + failures", never inflated by the repeat
-    count. Each group's `summary` is `ReportCaseAggregate.average(group.runs)`
-    — the same per-case average that `report.averages()` re-averages across
-    groups — so "passed" is judged against that averaged score, not any one
+    count. Each group's `summary` is `ReportCaseAggregate.average(group.runs)`,
+    the same per-case average that `report.averages()` re-averages across
+    groups, so "passed" is judged against that averaged score, not any one
     run in isolation.
     """
     groups = report.case_groups()
@@ -322,12 +322,12 @@ def _build_report_dict(
     regression: bool,
     experiment_name: str,
 ) -> dict[str, Any]:
-    """Pure report-JSON builder — no I/O, so it's unit-testable without a CLI or logfire.
+    """Pure report-JSON builder. No I/O, so it's unit-testable without a CLI or logfire.
 
     total_cases/passed_cases are accepted as pre-computed inputs (via
     _case_accounting) rather than derived from report.cases/report.failures
     here, because under repeat>1 those lists hold one entry per RUN, not per
-    source case — see _case_accounting's docstring.
+    source case. See _case_accounting's docstring.
     """
     return {
         "dataset": dataset,
@@ -375,14 +375,14 @@ def _usage_event_kwargs(
     duration_ms: int,
     org_id: str,
 ) -> dict[str, Any]:
-    """Pure kwargs builder for the eval's usage_events row — unit-testable without I/O.
+    """Pure kwargs builder for the eval's usage_events row. Unit-testable without I/O.
 
     cost_usd prefers the summed "cost" metric (from span attributes), but that
-    metric is only set when Logfire prices the model — and obsidian_retrieval
+    metric is only set when Logfire prices the model, and obsidian_retrieval
     has no agent spans at all. Whenever no case reported a cost but tokens are
     known, fall back to our own price table so cost_usd isn't NULL for
     effectively every real run. Unknown models (e.g. the embeddings-only
-    target) compute_cost() itself returns None for — a token-less eval run
+    target) compute_cost() itself returns None for. A token-less eval run
     correctly stays cost_usd=None either way.
     """
     input_tokens = _sum_metric(report.cases, "input_tokens") or 0
@@ -468,7 +468,7 @@ async def _run_one(spec: EvalSpec, *, repeat: int = 1, max_concurrency: int = 4)
     )
     cost_usd = usage_kwargs["cost_usd"]
     # The compute_cost fallback in _usage_event_kwargs is the resolved cost of
-    # record — carry it into the report file too, not just the DB row.
+    # record. Carry it into the report file too, not just the DB row.
     report_dict["cost_usd"] = float(cost_usd) if cost_usd is not None else None
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -529,7 +529,7 @@ def _print_summary(s: RunSummary, *, err: bool = False) -> None:
 
 
 def _summary_json(s: RunSummary) -> dict[str, Any]:
-    """Machine-readable summary for `--json` — same content as `_print_summary` plus
+    """Machine-readable summary for `--json`. Same content as `_print_summary` plus
     cost_usd/failures/experiment_name. Pure, so it's unit-testable without a CLI process."""
     return {
         "dataset": s.dataset,
@@ -549,7 +549,7 @@ def _summary_json(s: RunSummary) -> dict[str, Any]:
 
 
 def _format_table(headers: list[str], rows: list[list[str]]) -> str:
-    """Minimal fixed-width table formatter — no dependency beyond stdlib."""
+    """Minimal fixed-width table formatter. No dependency beyond stdlib."""
     widths = [len(h) for h in headers]
     for row in rows:
         for i, cell in enumerate(row):
@@ -581,7 +581,7 @@ def _dataset_evaluator_names(yaml_data: dict[str, Any], spec: EvalSpec) -> list[
 
 
 def _dataset_rows() -> list[list[str]]:
-    """One row per REGISTRY dataset for `claw-eval list` — pure, no I/O beyond reading the
+    """One row per REGISTRY dataset for `claw-eval list`. Pure, no I/O beyond reading the
     dataset YAMLs and baseline files (no settings/API keys required)."""
     rows: list[list[str]] = []
     for spec in REGISTRY.values():
@@ -619,7 +619,7 @@ def _latest_report_pair(dataset: str) -> tuple[Path, Path]:
 
 
 def _report_delta(older: dict[str, Any], newer: dict[str, Any]) -> dict[str, Any]:
-    """Pure delta computation between two report dicts — unit-testable without files."""
+    """Pure delta computation between two report dicts. Unit-testable without files."""
     older_ev = older.get("per_evaluator") or {}
     newer_ev = newer.get("per_evaluator") or {}
     per_evaluator = []
@@ -658,7 +658,7 @@ def cli() -> None:
 def list_datasets() -> None:
     """List registered datasets: cases, evaluators, target model, baseline.
 
-    Import-only — does not call get_settings(), so it works with no API keys configured.
+    Import-only. Does not call get_settings(), so it works with no API keys configured.
     """
     headers = ["dataset", "cases", "evaluators", "target_model", "baseline", "ran_at"]
     click.echo(_format_table(headers, _dataset_rows()))
@@ -669,7 +669,7 @@ def list_datasets() -> None:
 def compare(dataset: str) -> None:
     """Diff the two most recent reports/{dataset}_*.json reports.
 
-    Import-only — does not call get_settings(), so it works with no API keys configured.
+    Import-only. Does not call get_settings(), so it works with no API keys configured.
     """
     older_path, newer_path = _latest_report_pair(dataset)
     older = json.loads(older_path.read_text())

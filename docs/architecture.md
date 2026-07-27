@@ -4,7 +4,7 @@ Maintained system map. Update this file when flows or modules change; it is the
 first thing a session reads (per CLAUDE.md). Line numbers drift — treat them as
 "look here first" pointers, and trust names over numbers.
 
-Verified 2026-07-26.
+Verified 2026-07-27.
 
 ## One process, three inbound surfaces, one core
 
@@ -149,14 +149,25 @@ ever list/cancel `source='reminder'` rows.
 
 ## The instrumentation choke point
 
-ALL agent runs (chat, proactive, events, memory extraction, evals emit) go
-through `utils/agent_runner.py::run_agent_instrumented`: Logfire `agent_run`
-span, latency, `extract_usage` (input/output tokens), tool-call count, cost
-(`utils/pricing.py::PRICING` — update when models change), 200k token budget
-guardrail, error taxonomy (`classify_error` → type + low/medium/high/critical),
-fire-and-forget `save_usage_event` + PostHog `agent_run_completed`.
-`RunKind` enum (`analytics/types.py`) mirrors the `usage_events.run_kind` CHECK
-constraint: user_message, proactive, memory_extract, eval, event, voice.
+Agent runs (chat, proactive, events, memory extraction) go through
+`utils/agent_runner.py::run_agent_instrumented`: Logfire `agent_run` span,
+latency, `extract_usage` (input/output tokens), cache-aware cost
+(`utils/pricing.py::compute_cost`, update `PRICING` when models change),
+tool-call count, 200k token budget guardrail, error taxonomy
+(`classify_error` → type + low/medium/high/critical), fire-and-forget
+`save_usage_event` + PostHog `agent_run_completed`. Two sanctioned exceptions
+self-instrument outside the choke point because they are not agent runs:
+`gateway/classifier.py::classify` (the voice-routing haiku call) writes its
+own `voice_classify` span and `usage_events` row (`run_kind=classifier`); and
+`gateway/voice.py::transcribe` (Whisper) writes its own `voice_transcribe`
+span and `usage_events` row (`run_kind=transcription`, duration-based cost).
+Eval task fns (`evals/tasks/*.py`) call `agent.run()` directly by design,
+outside the gateway lifecycle entirely; `claw-eval` (`evals/run_eval.py`)
+carries its own Logfire config and writes one `usage_events` row per dataset
+run instead of going through the wrapper. `RunKind` enum
+(`analytics/types.py`) mirrors the `usage_events.run_kind` CHECK constraint:
+user_message, proactive, memory_extract, eval, event, voice, classifier,
+transcription.
 
 Observability details, event catalogue, dashboard ids: `docs/observability.md`.
 
@@ -176,22 +187,24 @@ Observability details, event catalogue, dashboard ids: `docs/observability.md`.
 
 ## Database (Supabase, hosted)
 
-Migrations `001`–`031` (005 removed as a no-op), applied by hand in the SQL
-Editor. 016/019/021/023/025/028 are schema (run before their code deploy),
-015/017/018/020/022/024/026/027/029/030/031 are data grants/seeds (015 applied
-2026-07-25; the rest run only after their code deploy; headers state the
-ordering). 024, 027, 029, and 031 are applied via `supabase-py`, not pasted
-into the SQL Editor, because the system-prompt or trigger-prompt literal is
-long enough that clipboard quote conversion mangles it. Tables:
+Migrations `001`–`035` (005 removed as a no-op), applied by hand in the SQL
+Editor. 016/019/021/023/025/028/032/033/035 are schema (run before their code
+deploy), 015/017/018/020/022/024/026/027/029/030/031/034 are data grants/seeds
+(015 applied 2026-07-25; the rest run only after their code deploy; headers
+state the ordering). 024, 027, 029, and 031 are applied via `supabase-py`,
+not pasted into the SQL Editor, because the system-prompt or trigger-prompt
+literal is long enough that clipboard quote conversion mangles it. Tables:
 organizations, agents, conversations, messages, memory_facts /
 memory_events / memory_context, obsidian_notes / obsidian_note_chunks
 (pgvector, 512-dim text-embedding-3-small, RPC `search_obsidian_notes`),
-proactive_schedules, proactive_messages, usage_events (cost ledger), feedback,
+proactive_schedules, proactive_messages, usage_events (cost ledger),
 workout_profiles / workout_plans / workout_logs, medication_profiles,
 health_events, event_triggers, watcher_cursors, care_profiles / care_documents
 (medication-safety agent's phase-3 care-document sources and per-doc-type
-staleness fingerprints; `docs/med-check-agent.md`). RLS: deny-all on obsidian
-tables (service key bypasses).
+staleness fingerprints; `docs/med-check-agent.md`). The `feedback` table is
+retired (migration 035); `POST /app/feedback` (trace-attached feedback,
+`docs/observability.md`) is the only feedback surface now. RLS: deny-all on
+obsidian tables (service key bypasses).
 Pooling: pooler port 6543 with `?pgbouncer=true`.
 
 ## Env vars (complete; `config.py::Settings` is authoritative)
@@ -214,27 +227,33 @@ disabled), `CLAW_APP_TOKEN` ("" = app/voice endpoints disabled),
 
 ## Evals
 
-`claw-eval run <dataset>|--all` (`evals/run_eval.py`). Registry in
+`claw-eval run <dataset>|--all` (`evals/run_eval.py`). Six datasets in
 `evals/registry.py`: `memory_recall` (20 cases, RequiredFactsScorer + pinned
 LLMJudge), `obsidian_retrieval` (20 cases, TopKMembershipScorer, no LLM —
-embeddings + RPC against the eval org), and `med_check` (12 cases: 4
+embeddings + RPC against the eval org), `med_check` (12 cases: 4
 medication-check, 4 phase-2 health-log/timeline, 4 phase-3 care-document
-composition/staleness). Scored with
-PhraseAssertionScorer (required/forbidden phrases plus a global forbidden
-list enforcing the asymmetry rule) plus a per-case pinned LLMJudge rubric.
-Timeline and care-document cases are graded on reply + note body via a
+composition/staleness; PhraseAssertionScorer plus a per-case pinned LLMJudge
+rubric), `email_triage` (10 cases, TriagePhraseScorer including injection
+resistance, plus MaxToolCalls), `tool_routing` (10 cases, agentic evaluators
+only, ToolCorrectness/TrajectoryMatch per-case, MaxToolCalls dataset-level,
+no custom scorer), and `code_mode` (6 cases, agentic evaluators only,
+ToolCorrectness, MaxToolCalls, built-in Contains, no custom scorer). med_check
+timeline and care-document cases are graded on reply + note body via a
 `forbidden_in_note` scoping list, since the generated note and the chat reply
-need separate checks. Fixture-backed stub tools, live model. Task model
-pinned in `evals/tasks/memory_recall.py` deliberately, so evals stay green
-independent of DB agent config;
-`evals/tasks/med_check.py::MED_CHECK_PROMPT` is a second copy of the deployed
-med-check prompt and must be kept in sync by hand (`docs/med-check-agent.md`
-has the drift note). Baselines committed in `evals/baselines/`; regression =
-score < baseline − 0.05 → exit 2 → Railway cron reports failure; PostHog
-`eval_run_completed` carries the flag. Fail-fast settings guard exists
-because pydantic-evals silently swallows task-fn exceptions. Costs:
-memory_recall ~$0.10/run, obsidian_retrieval ~$0.001, med_check ~$0.55/run
-(12 cases, sonnet-5 agent runs plus judge calls, baseline 0.917). Full
+need separate checks. Fixture-backed stub tools, live model. Each dataset
+pins its own `TARGET_MODEL` in `evals/tasks/*.py` deliberately, so evals stay
+green independent of DB agent config; `evals/tasks/med_check.py::MED_CHECK_PROMPT`
+is a second copy of the deployed med-check prompt and must be kept in sync by
+hand (`docs/med-check-agent.md` has the drift note). Baselines committed in
+`evals/baselines/{dataset}.json` (current numbers, e.g. med_check's composite,
+are read from that file, not restated here, they drift); regression =
+composite drops more than 5pp vs baseline, or any shared evaluator drops more
+than `max(5pp, 1.5 / cases_total)` (two-flip damping on small datasets) → exit
+2 → Railway cron reports failure; PostHog `eval_run_completed` carries the
+flag. Fail-fast settings guard exists because pydantic-evals silently
+swallows task-fn exceptions. Nightly `--all` run costs ~$1.35 total;
+per-dataset costs drift with case counts and models, so `docs/evals.md`'s
+cost table (sourced from `evals/reports/`) is the source of truth. Full
 runbook: `docs/evals.md`.
 
 ## Flutter app (thin client)

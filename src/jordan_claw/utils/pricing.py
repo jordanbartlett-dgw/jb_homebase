@@ -30,7 +30,9 @@ CACHE_WRITE_MULTIPLIER = Decimal("1.25")
 CACHE_READ_MULTIPLIER = Decimal("0.10")
 
 # USD per audio minute. Source: openai.com/api/pricing (whisper-1), verified
-# 2026-07-26.
+# 2026-07-26. whisper-1 is deprecated and no longer listed on OpenAI's current
+# pricing page, so this rate was cross-checked against third-party pricing
+# aggregators instead.
 WHISPER_PRICE_PER_MINUTE = Decimal("0.006")
 
 # USD per 1M tokens, standard tier. Source: openai.com/api/pricing

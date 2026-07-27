@@ -1,8 +1,9 @@
 # jb_homebase — Jordan Claw agent platform
 
-Multi-channel AI agent gateway: FastAPI + pydantic-ai v2 + Supabase, two Telegram
-bots (long-polling) + a Flutter iOS app, deployed on Railway. One process runs
-everything: web routes, both bots, and the proactive scheduler.
+Multi-channel AI agent gateway: FastAPI + pydantic-ai v2 + Supabase, with a
+Flutter iOS app as the interactive channel (text + voice), deployed on
+Railway. One process runs everything: web routes, the proactive scheduler,
+and the Fastmail/AgentMail watchers it dispatches.
 
 **Read `docs/architecture.md` before planning any change.** It is the maintained
 system map (message flows, module index with file:line, env vars, DB tables,
@@ -42,10 +43,13 @@ idempotency patterns). Do not re-derive the architecture by walking the tree.
 - **Conversations rotate**: 30-min idle archives the conversation and mints a
   fresh one (`db/conversations.py`). Any per-conversation state you add must
   survive or intentionally reset across that rotation — reason about it explicitly.
-- **Never run the gateway locally with prod tokens.** Telegram allows one
-  `getUpdates` consumer per token; a local run steals polling from prod (409).
-  Local dev: use stub tokens or the local-stub pattern in
-  `flutter_app/integration_test/live_chat_test.dart`.
+- **Never run the gateway locally with prod tokens.** Historical: Telegram's
+  single `getUpdates` consumer per bot token meant a local run stole polling
+  from prod (409). Telegram is gone from the stack (removed 2026-07-25); the
+  live risk now is a second process racing the deployed one on shared state,
+  the proactive scheduler double-firing sends, the Fastmail/AgentMail
+  watchers racing on `watcher_cursors`. Local dev: use stub tokens or the
+  local-stub pattern in `flutter_app/integration_test/live_chat_test.dart`.
 
 ## Discipline
 
@@ -131,5 +135,5 @@ Flutter live mode and the on-simulator integration test: see
 Global rules apply, with repo specifics: a DB write is done when you've queried
 the row back; a deploy is done when the new SHA is live AND the changed surface
 answers correctly (not when CI is green); an agent change is done when a real
-message round-trips through the changed path (Telegram message, `/app/messages`
-curl, or the integration test) — not when mocked unit tests pass.
+message round-trips through the changed path (`/app/messages` curl or the
+integration test), not when mocked unit tests pass.
