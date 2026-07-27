@@ -86,7 +86,7 @@ Built via the PostHog MCP server (install: `npx @posthog/wizard mcp add`). Defin
 - **PostHog "Sessions" tab is empty by design**: we use the server-side Python SDK and don't emit `$session_id`. PostHog Sessions is a frontend-SDK concept. Use Live events / the Events explorer / the dashboard above instead.
 - **Project key vs. personal key**: `POSTHOG_API_KEY` must be the *Project* API key (`phc_*`) from PostHog → Project settings. The *Personal* API key (`phx_*`) from user settings will return 401 from the capture endpoint.
 - **`usage_events` retention**: migration 035 schedules a daily `pg_cron` job (`usage-events-retention`, 04:30 UTC) that deletes rows older than 180 days. If `pg_cron` is unavailable on the Supabase plan, the migration skips the schedule and the delete becomes a manual runbook line — run `delete from usage_events where created_at < now() - interval '180 days';` periodically by hand.
-- **Eval report retention**: `evals/run_eval.py` prunes `evals/reports/*.json` to the newest `REPORTS_KEEP` (60, ~10 days of 6-dataset nightlies) after every write, by filename sort (timestamps in the name make lexicographic order chronological).
+- **Eval report retention**: `evals/run_eval.py` prunes `evals/reports/{dataset}_*.json` to the newest `REPORTS_KEEP_PER_DATASET` (10, ~10 days of nightlies) per dataset after every write, by filename sort scoped to that dataset's own files (timestamps in the name make lexicographic order chronological within one dataset's prefix; sorting across datasets together would sort on the dataset-name prefix instead of by date).
 
 ## Content privacy
 

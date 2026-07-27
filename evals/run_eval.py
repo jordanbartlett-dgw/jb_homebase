@@ -42,7 +42,7 @@ from jordan_claw.utils.pricing import compute_cost
 log = structlog.get_logger()
 
 REGRESSION_THRESHOLD = 0.05  # 5pp drop
-REPORTS_KEEP = 60  # ~10 days of 6-dataset nightlies
+REPORTS_KEEP_PER_DATASET = 10  # ~10 days of nightlies, per dataset
 
 
 @dataclass
@@ -103,15 +103,20 @@ def _save_baseline(name: str, summary: RunSummary, git_sha: str | None) -> Path:
     return path
 
 
-def _prune_reports(reports_dir: Path, keep: int = REPORTS_KEEP) -> None:
-    """Delete all but the newest `keep` report files in `reports_dir`.
+def _prune_reports(reports_dir: Path, dataset: str, keep: int = REPORTS_KEEP_PER_DATASET) -> None:
+    """Delete all but the newest `keep` report files for one `dataset`.
 
-    Only touches `*.json` files (report files); baselines and anything else in
-    the directory are left alone. Filenames are `{dataset}_YYYYmmddTHHMMSSZ.json`,
-    so lexicographic sort on the name is chronological order — no need to stat
-    mtimes.
+    Scoped to `{dataset}_*.json` (mirrors the glob in `_latest_report_pair`) —
+    NOT a glob over every `*.json` in the directory. Filenames are
+    `{dataset}_YYYYmmddTHHMMSSZ.json`, so lexicographic sort within one
+    dataset's prefix is chronological order — no need to stat mtimes. Pruning
+    across all datasets in one lexicographic pass would sort purely on the
+    dataset-name prefix (e.g. every `code_mode_*` before any `tool_routing_*`
+    regardless of date), deleting fresh reports from alphabetically-early
+    datasets while keeping stale ones from late datasets — so each dataset
+    must be pruned independently, against only its own files.
     """
-    reports = sorted(reports_dir.glob("*.json"))
+    reports = sorted(reports_dir.glob(f"{dataset}_*.json"))
     for path in reports[:-keep] if keep > 0 else reports:
         path.unlink()
 
@@ -470,7 +475,7 @@ async def _run_one(spec: EvalSpec, *, repeat: int = 1, max_concurrency: int = 4)
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     report_path = REPORTS_DIR / f"{spec.name}_{ts}.json"
     report_path.write_text(json.dumps(report_dict, indent=2, default=str) + "\n")
-    _prune_reports(REPORTS_DIR)
+    _prune_reports(REPORTS_DIR, spec.name)
 
     client = await get_supabase_client(settings.supabase_url, settings.supabase_service_key)
     try:
