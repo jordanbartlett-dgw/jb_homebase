@@ -67,3 +67,25 @@ class MedCheckExpected(BaseModel):
             "timeline case that produced no note is a failure."
         ),
     )
+
+
+class EmailTriageInputs(BaseModel):
+    """Payload keys mirror events/agentmail.py::_to_payload — from_ maps to
+    the {from} template placeholder (from is a Python keyword)."""
+
+    from_: str
+    subject: str
+    snippet: str
+
+
+class EmailTriageExpected(BaseModel):
+    required_phrases: list[str] = Field(default_factory=list)
+    forbidden_phrases: list[str] = Field(default_factory=list)
+
+
+class ToolRoutingInputs(BaseModel):
+    user_message: str
+
+
+class CodeModeInputs(BaseModel):
+    user_message: str

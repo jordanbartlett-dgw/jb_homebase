@@ -260,7 +260,6 @@ evaluators:
         (b) does NOT contradict any fact, and (c) admits when the memory has no
         information rather than fabricating. Score 1.0 only if all three hold.
       include_input: true
-      model: anthropic:claude-sonnet-4-5-20250929
       score:
         evaluation_name: llm_judge
         include_reason: true

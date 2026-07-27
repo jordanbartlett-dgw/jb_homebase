@@ -141,6 +141,8 @@ async def eval_run_completed(
     prev_score: float | None,
     regression: bool,
     duration_ms: int,
+    cost_usd: float | None,
+    failures: int,
 ) -> None:
     props = {
         "dataset": dataset,
@@ -150,6 +152,8 @@ async def eval_run_completed(
         "prev_score": prev_score,
         "regression": regression,
         "duration_ms": duration_ms,
+        "cost_usd": cost_usd,
+        "failures": failures,
     }
     _fire("eval_run_completed", "system:eval", props)
 

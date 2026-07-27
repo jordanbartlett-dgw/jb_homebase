@@ -109,6 +109,8 @@ async def _dispatch(event: str, distinct_id: str, props: dict, org_id: str) -> N
             prev_score=props.get("prev_score"),
             regression=props["regression"],
             duration_ms=props["duration_ms"],
+            cost_usd=props.get("cost_usd"),
+            failures=props.get("failures", 0),
         )
     elif event == "feedback_submitted":
         await emitter.feedback_submitted(

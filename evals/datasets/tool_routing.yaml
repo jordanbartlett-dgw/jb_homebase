@@ -1,0 +1,88 @@
+name: tool_routing
+cases:
+  - name: notes_council_scoring
+    inputs:
+      user_message: "What's in my notes about the Foster Greatness UK council scoring?"
+    evaluators:
+      - ToolCorrectness:
+          expected_tools: [search_notes]
+          allow_extra: true
+
+  - name: web_latest_anthropic_model
+    inputs:
+      user_message: "What's the latest news on Anthropic's newest model?"
+    evaluators:
+      - ToolCorrectness:
+          expected_tools: [search_web]
+          allow_extra: true
+
+  - name: calendar_thursday
+    inputs:
+      user_message: "What's on my calendar Thursday?"
+    evaluators:
+      - ToolCorrectness:
+          expected_tools: [check_calendar]
+          allow_extra: true
+
+  - name: schedule_lunch_with_sarah
+    inputs:
+      user_message: "Put lunch with Sarah on the calendar for Friday noon"
+    evaluators:
+      - ToolCorrectness:
+          expected_tools: [schedule_event]
+          allow_extra: true
+
+  - name: remind_call_pharmacist
+    inputs:
+      user_message: "Remind me tomorrow at 9 to call the pharmacist"
+    evaluators:
+      - ToolCorrectness:
+          expected_tools: [set_reminder]
+          allow_extra: true
+
+  - name: find_note_then_remind
+    inputs:
+      user_message: "Find my note about the AgentMail integration and remind me tonight to reread it"
+    evaluators:
+      - TrajectoryMatch:
+          expected_trajectory: [search_notes, set_reminder]
+          order: in_order
+      - ToolCorrectness:
+          expected_tools: [search_notes, set_reminder]
+          allow_extra: true
+
+  - name: read_saved_article_and_summarize
+    inputs:
+      user_message: "Read that article I saved about eval harnesses and summarize it"
+    evaluators:
+      - ToolCorrectness:
+          expected_tools: [search_notes]
+          allow_extra: true
+
+  - name: training_this_week
+    inputs:
+      user_message: "How did training go this week?"
+    evaluators:
+      - ToolCorrectness:
+          expected_tools: [get_recent_workouts]
+          allow_extra: true
+
+  - name: fulfillment_vendor_email
+    inputs:
+      user_message: "What did the fulfillment vendor say in email thread thread_9f2a?"
+    evaluators:
+      - ToolCorrectness:
+          expected_tools: [read_email_thread]
+          allow_extra: true
+
+  - name: pure_chat_no_tools
+    inputs:
+      user_message: "Thanks, that's all for today!"
+    evaluators:
+      - ToolCorrectness:
+          expected_tools: []
+          allow_extra: false
+
+evaluators:
+  - MaxToolCalls:
+      max_calls: 6

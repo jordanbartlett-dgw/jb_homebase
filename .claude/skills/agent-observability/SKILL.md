@@ -83,6 +83,15 @@ attributes, so `include_content` is the only content lever, not scrubbing.
   (`gateway/analytics_proxy.py`, bearer `FRONTEND_ANALYTICS_TOKEN`) so the
   server enriches org_id and enforces the same allowlist.
 
+## Evals
+
+Six datasets in `evals/datasets/` (`code_mode`, `email_triage`, `med_check`,
+`memory_recall`, `obsidian_retrieval`, `tool_routing`), run via `claw-eval`.
+Baselines are v2 (per-evaluator, not just composite) in `evals/baselines/`;
+every run also logs a Logfire experiment under service `claw-eval`. Use
+`claw-eval list` for the dataset/baseline overview and `claw-eval compare
+<dataset>` to diff a run against its baseline. Full detail: `docs/evals.md`.
+
 ## Logfire / logging setup
 
 Configured once in `main.py` lifespan: `logfire.configure` + FastAPI/httpx/
