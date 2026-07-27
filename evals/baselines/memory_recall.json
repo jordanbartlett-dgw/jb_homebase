@@ -1,11 +1,11 @@
 {
   "schema": 2,
   "dataset": "memory_recall",
-  "ran_at": "2026-05-04T20:43:48.821595+00:00",
-  "git_sha": "158cfd1",
-  "composite": 0.975,
+  "ran_at": "2026-07-27T13:49:27.625497+00:00",
+  "git_sha": "a9849ae",
+  "composite": 0.9666666666666666,
   "evaluators": {
-    "required_facts": 1.0,
+    "required_facts": 0.9833333333333333,
     "llm_judge": 0.95
   },
   "cases_total": 20,
