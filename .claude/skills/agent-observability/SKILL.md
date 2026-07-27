@@ -83,6 +83,30 @@ attributes, so `include_content` is the only content lever, not scrubbing.
   (`gateway/analytics_proxy.py`, bearer `FRONTEND_ANALYTICS_TOKEN`) so the
   server enriches org_id and enforces the same allowlist.
 
+## Online eval + feedback (phase 3)
+
+Agents now run with `name=<slug>` (`agents/factory.py::create_agent`).
+Logfire Live Evals groups by real agent name, not one shared `agent` bucket.
+
+`online_eval` capability (`agents/online_evaluators.py`, granted to
+`claw-main`/`med-check` via migration 034): `MaxToolCalls(20)` and
+`OutputSanity` fire on every run at `sample_rate=1.0`, deterministic, free.
+The `GROUNDEDNESS_JUDGE` LLM judge inherits the process-wide
+`ONLINE_EVAL_SAMPLE_RATE` (`Settings.online_eval_sample_rate`, default `0.0`,
+off). Never enable without a billing check first. Results emit
+`gen_ai.evaluation.result` events on the `agent_run` trace; no-op without a
+Logfire token. Offline `Dataset.evaluate()` runs never double-fire this.
+
+Every successful run's traceparent rides `AgentRunResult` → assistant
+message `metadata` → `AppMessageResponse`/stream `complete` event. Not on
+`VoiceResponse`, no consumer there.
+
+`POST /app/feedback` (bearer app token): `{traceparent, name, value,
+comment?}` → `logfire.experimental.annotations.record_feedback`, trace-
+attached, unified with online-eval results in Logfire. 503 if Logfire is
+unconfigured. Flutter UI not wired yet (TestFlight track). Full contract:
+`docs/observability.md`.
+
 ## Evals
 
 Six datasets in `evals/datasets/` (`code_mode`, `email_triage`, `med_check`,
