@@ -123,7 +123,7 @@ evals/                   # Top-level (not under tests/) — eval runs cost money
 tests/                   # unit and integration tests (`uv run pytest tests/`)
 scripts/
   obsidian_sync/         # CLI for vault ingest/export
-supabase/migrations/     # 001-014 schema migrations (005 removed as a no-op)
+supabase/migrations/     # hand-numbered SQL, applied manually (005 removed as a no-op)
 docs/plans/              # Implementation plans (Flutter PRD, locked decisions)
 Dockerfile
 pyproject.toml

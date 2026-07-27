@@ -1,5 +1,5 @@
 -- 035_feedback_retirement_and_retention.sql
--- Deploy order: run BEFORE merging the chore/observability-2 branch that
+-- Deploy order: run BEFORE merging the chore/alerts-and-docs branch that
 -- deletes db/feedback.py, most_recent_agent, and feedback_submitted.
 --
 -- Part 1: retire the orphaned feedback surface. The 007-era path

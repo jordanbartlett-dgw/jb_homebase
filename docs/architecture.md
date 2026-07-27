@@ -9,8 +9,8 @@ Verified 2026-07-27.
 ## One process, three inbound surfaces, one core
 
 Everything runs in a single FastAPI process (`main.py` lifespan): HTTP routes,
-the proactive scheduler loop, and the Fastmail watcher dispatched by that
-scheduler. There is no worker service, queue, or outbound channel process.
+the proactive scheduler loop, and the Fastmail/AgentMail watchers dispatched by
+that scheduler. There is no worker service, queue, or outbound channel process.
 
 Every inbound message, regardless of channel, funnels into
 `gateway/router.py::handle_message` — the single agent-run lifecycle.
