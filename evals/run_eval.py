@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -49,27 +49,95 @@ class RunSummary:
     per_evaluator: dict[str, float]
     report_path: Path
     failures: list[dict[str, Any]]
+    regression_reasons: list[str] = field(default_factory=list)
 
 
 def _load_baseline(name: str) -> dict | None:
+    """Load a baseline file, normalizing v1 (no "schema" key) to the v2 internal shape.
+
+    v2 files already have "composite"/"evaluators" keys and are returned as-is.
+    v1 files only ever recorded a single composite "score" — normalized to
+    {"composite": <score>, "evaluators": None, ...} so callers (in particular
+    _detect_regression) only ever see one shape.
+    """
     path = BASELINES_DIR / f"{name}.json"
     if not path.exists():
         return None
-    return json.loads(path.read_text())
+    raw = json.loads(path.read_text())
+    if "schema" in raw:
+        return raw
+    return {
+        "dataset": raw.get("dataset", name),
+        "composite": raw["score"],
+        "evaluators": None,
+        "ran_at": raw.get("ran_at"),
+        "git_sha": raw.get("git_sha"),
+        "cases_total": raw.get("cases_total"),
+        "cases_passed": raw.get("cases_passed"),
+    }
 
 
 def _save_baseline(name: str, summary: RunSummary, git_sha: str | None) -> Path:
     path = BASELINES_DIR / f"{name}.json"
     payload = {
+        "schema": 2,
         "dataset": name,
-        "score": summary.score,
         "ran_at": datetime.now(UTC).isoformat(),
         "git_sha": git_sha,
+        "composite": summary.score,
+        "evaluators": summary.per_evaluator,
         "cases_total": summary.total_cases,
         "cases_passed": summary.passed_cases,
     }
     path.write_text(json.dumps(payload, indent=2) + "\n")
     return path
+
+
+def _detect_regression(
+    current_composite: float,
+    current_evaluators: dict[str, float],
+    baseline: dict | None,
+) -> tuple[bool, list[str]]:
+    """Compare a run's scores to its baseline (already normalized by _load_baseline).
+
+    v2 baseline (evaluators is a dict): flags when the composite drops more
+    than REGRESSION_THRESHOLD OR any evaluator present on BOTH sides drops
+    more than REGRESSION_THRESHOLD. Evaluators present on only one side never
+    flag — they're returned as informational reasons only (a scorer being
+    added or removed is a code change, not a quality regression).
+
+    v1 baseline (evaluators is None): composite-only, matching pre-v2 behavior.
+
+    No baseline: never flags (first run establishing history).
+    """
+    if baseline is None:
+        return False, []
+
+    regression = False
+    reasons: list[str] = []
+
+    prev_composite = baseline["composite"]
+    if current_composite < prev_composite - REGRESSION_THRESHOLD:
+        regression = True
+        reasons.append(
+            f"composite: {current_composite:.3f} < {prev_composite:.3f} - {REGRESSION_THRESHOLD}"
+        )
+
+    prev_evaluators = baseline.get("evaluators")
+    if prev_evaluators:
+        shared = set(current_evaluators) & set(prev_evaluators)
+        for evaluator_name in sorted(shared):
+            cur = current_evaluators[evaluator_name]
+            prev = prev_evaluators[evaluator_name]
+            if cur < prev - REGRESSION_THRESHOLD:
+                regression = True
+                reasons.append(f"{evaluator_name}: {cur:.3f} < {prev:.3f} - {REGRESSION_THRESHOLD}")
+        for evaluator_name in sorted(set(current_evaluators) - set(prev_evaluators)):
+            reasons.append(f"new evaluator: {evaluator_name}")
+        for evaluator_name in sorted(set(prev_evaluators) - set(current_evaluators)):
+            reasons.append(f"missing evaluator: {evaluator_name}")
+
+    return regression, reasons
 
 
 def _git_sha() -> str | None:
@@ -262,8 +330,8 @@ async def _run_one(spec: EvalSpec) -> RunSummary:
     total_cases = len(report.cases) + len(report.failures)
 
     baseline = _load_baseline(spec.name)
-    prev_score = baseline.get("score") if baseline else None
-    regression = prev_score is not None and score < prev_score - REGRESSION_THRESHOLD
+    prev_score = baseline["composite"] if baseline else None
+    regression, regression_reasons = _detect_regression(score, per_evaluator, baseline)
 
     report_dict = _build_report_dict(
         dataset=spec.name,
@@ -321,6 +389,7 @@ async def _run_one(spec: EvalSpec) -> RunSummary:
         per_evaluator=per_evaluator,
         report_path=report_path,
         failures=report_dict["failures"],
+        regression_reasons=regression_reasons,
     )
 
 
@@ -329,6 +398,8 @@ def _print_summary(s: RunSummary) -> None:
     click.echo(f"  score:        {s.score:.3f}")
     click.echo(f"  prev_score:   {s.prev_score if s.prev_score is not None else '—'}")
     click.echo(f"  regression:   {s.regression}")
+    for reason in s.regression_reasons:
+        click.echo(f"    - {reason}")
     click.echo(f"  cases:        {s.passed_cases}/{s.total_cases}")
     click.echo(f"  duration:     {s.duration_ms} ms")
     for k, v in s.per_evaluator.items():
@@ -414,6 +485,9 @@ def run(dataset: str | None, run_all: bool, save_baseline: bool) -> None:
     if regressions:
         names = ", ".join(s.dataset for s in regressions)
         click.echo(f"\nREGRESSION on: {names}", err=True)
+        for s in regressions:
+            for reason in s.regression_reasons:
+                click.echo(f"  [{s.dataset}] {reason}", err=True)
 
     code = _exit_code(summaries)
     if code:
