@@ -207,3 +207,25 @@ async def test_db_failure_falls_back_to_default():
     slug = await classify(db, "anything at all", ORG_ID)
 
     assert slug == DEFAULT_AGENT
+
+
+async def test_catalog_skips_capabilities_without_description():
+    """Regression: med-check carries private_content (an Instrumentation
+    capability with description=None). The catalog join crashed on it in prod
+    (2026-07-27), so every voice message silently fell back to DEFAULT_AGENT.
+    """
+    from jordan_claw.gateway.classifier import _agent_catalog
+
+    db = _mock_db(
+        [
+            {
+                "slug": "med-check",
+                "name": "Med Check",
+                "capabilities": ["core", "meds", "web", "memory", "private_content"],
+            }
+        ]
+    )
+    catalog, slugs = await _agent_catalog(db, "org-1")
+    assert slugs == {"med-check"}
+    assert "med-check" in catalog
+    assert "None" not in catalog

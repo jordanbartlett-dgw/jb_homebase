@@ -57,10 +57,13 @@ async def _agent_catalog(db: AsyncClient, org_id: str) -> tuple[str, set[str]]:
     slugs: set[str] = set()
     for row in result.data:
         slugs.add(row["slug"])
+        # Config-only capabilities (e.g. private_content) have no description
+        # and don't belong in a routing catalog.
         descriptions = [
-            CAPABILITY_REGISTRY[cid].description
+            cap.description
             for cid in row.get("capabilities") or []
-            if cid in CAPABILITY_REGISTRY
+            if (cap := CAPABILITY_REGISTRY.get(cid)) is not None
+            and isinstance(cap.description, str)
         ]
         lines.append(f"- {row['slug']} ({row['name']}): {' '.join(descriptions)}")
     return "\n".join(lines), slugs
