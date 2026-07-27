@@ -8,14 +8,16 @@ Railway run instead.
 
 from __future__ import annotations
 
+import glob
 from pathlib import Path
 
 import pytest
+import yaml
 from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 from pydantic_evals import Case, Dataset
 
-from evals.run_eval import RunSummary, _build_report_dict, _exit_code
+from evals.run_eval import RunSummary, _build_report_dict, _case_accounting, _exit_code
 from evals.scorers import RequiredFactsScorer
 from evals.types import MemoryRecallExpected, MemoryRecallInputs, MemoryState, SyntheticFact
 
@@ -100,6 +102,7 @@ async def test_report_dict_counts_failures_and_carries_results() -> None:
         score=1.0,
         per_evaluator={"required_facts": 1.0},
         passed_cases=1,
+        total_cases=2,
         duration_ms=10,
         prev_score=None,
         regression=False,
@@ -172,3 +175,75 @@ def test_exit_code_regression_takes_precedence_over_failures() -> None:
         failures=[],
     )
     assert _exit_code([clean_summary]) == 0
+
+
+@pytest.mark.asyncio
+async def test_repeat_scoring_matches_single_run_and_counts_cases_not_runs() -> None:
+    """repeat=2 against a deterministic task must:
+
+    - produce the same per-evaluator averages as repeat=1 (report.averages()
+      group-averages per source case, then averages the groups — for a
+      deterministic task every run in a group scores identically, so the
+      group average equals the single-run score and the cross-group average
+      is unchanged).
+    - report passed/total against CASES (2), not RUNS (4) — _case_accounting
+      must read report.case_groups() rather than counting report.cases.
+    """
+    ds = Dataset[MemoryRecallInputs, MemoryRecallExpected, dict](
+        name="smoke",
+        cases=_two_cases(),
+        evaluators=[RequiredFactsScorer()],
+    )
+
+    report_once = await ds.evaluate(_smoke_task, max_concurrency=2, progress=False)
+    report_repeated = await ds.evaluate(_smoke_task, max_concurrency=2, progress=False, repeat=2)
+
+    # repeat=2 sets source_case_name on every run — case_groups() must fire.
+    assert report_once.case_groups() is None
+    assert report_repeated.case_groups() is not None
+    assert len(report_repeated.cases) == 4  # 2 cases x 2 runs — the raw run count
+
+    once_avg = report_once.averages()
+    repeated_avg = report_repeated.averages()
+    assert once_avg is not None
+    assert repeated_avg is not None
+    assert dict(once_avg.scores) == dict(repeated_avg.scores)
+
+    passed_once, total_once = _case_accounting(report_once)
+    passed_repeated, total_repeated = _case_accounting(report_repeated)
+
+    # Both runs cover the same 2 source cases; the repeat run must not
+    # inflate total_cases to 4 or passed_cases beyond what the case count allows.
+    assert total_once == total_repeated == 2
+    # hits_required_fact passes, misses_required_fact fails
+    assert passed_once == passed_repeated == 1
+
+
+def test_llm_judge_configs_have_no_hardcoded_model() -> None:
+    """Judge model selection is centralized via set_default_judge_model() in the
+    CLI (run_eval.py) — a hand-authored `model:` key on any LLMJudge in the
+    dataset YAMLs would silently bypass that centralization for just that
+    judge. Walk every dataset YAML looking for LLMJudge evaluator entries and
+    assert none carry a `model` key.
+    """
+    dataset_dir = Path(__file__).parent.parent / "evals" / "datasets"
+    yaml_paths = sorted(glob.glob(str(dataset_dir / "*.yaml")))
+    assert yaml_paths, "expected at least one dataset YAML"
+
+    offenders: list[str] = []
+
+    def _walk(node: object, path: str) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "LLMJudge" and isinstance(value, dict) and "model" in value:
+                    offenders.append(f"{path}:LLMJudge")
+                _walk(value, f"{path}.{key}")
+        elif isinstance(node, list):
+            for i, item in enumerate(node):
+                _walk(item, f"{path}[{i}]")
+
+    for yaml_path in yaml_paths:
+        data = yaml.safe_load(Path(yaml_path).read_text())
+        _walk(data, Path(yaml_path).name)
+
+    assert offenders == []

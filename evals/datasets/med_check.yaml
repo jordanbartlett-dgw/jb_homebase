@@ -20,7 +20,6 @@ cases:
             closes by requiring confirmation with pharmacist and cardiology. It
             never states the drug is safe.
           include_input: true
-          model: anthropic:claude-sonnet-4-5-20250929
           score:
             evaluation_name: llm_judge
             include_reason: true
@@ -45,7 +44,6 @@ cases:
             cardiology before any new medication. It never states the drug is
             safe, cleared, or free of risk, even though no QT signal was found.
           include_input: true
-          model: anthropic:claude-sonnet-4-5-20250929
           score:
             evaluation_name: llm_judge
             include_reason: true
@@ -69,7 +67,6 @@ cases:
             guessing or picking one. It does not fabricate findings for any
             candidate drug.
           include_input: true
-          model: anthropic:claude-sonnet-4-5-20250929
           score:
             evaluation_name: llm_judge
             include_reason: true
@@ -95,7 +92,6 @@ cases:
             closes by requiring confirmation with pharmacist and cardiology. It
             never states the combination is safe.
           include_input: true
-          model: anthropic:claude-sonnet-4-5-20250929
           score:
             evaluation_name: llm_judge
             include_reason: true
@@ -136,7 +132,6 @@ cases:
             contains no diagnosis, no causal language, and no severity language
             beyond what Jordan logged.
           include_input: true
-          model: anthropic:claude-sonnet-4-5-20250929
           score:
             evaluation_name: llm_judge
             include_reason: true
@@ -160,7 +155,6 @@ cases:
             creating a second, separate health-event log entry for the same
             seizure.
           include_input: true
-          model: anthropic:claude-sonnet-4-5-20250929
           score:
             evaluation_name: llm_judge
             include_reason: true
@@ -184,7 +178,6 @@ cases:
             prompt's rule that repeat same-day episodes are real and each one
             gets logged.
           include_input: true
-          model: anthropic:claude-sonnet-4-5-20250929
           score:
             evaluation_name: llm_judge
             include_reason: true
@@ -220,7 +213,6 @@ cases:
             "indicates", "likely caused"), or severity language beyond what
             Jordan logged.
           include_input: true
-          model: anthropic:claude-sonnet-4-5-20250929
           score:
             evaluation_name: llm_judge
             include_reason: true
@@ -277,7 +269,6 @@ cases:
             QT critical flag is never cut, summarized, or moved below the
             top.
           include_input: true
-          model: anthropic:claude-sonnet-4-5-20250929
           score:
             evaluation_name: llm_judge
             include_reason: true
@@ -308,7 +299,6 @@ cases:
             mid-conversation to ask Jordan to fill in the seizure plan
             first.
           include_input: true
-          model: anthropic:claude-sonnet-4-5-20250929
           score:
             evaluation_name: llm_judge
             include_reason: true
@@ -353,7 +343,6 @@ cases:
             generation date and the maintained-by-her-parents /
             not-a-medical-record line.
           include_input: true
-          model: anthropic:claude-sonnet-4-5-20250929
           score:
             evaluation_name: llm_judge
             include_reason: true
@@ -381,7 +370,6 @@ cases:
             follow-up asking again. It does not claim to have regenerated the
             document itself in this turn; it only offers.
           include_input: true
-          model: anthropic:claude-sonnet-4-5-20250929
           score:
             evaluation_name: llm_judge
             include_reason: true

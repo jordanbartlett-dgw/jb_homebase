@@ -22,6 +22,7 @@ import click
 import logfire
 import structlog
 from pydantic_evals import Dataset
+from pydantic_evals.evaluators.llm_as_a_judge import set_default_judge_model
 from pydantic_evals.reporting import EvaluationReport
 
 from evals.registry import BASELINES_DIR, REGISTRY, REPORTS_DIR, EvalSpec
@@ -173,6 +174,35 @@ def _passed(case_scores: dict[str, float], threshold: float = 0.5) -> bool:
     return mean(case_scores.values()) >= threshold
 
 
+def _case_accounting(report: EvaluationReport) -> tuple[int, int]:
+    """(passed_cases, total_cases) counted over SOURCE CASES, never raw runs.
+
+    With repeat==1, pydantic-evals never sets `source_case_name`
+    (ReportCase/ReportCaseFailure docstrings: "None when repeat == 1"), so
+    `report.case_groups()` returns None and cases map 1:1 onto runs — fall
+    back to the original run-level counting.
+
+    With repeat>1, every run/failure carries the same `source_case_name`, so
+    `case_groups()` (pydantic_evals/reporting/__init__.py) returns exactly
+    one `ReportCaseGroup` per source case — a case that failed on every
+    repeat still surfaces as a single group (runs=[], failures=[...]), so
+    `len(groups)` is "source cases + failures", never inflated by the repeat
+    count. Each group's `summary` is `ReportCaseAggregate.average(group.runs)`
+    — the same per-case average that `report.averages()` re-averages across
+    groups — so "passed" is judged against that averaged score, not any one
+    run in isolation.
+    """
+    groups = report.case_groups()
+    if groups is None:
+        total = len(report.cases) + len(report.failures)
+        passed = sum(1 for c in report.cases if _passed(_case_score_floats(c)))
+        return passed, total
+
+    total = len(groups)
+    passed = sum(1 for g in groups if _passed(dict(g.summary.scores)))
+    return passed, total
+
+
 def _json_safe(value: Any) -> Any:
     """Best-effort JSON-safe coercion: keep value as-is if json.dumps accepts it."""
     try:
@@ -206,19 +236,26 @@ def _build_report_dict(
     score: float,
     per_evaluator: dict[str, float],
     passed_cases: int,
+    total_cases: int,
     duration_ms: int,
     prev_score: float | None,
     regression: bool,
     experiment_name: str,
 ) -> dict[str, Any]:
-    """Pure report-JSON builder — no I/O, so it's unit-testable without a CLI or logfire."""
+    """Pure report-JSON builder — no I/O, so it's unit-testable without a CLI or logfire.
+
+    total_cases/passed_cases are accepted as pre-computed inputs (via
+    _case_accounting) rather than derived from report.cases/report.failures
+    here, because under repeat>1 those lists hold one entry per RUN, not per
+    source case — see _case_accounting's docstring.
+    """
     return {
         "dataset": dataset,
         "experiment_name": experiment_name,
         "ran_at": datetime.now(UTC).isoformat(),
         "score": score,
         "per_evaluator": per_evaluator,
-        "total_cases": len(report.cases) + len(report.failures),
+        "total_cases": total_cases,
         "passed_cases": passed_cases,
         "duration_ms": duration_ms,
         "prev_score": prev_score,
@@ -306,7 +343,7 @@ def _exit_code(summaries: list[RunSummary]) -> int:
     return 0
 
 
-async def _run_one(spec: EvalSpec) -> RunSummary:
+async def _run_one(spec: EvalSpec, *, repeat: int = 1, max_concurrency: int = 4) -> RunSummary:
     ds: Dataset[Any, Any, Any] = Dataset[spec.inputs_type, spec.expected_type, dict].from_file(
         spec.yaml_path,
         custom_evaluator_types=spec.custom_evaluators,
@@ -318,7 +355,8 @@ async def _run_one(spec: EvalSpec) -> RunSummary:
         spec.task_fn,
         name=experiment_name,
         metadata={"git_sha": _git_sha(), "dataset": spec.name},
-        max_concurrency=4,
+        max_concurrency=max_concurrency,
+        repeat=repeat,
         progress=False,
     )
     duration_ms = int((time.monotonic() - start) * 1000)
@@ -326,8 +364,7 @@ async def _run_one(spec: EvalSpec) -> RunSummary:
     averages = report.averages()
     per_evaluator: dict[str, float] = dict(averages.scores) if averages else {}
     score = mean(per_evaluator.values()) if per_evaluator else 0.0
-    passed_cases = sum(1 for c in report.cases if _passed(_case_score_floats(c)))
-    total_cases = len(report.cases) + len(report.failures)
+    passed_cases, total_cases = _case_accounting(report)
 
     baseline = _load_baseline(spec.name)
     prev_score = baseline["composite"] if baseline else None
@@ -339,6 +376,7 @@ async def _run_one(spec: EvalSpec) -> RunSummary:
         score=score,
         per_evaluator=per_evaluator,
         passed_cases=passed_cases,
+        total_cases=total_cases,
         duration_ms=duration_ms,
         prev_score=prev_score,
         regression=regression,
@@ -420,7 +458,23 @@ def cli() -> None:
     is_flag=True,
     help="Persist the resulting score as the new regression baseline.",
 )
-def run(dataset: str | None, run_all: bool, save_baseline: bool) -> None:
+@click.option(
+    "--repeat",
+    type=click.IntRange(min=1),
+    default=1,
+    show_default=True,
+    help="Run each case this many times; scores/pass counts aggregate per case, not per run.",
+)
+@click.option(
+    "--concurrency",
+    type=click.IntRange(min=1),
+    default=4,
+    show_default=True,
+    help="Max concurrent case evaluations passed to Dataset.evaluate(max_concurrency=...).",
+)
+def run(
+    dataset: str | None, run_all: bool, save_baseline: bool, repeat: int, concurrency: int
+) -> None:
     if run_all and dataset:
         raise click.UsageError("Pass either a dataset name OR --all, not both.")
     if not run_all and not dataset:
@@ -456,6 +510,10 @@ def run(dataset: str | None, run_all: bool, save_baseline: bool) -> None:
         )
     logfire.instrument_pydantic_ai()
 
+    # Central judge model: LLMJudge configs in the dataset YAMLs carry no
+    # `model:` key (see evals/datasets/*.yaml) and fall through to this default.
+    set_default_judge_model(settings.eval_judge_model)
+
     targets: list[EvalSpec]
     if run_all:
         targets = list(REGISTRY.values())
@@ -469,7 +527,7 @@ def run(dataset: str | None, run_all: bool, save_baseline: bool) -> None:
     sha = _git_sha()
     for spec in targets:
         click.echo(f"Running {spec.name}…")
-        summary = asyncio.run(_run_one(spec))
+        summary = asyncio.run(_run_one(spec, repeat=repeat, max_concurrency=concurrency))
         summaries.append(summary)
         if save_baseline:
             path = _save_baseline(spec.name, summary, sha)
