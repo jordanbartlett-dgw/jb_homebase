@@ -481,13 +481,61 @@ Files: `evals/run_eval.py`, `docs/evals.md`, `.claude/skills/agent-observability
 - Open PR `feat/evals-v2` (no migration gate); whole-branch review; merge; deploy-verify = next nightly cron run green + experiment visible in Logfire + eval usage_events rows present (or a manual `claw-eval run obsidian_retrieval` against prod-shaped env via infisical).
 - Commit: `feat(evals): CLI list/compare/--json + docs + re-baseline`.
 
-# Phase 3 — `feat/online-evals` (detailed plan at phase start)
+# Phase 3 — `feat/online-evals` (detailed 2026-07-27 at phase start)
 
-Production runs get scored continuously; feedback attaches to traces.
+Production runs get scored continuously; feedback attaches to traces. Branch: `feat/online-evals`. Tasks 27-31. One migration (034, capability grant — data-only, apply before merge).
 
-- `OnlineEvaluation` capability (pydantic-evals `online_capability`) as registry entries wired per agent: deterministic checks (`MaxToolCalls`, output-shape) at sample_rate 1.0; an LLMJudge groundedness rubric at low rate (start 0, verify cost on a trickle, then ~0.05-0.10), `sampling_mode='correlated'`, judge = `settings.eval_judge_model`. Results emit `gen_ai.evaluation.result` events → Logfire Live Evals view becomes the "are they doing a good job" screen.
-- Feedback: capture `get_traceparent(span)` in `run_agent_instrumented`, persist alongside the assistant message (metadata) and expose in `AppMessageResponse`; new `POST /app/feedback` (bearer `claw_app_token`) calls `logfire.experimental.annotations.record_feedback(traceparent, 'user_rating', ...)`. Flutter UI lands separately with the TestFlight track.
-- `disable_evaluation()` in tests; graceful no-op without Logfire token.
+**Verified facts the briefs rely on (installed pydantic-evals 2.18 / logfire 4.31):**
+- `from pydantic_evals.online_capability import OnlineEvaluation` — `@dataclass(kw_only=True)`, fields `evaluators: Sequence[Evaluator | OnlineEvaluator]`, `config: OnlineEvalConfig | None = None` (None → module-global `DEFAULT_CONFIG`), inherited `id=`/`description=`. Bare Evaluators get wrapped as `OnlineEvaluator(evaluator=e)` (which inherits the config default sample rate at call time).
+- `from pydantic_evals.online import configure, disable_evaluation, wait_for_evaluations` — `configure(...)` mutates `DEFAULT_CONFIG` in place; call it from the lifespan so settings-derived sample rates apply without touching the import-time registry. `OnlineEvaluator(evaluator=..., sample_rate=1.0)` pins deterministic checks at 100%.
+- Target name = `ctx.agent.name or 'agent'`. Agent.name is INFERRED from the caller variable name today — every DB agent resolves to `"agent"`. `create_agent` must pass `name=config.slug` for per-agent targets.
+- Judge default: `LLMJudge(model=None)` uses `set_default_judge_model(...)`, which nothing sets in the gateway process — the lifespan must call it (`settings.eval_judge_model`) or the judge would fall through to a non-Anthropic default.
+- `OnlineEvalConfig.should_evaluate()` auto-skips inside `Dataset.evaluate()` runs (no double-firing during offline evals) and honors `disable_evaluation()` (contextvar).
+- Events: one `gen_ai.evaluation.result` OTel log per result, parented to the pydantic-ai agent-run span (Instrumentation orders outermost), silently dropped when no OTel SDK is configured — graceful no-op without a Logfire token.
+- `logfire.experimental.annotations`: `get_traceparent(span)` accepts our `LogfireSpan` but ASSERTS a real started span — guard the unconfigured case (no token → no-op span → assert would fire). `record_feedback(traceparent, name, value, comment=None, extra=None)`; numbers→scores, strings→labels, bools→assertions.
+- `messages.metadata jsonb` exists (migration 001) and `save_message(..., metadata=...)` accepts it; the assistant-reply save at `gateway/router.py` currently passes no metadata. `AgentRunResult` is frozen+slots — a defaulted `traceparent: str | None = None` appended after `error_type` is the compatible extension. `GatewayResponse` and `AppMessageResponse` need matching optional fields; the stream `complete` event too.
+- Registry entries are process-wide singletons (shared semaphores; `for_run()` returns self) — acceptable for one `online_eval` entry; document. Distinct `id=` required if any agent ever gets two OnlineEvaluation grants.
+
+### Task 27: Agent names + lifespan online-eval config
+
+Files: `src/jordan_claw/agents/factory.py`, `src/jordan_claw/main.py`, `src/jordan_claw/config.py`; tests: `tests/test_agent_factory.py` (or wherever create_agent is tested) + a lifespan-adjacent unit test.
+- `create_agent` passes `name=config.slug` to `Agent(...)`. Wiring test asserts `agent.name == slug`.
+- `Settings` gains `online_eval_sample_rate: float = 0.0` (0 = judge sampling off; deterministic checks run regardless via per-evaluator pins).
+- Lifespan (after logfire block): `set_default_judge_model(settings.eval_judge_model)`; `from pydantic_evals.online import configure as configure_online_evals; configure_online_evals(default_sample_rate=settings.online_eval_sample_rate, sampling_mode="correlated", metadata={"service": "jordan-claw"})`.
+- Commit: `feat(observability): agent names + online-eval lifespan config`.
+
+### Task 28: `online_eval` capability + migration 034
+
+Files: `src/jordan_claw/agents/capabilities.py`, `supabase/migrations/034_online_eval_grant.sql`, `tests/test_capabilities.py`.
+- New module `src/jordan_claw/agents/online_evaluators.py`: `OutputSanity` custom Evaluator (dataclass, sync `evaluate(ctx) -> bool`: output is a non-empty str under 20_000 chars) + the groundedness `LLMJudge(rubric=..., include_input=True, model=None, assertion=False, score={...})` rubric: reply is responsive to the request, does not claim actions it did not take, does not contradict tool results.
+- Registry entry: `"online_eval": OnlineEvaluation(id="online_eval", evaluators=[OnlineEvaluator(evaluator=MaxToolCalls(max_calls=20), sample_rate=1.0), OnlineEvaluator(evaluator=OutputSanity(), sample_rate=1.0), OnlineEvaluator(evaluator=<groundedness judge>)])` — judge inherits the config default rate (0.0 until enabled). Comment: singleton shared across agents; semaphores are process-wide.
+- Migration 034 (data-only, idempotent, pg_notify): append `online_eval` to `claw-main` AND `med-check` capabilities with the NULL-safe guard pattern (`coalesce`-hardened per the phase-0 review note).
+- Tests: registry wiring test (capability resolves, non-ToolGroup, count tests unchanged); an end-to-end test with `Agent("test", name="t", capabilities=[the entry])` + `wait_for_evaluations()` asserting deterministic evaluators fired (capfire captures the `evaluator:` spans or assert via a CallbackSink) and the judge did NOT fire at rate 0.
+- REMEMBER the classifier-catalog lesson: `_agent_catalog` filters description-less capabilities — give this entry NO description OR a description; either works now, but run `tests/test_classifier.py` to prove it.
+- Commit: `feat(observability): online evaluation capability for claw-main + med-check (migration 034)`.
+
+### Task 29: Traceparent flow (runner → DB → API)
+
+Files: `src/jordan_claw/utils/agent_runner.py`, `src/jordan_claw/analytics/types.py`, `src/jordan_claw/gateway/models.py`, `src/jordan_claw/gateway/router.py`, `src/jordan_claw/gateway/app_chat.py`, `src/jordan_claw/gateway/app_stream.py`, `src/jordan_claw/gateway/voice.py` (pass-through), `src/jordan_claw/main.py` (response mapping); tests: `test_agent_runner.py`, `test_app_messages.py`.
+- Runner: after the span opens, derive `traceparent` via `get_traceparent(span)` inside try/except Exception → None (unconfigured-logfire safety; add a comment citing the assert). Include in the returned `AgentRunResult` (new defaulted field). No span attr needed (it IS the span).
+- Router: assistant `save_message(..., metadata={"traceparent": result.traceparent} if result.traceparent else None)`; `GatewayResponse` gains `traceparent: str | None = None`; router populates.
+- `AppMessageResponse` gains `traceparent: str | None = None`; `main.py` maps it; `app_stream` includes it in the `complete` event (NOTE: `tests/test_app_messages.py` asserts the exact NDJSON event list — update it).
+- Replay paths return the stored traceparent from message metadata when present (best-effort, None otherwise).
+- Commit: `feat(observability): traceparent flows from run span to app responses`.
+
+### Task 30: POST /app/feedback
+
+Files: `src/jordan_claw/gateway/app_feedback.py` (new: request model + handler fn), `src/jordan_claw/main.py` (route), tests `tests/test_app_feedback.py`.
+- `FeedbackRequest`: `traceparent: str` (basic W3C shape validation: regex `^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$`), `name: str` (pattern `^[a-z_]{1,32}$`, e.g. `helpful`, `rating`), `value: bool | int | float | str` (str max 200), `comment: str | None` (max 2000).
+- Route `POST /app/feedback` → `_require_app_token(request, surface="app feedback")` → `record_feedback(traceparent, name, value, comment=comment)` wrapped in try/except → 502 on failure, else `{"status": "recorded"}` 202. When `settings.logfire_token` is unset, return 503 `feedback surface disabled` (mirror the token-empty convention).
+- Tests: auth 401/503 paths, malformed traceparent 422, happy path with `record_feedback` patched.
+- Commit: `feat(observability): trace-attached feedback endpoint`.
+
+### Task 31: Enable, verify, document, PR
+
+- `docs/observability.md`: online evaluation section (what runs at 1.0 vs sampled, where results live — Logfire Live Evals grouped by agent target, the two-flip note doesn't apply here), feedback section (endpoint contract, Logfire annotations, Flutter UI deferred to TestFlight track). Skill file pointer lines.
+- PR `feat/online-evals`; migration 034 applied BEFORE merge (data-only); merge; deploy-verify: real `/app/messages` round-trip then check (a) response carries `traceparent`, (b) assistant message row metadata has it, (c) `curl POST /app/feedback` with that traceparent returns 202; judge sampling stays 0 until Jordan sets `ONLINE_EVAL_SAMPLE_RATE` on Railway (with `-s jb_homebase`!) after a billing-checked trickle — document the enable procedure in the PR body.
+- Commit: `docs(observability): phase-3 accuracy pass`.
 
 # Phase 4 — `chore/alerts-and-docs` (detailed plan at phase start)
 
