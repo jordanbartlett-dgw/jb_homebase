@@ -33,6 +33,11 @@ from jordan_claw.gateway.app_chat import (
 from jordan_claw.gateway.app_chat import (
     channel_message_id as app_channel_message_id,
 )
+from jordan_claw.gateway.app_feedback import (
+    FeedbackRecordError,
+    FeedbackRequest,
+    record_app_feedback,
+)
 from jordan_claw.gateway.app_history import (
     ConversationDetail,
     ConversationPage,
@@ -383,6 +388,22 @@ async def app_new_conversation(
         channel_thread_id=body.agent_slug,
     )
     return NewConversationResponse(archived_conversation_id=archived_id)
+
+
+@app.post("/app/feedback", status_code=202)
+async def app_feedback(body: FeedbackRequest, request: Request) -> dict[str, str]:
+    """Attach user feedback (thumbs up/down, rating, note) to a run's trace."""
+    _require_app_token(request, surface="app feedback")
+    settings = request.app.state.settings
+    if not settings.logfire_token:
+        raise HTTPException(status_code=503, detail="feedback surface disabled")
+
+    try:
+        await record_app_feedback(settings, body)
+    except FeedbackRecordError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return {"status": "recorded"}
 
 
 @app.get("/app/conversations/{conversation_id}", response_model=ConversationDetail)
