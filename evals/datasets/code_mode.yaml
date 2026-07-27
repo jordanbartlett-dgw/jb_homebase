@@ -1,0 +1,66 @@
+name: code_mode
+cases:
+  - name: sum_last_5_durations
+    inputs:
+      user_message: "Sum the durations of my last 5 workouts in minutes."
+    evaluators:
+      - Contains:
+          value: "180"
+      - ToolCorrectness:
+          expected_tools: [run_code, get_recent_workouts]
+          allow_extra: true
+
+  - name: average_last_5_durations
+    inputs:
+      user_message: "What's the average duration of my last 5 workouts?"
+    evaluators:
+      - Contains:
+          value: "36"
+      - ToolCorrectness:
+          expected_tools: [run_code, get_recent_workouts]
+          allow_extra: true
+
+  - name: count_30_plus_minutes
+    inputs:
+      user_message: "How many of my last 5 workouts were 30 minutes or longer?"
+    evaluators:
+      - Contains:
+          value: "3"
+      - ToolCorrectness:
+          expected_tools: [run_code, get_recent_workouts]
+          allow_extra: true
+
+  - name: durations_longest_to_shortest
+    inputs:
+      user_message: "List my last 5 workout durations from longest to shortest."
+    evaluators:
+      - Contains:
+          value: "60"
+          evaluation_name: contains_60
+      - Contains:
+          value: "20"
+          evaluation_name: contains_20
+      - ToolCorrectness:
+          expected_tools: [run_code, get_recent_workouts]
+          allow_extra: true
+
+  - name: plan_vs_recent_check_in
+    inputs:
+      user_message: "Check my workout plan and my recent workouts, and tell me if I'm on track this week."
+    evaluators:
+      - MaxToolCalls:
+          max_calls: 12
+      - ToolCorrectness:
+          expected_tools: [run_code, get_workout_plan, get_recent_workouts]
+          allow_extra: true
+
+  - name: what_time_is_it
+    inputs:
+      user_message: "What time is it?"
+    evaluators:
+      - Contains:
+          value: "2026"
+
+evaluators:
+  - MaxToolCalls:
+      max_calls: 12

@@ -19,6 +19,8 @@ from evals.scorers import (
     TopKMembershipScorer,
     TriagePhraseScorer,
 )
+from evals.tasks.code_mode import TARGET_MODEL as CODE_MODE_TARGET_MODEL
+from evals.tasks.code_mode import code_mode_task
 from evals.tasks.email_triage import TARGET_MODEL as EMAIL_TRIAGE_TARGET_MODEL
 from evals.tasks.email_triage import email_triage_task
 from evals.tasks.med_check import TARGET_MODEL as MED_CHECK_TARGET_MODEL
@@ -29,6 +31,7 @@ from evals.tasks.obsidian_retrieval import obsidian_retrieval_task
 from evals.tasks.tool_routing import TARGET_MODEL as TOOL_ROUTING_TARGET_MODEL
 from evals.tasks.tool_routing import tool_routing_task
 from evals.types import (
+    CodeModeInputs,
     EmailTriageExpected,
     EmailTriageInputs,
     MedCheckExpected,
@@ -112,5 +115,17 @@ REGISTRY: dict[str, EvalSpec] = {
         # MaxToolCalls) — all built into pydantic_evals, no custom scorer.
         custom_evaluators=(),
         target_model=TOOL_ROUTING_TARGET_MODEL,
+    ),
+    "code_mode": EvalSpec(
+        name="code_mode",
+        yaml_path=DATASETS_DIR / "code_mode.yaml",
+        task_fn=code_mode_task,
+        inputs_type=CodeModeInputs,
+        expected_type=type(None),
+        output_type=str,
+        # Agentic evaluators only (ToolCorrectness, MaxToolCalls) plus
+        # built-in Contains — no custom scorer.
+        custom_evaluators=(),
+        target_model=CODE_MODE_TARGET_MODEL,
     ),
 }

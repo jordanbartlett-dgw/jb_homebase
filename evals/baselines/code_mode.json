@@ -1,0 +1,17 @@
+{
+  "schema": 2,
+  "dataset": "code_mode",
+  "ran_at": "2026-07-27T13:38:30.558357+00:00",
+  "git_sha": "475de64",
+  "composite": 1.0,
+  "evaluators": {
+    "Contains": 1.0,
+    "ToolCorrectness": 1.0,
+    "MaxToolCalls": 1.0,
+    "contains_60": 1.0,
+    "contains_20": 1.0,
+    "MaxToolCalls_2": 1.0
+  },
+  "cases_total": 6,
+  "cases_passed": 6
+}

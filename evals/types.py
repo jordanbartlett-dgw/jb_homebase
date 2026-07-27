@@ -85,3 +85,7 @@ class EmailTriageExpected(BaseModel):
 
 class ToolRoutingInputs(BaseModel):
     user_message: str
+
+
+class CodeModeInputs(BaseModel):
+    user_message: str
