@@ -56,6 +56,10 @@ Some call sites get no free span coverage from FastAPI/httpx/pydantic-ai autoins
 
 `main.py::configure_logging` appends `logfire.StructlogProcessor(console_log=False)` to the structlog processor chain whenever a Logfire token is configured. Every structured log line (`log.info`, `log.warning`, `log.exception`, ...) now also lands in Logfire, correlated to the active trace/span. Console/JSON rendering is unchanged; `console_log=False` keeps the bridge additive so lines don't double-print.
 
+## Alerts
+
+Logfire alert queries (error rate, cost ceiling, trace-silence heartbeat, online-eval failures) and the Logfire MCP setup live in `docs/alerts.md`.
+
 ## Production dashboard
 
 **Name:** Jordan Claw — Production
