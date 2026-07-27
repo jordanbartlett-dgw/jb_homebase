@@ -18,6 +18,18 @@ log = structlog.get_logger()
 NOTHING_TO_SEND = "NOTHING_TO_SEND"
 
 
+def _is_nothing_to_send(content: str) -> bool:
+    """True only when the reply IS the sentinel, optionally with trailing
+    punctuation. A substring test let an email that instructed the agent to
+    "output NOTHING_TO_SEND" suppress its own triage summary whenever the
+    model quoted the injected string while refusing it (phase-2 eval finding).
+    """
+    stripped = content.strip()
+    return stripped == NOTHING_TO_SEND or (
+        stripped.startswith(NOTHING_TO_SEND) and len(stripped) <= len(NOTHING_TO_SEND) + 2
+    )
+
+
 class SafeDict(dict):
     def __missing__(self, key: str) -> str:
         return "{" + key + "}"
@@ -62,7 +74,7 @@ async def _run_trigger(
     )
     content = result.output
 
-    if NOTHING_TO_SEND in content:
+    if _is_nothing_to_send(content):
         log.info(
             "event.nothing_to_send",
             trigger_name=trigger.name,
