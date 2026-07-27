@@ -92,6 +92,8 @@ def test_expected_groups_exist():
         "email",
         "code_mode",
         "private_content",
+        "online_eval",
+        "online_eval_deterministic",
     }
 
 

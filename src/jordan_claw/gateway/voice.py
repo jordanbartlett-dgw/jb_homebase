@@ -241,16 +241,18 @@ def idempotency_key(audio: bytes, header: str | None) -> str:
     return f"{VOICE_CHANNEL}-{hashlib.sha256(audio).hexdigest()[:32]}"
 
 
-async def await_original_reply(db: AsyncClient, *, conversation_id: str, after: str) -> str:
+async def await_original_reply(db: AsyncClient, *, conversation_id: str, after: str) -> dict:
     """Poll for the assistant reply the original run produces after `after`.
 
-    Raises OriginalRunIncompleteError if none appears within POLL_TIMEOUT_S.
+    Returns the stored message row (content, created_at, metadata) so callers
+    can recover the run's traceparent alongside the text. Raises
+    OriginalRunIncompleteError if none appears within POLL_TIMEOUT_S.
     """
     deadline = time.monotonic() + POLL_TIMEOUT_S
     while True:
         row = await get_assistant_reply_after(db, conversation_id, after)
         if row is not None:
-            return row["content"]
+            return row
         if time.monotonic() >= deadline:
             raise OriginalRunIncompleteError(conversation_id)
         await asyncio.sleep(POLL_INTERVAL_S)
@@ -275,12 +277,14 @@ async def replay_response(db: AsyncClient, original: dict, *, org_id: str) -> Vo
         conversation_id=original["conversation_id"],
         agent_slug=agent_slug,
     )
-    reply = await await_original_reply(
+    reply_row = await await_original_reply(
         db,
         conversation_id=original["conversation_id"],
         after=original["created_at"],
     )
-    return VoiceResponse(transcript=original["content"], agent_slug=agent_slug, reply=reply)
+    return VoiceResponse(
+        transcript=original["content"], agent_slug=agent_slug, reply=reply_row["content"]
+    )
 
 
 async def handle_app_message(
@@ -340,9 +344,14 @@ async def handle_app_message(
     original = await get_message_by_channel_id(db, channel_message_id)
     if original is None:
         raise OriginalRunIncompleteError(channel_message_id)
-    reply = await await_original_reply(
+    reply_row = await await_original_reply(
         db,
         conversation_id=original["conversation_id"],
         after=original["created_at"],
     )
-    return GatewayResponse(content=reply, conversation_id=original["conversation_id"])
+    reply_metadata = reply_row.get("metadata") or {}
+    return GatewayResponse(
+        content=reply_row["content"],
+        conversation_id=original["conversation_id"],
+        traceparent=reply_metadata.get("traceparent"),
+    )

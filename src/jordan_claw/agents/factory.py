@@ -24,6 +24,7 @@ def create_agent(
 
     agent = Agent(
         config.model,
+        name=config.slug,
         instructions=system_prompt,
         capabilities=[
             *resolve_capabilities(config.capabilities),

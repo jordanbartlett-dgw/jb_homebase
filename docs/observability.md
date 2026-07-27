@@ -10,7 +10,7 @@ How Jordan Claw is instrumented and how to read the data.
 | Per-run accounting | Supabase `usage_events` | Auditable cost ledger, BI joins, retention |
 | Product analytics | PostHog | Funnels, dashboards, regression detection |
 
-Every agent run produces all three: a Logfire trace, a `usage_events` row, and a PostHog `agent_run_completed` event. They share the same `agent_slug`, `run_kind`, `channel`, `cost_usd`, `duration_ms`, and `tool_call_count`, so cross-referencing is straightforward. `usage_events.trace_id` (32-char hex OTel trace id of the `agent_run` span) is the join key from a usage row to its Logfire trace.
+Every agent run produces all three: a Logfire trace, a `usage_events` row, and a PostHog `agent_run_completed` event. They share the same `agent_slug`, `run_kind`, `channel`, `cost_usd`, `duration_ms`, and `tool_call_count`, so cross-referencing is straightforward. `usage_events.trace_id` (32-char hex OTel trace id of the `agent_run` span) is the join key from a usage row to its Logfire trace. Every successful run also carries its W3C traceparent (same trace, span-scoped) through to the assistant message's `metadata` and the app-channel response (`AppMessageResponse.traceparent`, the `/app/messages/stream` `complete` event). That string is what a client posts back to attach feedback to the run. See "Online evaluation" and "Feedback" below.
 
 `usage_events` also carries `cache_read_tokens` and `cache_write_tokens` (migration 033), and `run_kind` gained two values: `classifier` and `transcription`. Cost is cache-aware. pydantic-ai's `usage.input_tokens` is cache-INCLUSIVE, meaning cache reads and writes are folded into it. `compute_cost` (`utils/pricing.py`) backs both out before applying the base input rate, then reprices them at Anthropic's cache multipliers: 0.10x for reads, 1.25x for writes. Spans, `usage_events` rows, and the `agent_run_completed` PostHog event all carry the two cache token counts.
 
@@ -90,6 +90,95 @@ Built via the PostHog MCP server (install: `npx @posthog/wizard mcp add`). Defin
 ## Content privacy
 
 Per-agent content export to Logfire is controlled by `InstrumentationSettings(include_content=...)`, granted as a capability (`private_content` in `agents/capabilities.py`). `med-check` carries it: prompts and completions for that agent no longer export to Logfire. Logfire's `ScrubbingOptions` (configured in `main.py`, patterns for `date_of_birth`, `dob`, `app_password`) do NOT apply to gen_ai message attributes, only to structured span attributes, so `include_content` is the only lever for message-level content.
+
+## Online evaluation
+
+Continuous scoring of production runs, via two capability entries in
+`agents/capabilities.py` (evaluators defined in `agents/online_evaluators.py`):
+`online_eval` (judge-bearing, granted to `claw-main` only) and
+`online_eval_deterministic` (judge-free, granted to `med-check`). Migration
+034 (data-only) wires both grants. Neither is a `ToolGroup`; they grant no
+tools to the model, so they're already excluded from both tool-count tests.
+This is a different thing from the nightly offline eval regression guard (the
+two-flip small-N damping in `docs/evals.md`); online evaluation scores live
+traffic continuously, offline evals score fixed datasets nightly.
+
+Two tiers, both wired into every run through `OnlineEvaluation.wrap_run`:
+
+- **Always on, `sample_rate=1.0`, deterministic, free**: `MaxToolCalls(20)`
+  (flags runaway tool loops) and `OutputSanity` (non-empty string, under 20k
+  chars).
+- **Sampled, LLM judge**: a groundedness rubric (`GROUNDEDNESS_JUDGE`),
+  responsive to the request, doesn't claim untaken actions, doesn't contradict
+  retrieved information. Model is `settings.eval_judge_model`. Its sample rate
+  is left unset on the evaluator, so it inherits the process-wide default:
+  `Settings.online_eval_sample_rate` (env `ONLINE_EVAL_SAMPLE_RATE`), wired at
+  startup by `main.configure_eval_defaults`. Default is `0.0`, off.
+
+Results emit `gen_ai.evaluation.result` OTel events parented to the
+`agent_run` trace (same trace as the `usage_events` row via `trace_id`).
+Without a configured Logfire token, emission is a cheap no-op. An unconfigured
+process never errors, it just doesn't score anything. Offline
+`Dataset.evaluate()` runs never double-fire this: `should_evaluate()` skips
+when already inside an evaluation context, so nightly eval runs don't also
+trigger online scoring on themselves.
+
+Agents now run with `name=<slug>` (`agents/factory.py::create_agent`, phase 3)
+instead of inferring a name from the local variable every call site shared.
+Online-eval results are tagged with that name as the target, so Logfire's
+**Live Evals** view groups by real agent slug (`claw-main`, `med-check`), not
+one collapsed `agent` bucket.
+
+**Enable path**: judge sampling stays at 0 until deliberately raised. Raising
+`ONLINE_EVAL_SAMPLE_RATE` only samples claw-main's judge — med-check runs the
+`online_eval_deterministic` capability, which has no judge evaluator wired in
+at all, so the process-wide sample rate has nothing to gate for that agent.
+Judge-sampling med-check would need its own capability grant plus an explicit
+content-privacy decision first (its content is deliberately kept out of
+Logfire; the judge has `include_input=True` and its own instrumented agent).
+1. Confirm `ONLINE_EVAL_SAMPLE_RATE` is unset (or 0). Deterministic checks
+   already run at 1.0 regardless, only the judge is gated.
+2. Billing-check the judge model's per-call cost (LLM cost discipline: test on
+   a trickle first, check actual provider billing, don't trust an internal
+   estimate).
+3. Set `ONLINE_EVAL_SAMPLE_RATE` on Railway on the `jb_homebase` service:
+   `railway variables set -s jb_homebase ONLINE_EVAL_SAMPLE_RATE=<rate>`.
+   Always pass `-s`; the CLI's sticky default service has landed vars on
+   `evals-cron` before.
+4. Verify in Logfire Live Evals: `groundedness` results appear alongside
+   `MaxToolCalls`/`OutputSanity` for claw-main, grouped by agent slug — and
+   confirm no `groundedness` results appear for med-check.
+
+## Feedback
+
+`POST /app/feedback` (bearer app token, same auth as the other `/app/*`
+routes) attaches user feedback to a completed run's trace:
+
+```json
+{"traceparent": "00-<32hex>-<16hex>-<2hex>", "name": "helpful", "value": true, "comment": "optional, max 2000 chars"}
+```
+
+- `traceparent`: the W3C string from the assistant message / app response
+  (see "Pillars" above). Identifies which trace the feedback attaches to.
+- `name`: `^[a-z_]{1,32}$`.
+- `value`: `bool | int | float | str` with strict member types (a `bool`
+  never silently coerces to `0`/`1`). Logfire renders each differently:
+  numbers as scores, strings as labels, bools as assertions.
+- Handler: `gateway/app_feedback.py::record_app_feedback` calls
+  `logfire.experimental.annotations.record_feedback`, attaching the score/
+  label/assertion directly to the trace. Unified in Logfire's UI with the
+  automated online-eval results on that same trace.
+- Returns `202 {"status": "recorded"}` on success, `503` if no Logfire token
+  is configured (feedback surface disabled), `502` if Logfire rejects the
+  call.
+
+Flutter UI for submitting feedback is deferred to the TestFlight track. The
+endpoint exists, nothing in the app calls it yet.
+
+The old PostHog `feedback_submitted` path (`/feedback` bot command →
+`feedback` table → `most_recent_agent`) still runs today but is superseded by
+this trace-attached path. Phase 4 retires it: drops the `feedback` table,
+`save_feedback`, and `most_recent_agent`.
 
 ## Verification log
 

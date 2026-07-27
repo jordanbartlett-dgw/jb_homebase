@@ -56,3 +56,19 @@ def test_workout_agent_slug_defaults(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai")
     settings = get_settings()
     assert settings.workout_agent_slug == "workout-coach"
+
+
+def test_online_eval_sample_rate_defaults_to_zero(monkeypatch):
+    """Judge-sampled online evals must default off; deterministic per-evaluator
+    checks are pinned separately and run regardless of this rate."""
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_KEY", "test-key")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "test-anon")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic")
+    monkeypatch.setenv("TAVILY_API_KEY", "test-tavily")
+    monkeypatch.setenv("FASTMAIL_USERNAME", "test@fastmail.com")
+    monkeypatch.setenv("FASTMAIL_APP_PASSWORD", "test-pw")
+    monkeypatch.setenv("DEFAULT_ORG_ID", "org-123")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai")
+    settings = get_settings()
+    assert settings.online_eval_sample_rate == 0.0

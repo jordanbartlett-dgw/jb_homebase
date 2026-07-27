@@ -6,6 +6,7 @@ from typing import Any
 
 import logfire
 import structlog
+from logfire.experimental.annotations import get_traceparent
 from pydantic_ai import Agent
 from pydantic_ai.messages import ToolCallPart
 from supabase._async.client import AsyncClient
@@ -117,6 +118,14 @@ async def run_agent_instrumented[OutputT](
     with logfire.span("agent_run", **span_attrs) as span:
         ctx = span.get_span_context()
         trace_id = f"{ctx.trace_id:032x}" if ctx and ctx.trace_id else None
+        try:
+            # get_traceparent() asserts the span was actually started (span._span
+            # is truthy); under unconfigured logfire (tests, no token) that assert
+            # can fire, so this must never take down a run over an observability
+            # nicety.
+            traceparent = get_traceparent(span) or None
+        except Exception:
+            traceparent = None
 
         start = time.monotonic()
         try:
@@ -330,4 +339,5 @@ async def run_agent_instrumented[OutputT](
             model=model,
             success=True,
             error_type=None,
+            traceparent=traceparent,
         )

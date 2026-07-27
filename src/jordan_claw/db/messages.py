@@ -43,7 +43,7 @@ async def get_assistant_reply_after(
     """
     result = (
         await client.table("messages")
-        .select("content, created_at")
+        .select("content, created_at, metadata")
         .eq("conversation_id", conversation_id)
         .eq("role", "assistant")
         .gt("created_at", after)

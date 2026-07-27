@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from jordan_claw.analytics.types import AgentRunResult
 from jordan_claw.db.agents import AgentConfig
 from jordan_claw.gateway.models import IncomingMessage
 from jordan_claw.gateway.router import ERROR_RESPONSE, handle_message
@@ -74,6 +75,8 @@ async def test_successful_message_flow(mock_db):
     mock_usage = MagicMock()
     mock_usage.input_tokens = 10
     mock_usage.output_tokens = 5
+    mock_usage.cache_read_tokens = 0
+    mock_usage.cache_write_tokens = 0
     mock_usage.requests = 1
 
     mock_result = MagicMock()
@@ -173,6 +176,8 @@ async def test_memory_context_injected_into_agent(mock_db):
     mock_usage = MagicMock()
     mock_usage.input_tokens = 10
     mock_usage.output_tokens = 5
+    mock_usage.cache_read_tokens = 0
+    mock_usage.cache_write_tokens = 0
     mock_usage.requests = 1
 
     mock_result = MagicMock()
@@ -269,3 +274,116 @@ async def test_user_message_metadata_persisted(mock_db):
     user_save = mock_save.await_args_list[0]
     assert user_save.kwargs["role"] == "user"
     assert user_save.kwargs["metadata"] == {"agent_slug": "workout-coach"}
+
+
+def _fake_run_result(*, traceparent: str | None) -> AgentRunResult:
+    return AgentRunResult(
+        output="Hello! How can I help?",
+        input_tokens=10,
+        output_tokens=5,
+        total_tokens=15,
+        cost_usd=None,
+        duration_ms=1,
+        tool_call_count=0,
+        model="claude-sonnet-4-20250514",
+        success=True,
+        error_type=None,
+        traceparent=traceparent,
+    )
+
+
+@pytest.mark.asyncio
+async def test_assistant_message_persists_traceparent_metadata(mock_db):
+    """The runner's traceparent rides along on the assistant save_message call
+    so a later feedback POST can annotate the run's span."""
+    fake_conversation = {"id": "conv-005"}
+    mock_save = AsyncMock(return_value={})
+    traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+
+    with (
+        patch("jordan_claw.gateway.router.message_exists", return_value=False),
+        patch(
+            "jordan_claw.gateway.router.get_or_create_conversation",
+            return_value=fake_conversation,
+        ),
+        patch("jordan_claw.gateway.router.save_message", new=mock_save),
+        patch("jordan_claw.gateway.router.get_recent_messages", return_value=[]),
+        patch("jordan_claw.gateway.router.load_memory_context", return_value=""),
+        patch(
+            "jordan_claw.gateway.router.get_agent_config",
+            return_value=make_agent_config(),
+        ),
+        patch(
+            "jordan_claw.gateway.router.create_agent",
+            return_value=(AsyncMock(), "claude-sonnet-4-20250514"),
+        ),
+        patch(
+            "jordan_claw.gateway.router.run_agent_instrumented",
+            new=AsyncMock(return_value=_fake_run_result(traceparent=traceparent)),
+        ),
+        patch(
+            "jordan_claw.gateway.router.extract_memory_background",
+            new_callable=AsyncMock,
+        ),
+    ):
+        result = await handle_message(
+            make_incoming(),
+            db=mock_db,
+            agent_slug="claw-main",
+            tavily_api_key="test-key",
+            fastmail_username="test@fastmail.com",
+            fastmail_app_password="test-password",
+        )
+
+    assert result.traceparent == traceparent
+    assistant_save = mock_save.await_args_list[1]
+    assert assistant_save.kwargs["role"] == "assistant"
+    assert assistant_save.kwargs["metadata"] == {"traceparent": traceparent}
+
+
+@pytest.mark.asyncio
+async def test_assistant_message_metadata_none_when_traceparent_missing(mock_db):
+    """Unconfigured logfire yields traceparent=None; the assistant save must not
+    write a metadata dict with a null traceparent in that case."""
+    fake_conversation = {"id": "conv-006"}
+    mock_save = AsyncMock(return_value={})
+
+    with (
+        patch("jordan_claw.gateway.router.message_exists", return_value=False),
+        patch(
+            "jordan_claw.gateway.router.get_or_create_conversation",
+            return_value=fake_conversation,
+        ),
+        patch("jordan_claw.gateway.router.save_message", new=mock_save),
+        patch("jordan_claw.gateway.router.get_recent_messages", return_value=[]),
+        patch("jordan_claw.gateway.router.load_memory_context", return_value=""),
+        patch(
+            "jordan_claw.gateway.router.get_agent_config",
+            return_value=make_agent_config(),
+        ),
+        patch(
+            "jordan_claw.gateway.router.create_agent",
+            return_value=(AsyncMock(), "claude-sonnet-4-20250514"),
+        ),
+        patch(
+            "jordan_claw.gateway.router.run_agent_instrumented",
+            new=AsyncMock(return_value=_fake_run_result(traceparent=None)),
+        ),
+        patch(
+            "jordan_claw.gateway.router.extract_memory_background",
+            new_callable=AsyncMock,
+        ),
+    ):
+        result = await handle_message(
+            make_incoming(),
+            db=mock_db,
+            agent_slug="claw-main",
+            tavily_api_key="test-key",
+            fastmail_username="test@fastmail.com",
+            fastmail_app_password="test-password",
+        )
+
+    assert result.traceparent is None
+    assistant_save = mock_save.await_args_list[1]
+    assert assistant_save.kwargs["role"] == "assistant"
+    assert assistant_save.kwargs["metadata"] is None

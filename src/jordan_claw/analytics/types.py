@@ -36,3 +36,4 @@ class AgentRunResult[OutputT]:
     model: str
     success: bool
     error_type: str | None = None
+    traceparent: str | None = None

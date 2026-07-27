@@ -142,6 +142,7 @@ async def handle_message(
         token_count=result.total_tokens,
         model=model_name,
         cost_usd=float(result.cost_usd) if result.cost_usd is not None else None,
+        metadata={"traceparent": result.traceparent} if result.traceparent else None,
     )
 
     # 6. Fire-and-forget memory extraction
@@ -156,4 +157,5 @@ async def handle_message(
         conversation_id=conversation_id,
         token_count=result.total_tokens,
         model=model_name,
+        traceparent=result.traceparent,
     )

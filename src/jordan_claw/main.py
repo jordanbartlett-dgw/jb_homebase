@@ -12,11 +12,15 @@ import structlog
 from anthropic import AsyncAnthropic
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic_evals.evaluators import EvaluatorContext
+from pydantic_evals.evaluators.llm_as_a_judge import set_default_judge_model
+from pydantic_evals.online import configure as configure_online_evals
+from pydantic_evals.online import wait_for_evaluations
 
 from jordan_claw.analytics import emitter
 from jordan_claw.analytics.posthog_client import shutdown_posthog
 from jordan_claw.analytics.types import RunKind
-from jordan_claw.config import get_settings
+from jordan_claw.config import Settings, get_settings
 from jordan_claw.db.client import close_supabase_client, get_supabase_client
 from jordan_claw.db.conversations import archive_active_conversation
 from jordan_claw.db.messages import get_message_by_channel_id
@@ -30,6 +34,11 @@ from jordan_claw.gateway.app_chat import (
 )
 from jordan_claw.gateway.app_chat import (
     channel_message_id as app_channel_message_id,
+)
+from jordan_claw.gateway.app_feedback import (
+    FeedbackRecordError,
+    FeedbackRequest,
+    record_app_feedback,
 )
 from jordan_claw.gateway.app_history import (
     ConversationDetail,
@@ -61,6 +70,8 @@ from jordan_claw.gateway.voice import (
 from jordan_claw.health import build_health_report
 from jordan_claw.proactive.scheduler import scheduler_loop
 from jordan_claw.utils.agent_runner import drain_pending_writes
+
+log = structlog.get_logger()
 
 
 def configure_logging(environment: str, log_level: str, *, logfire_enabled: bool = False) -> None:
@@ -104,6 +115,33 @@ def configure_logging(environment: str, log_level: str, *, logfire_enabled: bool
     )
 
 
+def _log_dropped_online_eval(ctx: EvaluatorContext) -> None:
+    """Default `on_max_concurrency` handler: an evaluator was dropped instead
+    of run because the process-wide concurrency limit was hit. Silent by
+    default in pydantic-evals; log it so a saturated online-eval pipeline is
+    visible rather than quietly under-sampling production traffic.
+    """
+    log.warning("online_eval_dropped_max_concurrency")
+
+
+def configure_eval_defaults(settings: Settings) -> None:
+    """Wire pydantic-evals' online judge model and sampling defaults.
+
+    `default_sample_rate` gates judge-sampled online evals (0 = off, the
+    Settings default); deterministic per-evaluator checks run regardless,
+    pinned at 1.0 at the evaluator level. `sampling_mode="correlated"` keeps
+    a run's online-eval decisions consistent across evaluators within that
+    run rather than flipping a coin per evaluator.
+    """
+    set_default_judge_model(settings.eval_judge_model)
+    configure_online_evals(
+        default_sample_rate=settings.online_eval_sample_rate,
+        sampling_mode="correlated",
+        metadata={"service": "jordan-claw"},
+        on_max_concurrency=_log_dropped_online_eval,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -133,6 +171,8 @@ async def lifespan(app: FastAPI):
 
     if settings.logfire_token:
         logger.info("logfire_configured", environment=settings.environment)
+
+    configure_eval_defaults(settings)
 
     # Initialize Supabase client
     db = await get_supabase_client(settings.supabase_url, settings.supabase_service_key)
@@ -169,6 +209,8 @@ async def lifespan(app: FastAPI):
         await scheduler_task
     # Streams can spawn usage writes, so drain them first.
     await drain_pending_stream_tasks()
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(wait_for_evaluations(), timeout=5)
     with contextlib.suppress(TimeoutError):
         await asyncio.wait_for(drain_pending_writes(), timeout=5)
     await emitter.drain_pending_emits()
@@ -284,6 +326,7 @@ async def app_text_message(body: AppMessageRequest, request: Request) -> AppMess
         agent_slug=body.agent_slug,
         reply=response.content,
         conversation_id=response.conversation_id,
+        traceparent=response.traceparent,
     )
 
 
@@ -361,6 +404,22 @@ async def app_new_conversation(
         channel_thread_id=body.agent_slug,
     )
     return NewConversationResponse(archived_conversation_id=archived_id)
+
+
+@app.post("/app/feedback", status_code=202)
+async def app_feedback(body: FeedbackRequest, request: Request) -> dict[str, str]:
+    """Attach user feedback (thumbs up/down, rating, note) to a run's trace."""
+    _require_app_token(request, surface="app feedback")
+    settings = request.app.state.settings
+    if not settings.logfire_token:
+        raise HTTPException(status_code=503, detail="feedback surface disabled")
+
+    try:
+        await record_app_feedback(settings, body)
+    except FeedbackRecordError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return {"status": "recorded"}
 
 
 @app.get("/app/conversations/{conversation_id}", response_model=ConversationDetail)
