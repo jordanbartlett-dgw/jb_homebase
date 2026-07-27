@@ -12,8 +12,10 @@ import structlog
 from anthropic import AsyncAnthropic
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic_evals.evaluators import EvaluatorContext
 from pydantic_evals.evaluators.llm_as_a_judge import set_default_judge_model
 from pydantic_evals.online import configure as configure_online_evals
+from pydantic_evals.online import wait_for_evaluations
 
 from jordan_claw.analytics import emitter
 from jordan_claw.analytics.posthog_client import shutdown_posthog
@@ -69,6 +71,8 @@ from jordan_claw.health import build_health_report
 from jordan_claw.proactive.scheduler import scheduler_loop
 from jordan_claw.utils.agent_runner import drain_pending_writes
 
+log = structlog.get_logger()
+
 
 def configure_logging(environment: str, log_level: str, *, logfire_enabled: bool = False) -> None:
     """Configure structlog with console (dev) or JSON (prod) rendering.
@@ -111,6 +115,15 @@ def configure_logging(environment: str, log_level: str, *, logfire_enabled: bool
     )
 
 
+def _log_dropped_online_eval(ctx: EvaluatorContext) -> None:
+    """Default `on_max_concurrency` handler: an evaluator was dropped instead
+    of run because the process-wide concurrency limit was hit. Silent by
+    default in pydantic-evals; log it so a saturated online-eval pipeline is
+    visible rather than quietly under-sampling production traffic.
+    """
+    log.warning("online_eval_dropped_max_concurrency")
+
+
 def configure_eval_defaults(settings: Settings) -> None:
     """Wire pydantic-evals' online judge model and sampling defaults.
 
@@ -125,6 +138,7 @@ def configure_eval_defaults(settings: Settings) -> None:
         default_sample_rate=settings.online_eval_sample_rate,
         sampling_mode="correlated",
         metadata={"service": "jordan-claw"},
+        on_max_concurrency=_log_dropped_online_eval,
     )
 
 
@@ -195,6 +209,8 @@ async def lifespan(app: FastAPI):
         await scheduler_task
     # Streams can spawn usage writes, so drain them first.
     await drain_pending_stream_tasks()
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(wait_for_evaluations(), timeout=5)
     with contextlib.suppress(TimeoutError):
         await asyncio.wait_for(drain_pending_writes(), timeout=5)
     await emitter.drain_pending_emits()

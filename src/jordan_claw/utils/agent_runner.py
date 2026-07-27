@@ -123,7 +123,7 @@ async def run_agent_instrumented[OutputT](
             # is truthy); under unconfigured logfire (tests, no token) that assert
             # can fire, so this must never take down a run over an observability
             # nicety.
-            traceparent = get_traceparent(span)
+            traceparent = get_traceparent(span) or None
         except Exception:
             traceparent = None
 

@@ -228,6 +228,19 @@ CAPABILITY_REGISTRY: dict[str, AbstractCapability[AgentDeps]] = {
             OnlineEvaluator(evaluator=GROUNDEDNESS_JUDGE),
         ],
     ),
+    # Judge-free variant for content-private agents (med-check). The locked
+    # PII decision keeps med-check content out of Logfire entirely; the
+    # groundedness judge has include_input=True and its own instrumented
+    # agent, so sampling it would export that content. Deterministic checks
+    # only, both pinned at 1.0. Distinct id from `online_eval` so a per-agent
+    # grant can't accidentally pull in the judge-bearing variant.
+    "online_eval_deterministic": OnlineEvaluation(
+        id="online_eval_deterministic",
+        evaluators=[
+            OnlineEvaluator(evaluator=MaxToolCalls(max_calls=20), sample_rate=1.0),
+            OnlineEvaluator(evaluator=OutputSanity(), sample_rate=1.0),
+        ],
+    ),
 }
 
 

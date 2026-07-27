@@ -93,13 +93,15 @@ Per-agent content export to Logfire is controlled by `InstrumentationSettings(in
 
 ## Online evaluation
 
-Continuous scoring of production runs, via the `online_eval` capability
-(`agents/online_evaluators.py`, `agents/capabilities.py`). Granted to
-`claw-main` and `med-check` (migration 034, data-only). Not a `ToolGroup`, it
-grants no tools to the model, so it's already excluded from both tool-count
-tests. This is a different thing from the nightly offline eval regression
-guard (the two-flip small-N damping in `docs/evals.md`); online evaluation
-scores live traffic continuously, offline evals score fixed datasets nightly.
+Continuous scoring of production runs, via two capability entries in
+`agents/capabilities.py` (evaluators defined in `agents/online_evaluators.py`):
+`online_eval` (judge-bearing, granted to `claw-main` only) and
+`online_eval_deterministic` (judge-free, granted to `med-check`). Migration
+034 (data-only) wires both grants. Neither is a `ToolGroup`; they grant no
+tools to the model, so they're already excluded from both tool-count tests.
+This is a different thing from the nightly offline eval regression guard (the
+two-flip small-N damping in `docs/evals.md`); online evaluation scores live
+traffic continuously, offline evals score fixed datasets nightly.
 
 Two tiers, both wired into every run through `OnlineEvaluation.wrap_run`:
 
@@ -127,7 +129,13 @@ Online-eval results are tagged with that name as the target, so Logfire's
 **Live Evals** view groups by real agent slug (`claw-main`, `med-check`), not
 one collapsed `agent` bucket.
 
-**Enable path**: judge sampling stays at 0 until deliberately raised.
+**Enable path**: judge sampling stays at 0 until deliberately raised. Raising
+`ONLINE_EVAL_SAMPLE_RATE` only samples claw-main's judge — med-check runs the
+`online_eval_deterministic` capability, which has no judge evaluator wired in
+at all, so the process-wide sample rate has nothing to gate for that agent.
+Judge-sampling med-check would need its own capability grant plus an explicit
+content-privacy decision first (its content is deliberately kept out of
+Logfire; the judge has `include_input=True` and its own instrumented agent).
 1. Confirm `ONLINE_EVAL_SAMPLE_RATE` is unset (or 0). Deterministic checks
    already run at 1.0 regardless, only the judge is gated.
 2. Billing-check the judge model's per-call cost (LLM cost discipline: test on
@@ -138,7 +146,8 @@ one collapsed `agent` bucket.
    Always pass `-s`; the CLI's sticky default service has landed vars on
    `evals-cron` before.
 4. Verify in Logfire Live Evals: `groundedness` results appear alongside
-   `MaxToolCalls`/`OutputSanity`, grouped by agent slug.
+   `MaxToolCalls`/`OutputSanity` for claw-main, grouped by agent slug — and
+   confirm no `groundedness` results appear for med-check.
 
 ## Feedback
 

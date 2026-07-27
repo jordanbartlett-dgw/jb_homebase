@@ -1,9 +1,17 @@
-"""Wiring proof for the `online_eval` capability (migration 034).
+"""Wiring proof for the `online_eval` / `online_eval_deterministic`
+capabilities (migration 034).
 
 Registry resolution + an end-to-end run asserting the two deterministic
 evaluators (MaxToolCalls, OutputSanity) fire while the groundedness LLM judge
 does not, at the process-wide default sample rate of 0.0. No live API calls:
 TestModel/FunctionModel only, and the judge never fires at rate 0.
+
+`online_eval_deterministic` is the judge-free variant granted to med-check
+(locked PII decision: med-check content stays out of Logfire, and the judge's
+`include_input=True` plus its own instrumented agent would export it if
+sampled). Its own test below walks the evaluator list and asserts no
+`LLMJudge` instance is present at all, so raising the process-wide judge
+sample rate can never make med-check judge-sampled by accident.
 """
 
 from __future__ import annotations
@@ -15,7 +23,7 @@ import pytest
 from pydantic_ai import Agent
 from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
-from pydantic_evals.evaluators import EvaluationResult, EvaluatorFailure
+from pydantic_evals.evaluators import EvaluationResult, EvaluatorFailure, LLMJudge
 from pydantic_evals.online import DEFAULT_CONFIG, CallbackSink, configure, wait_for_evaluations
 from pydantic_evals.online_capability import OnlineEvaluation
 
@@ -30,6 +38,23 @@ def test_online_eval_registry_entry_resolves():
     assert not isinstance(cap, ToolGroup)
 
 
+def test_online_eval_deterministic_registry_entry_resolves():
+    cap = CAPABILITY_REGISTRY["online_eval_deterministic"]
+    assert isinstance(cap, OnlineEvaluation)
+    assert cap.id == "online_eval_deterministic"
+    assert not isinstance(cap, ToolGroup)
+
+
+def test_online_eval_deterministic_has_no_judge():
+    """The judge-free variant must never carry an LLMJudge evaluator, in any
+    form (bare or wrapped), regardless of future edits to the registry."""
+    cap = CAPABILITY_REGISTRY["online_eval_deterministic"]
+    assert isinstance(cap, OnlineEvaluation)
+    for online_evaluator in cap.evaluators:
+        evaluator = online_evaluator.evaluator
+        assert not isinstance(evaluator, LLMJudge)
+
+
 def test_online_eval_is_excluded_from_toolgroup_counts():
     """Non-ToolGroup capabilities are already skipped by both count tests;
     this just proves online_eval falls into that bucket (no regression)."""
@@ -38,6 +63,7 @@ def test_online_eval_is_excluded_from_toolgroup_counts():
         if isinstance(group, ToolGroup):
             tool_names.update(group.toolset.tools)
     assert "online_eval" not in tool_names
+    assert "online_eval_deterministic" not in tool_names
 
 
 @pytest.fixture

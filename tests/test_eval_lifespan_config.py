@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import structlog.testing
+
 from jordan_claw.config import Settings
-from jordan_claw.main import configure_eval_defaults
+from jordan_claw.main import _log_dropped_online_eval, configure_eval_defaults
 
 
 @patch("jordan_claw.main.configure_online_evals")
@@ -26,6 +28,7 @@ def test_configure_eval_defaults_wires_judge_model_and_online_sampling(
         default_sample_rate=0.25,
         sampling_mode="correlated",
         metadata={"service": "jordan-claw"},
+        on_max_concurrency=_log_dropped_online_eval,
     )
 
 
@@ -44,3 +47,13 @@ def test_configure_eval_defaults_defaults_sample_rate_to_zero(
     configure_eval_defaults(settings)
 
     assert mock_configure_online_evals.call_args.kwargs["default_sample_rate"] == 0.0
+
+
+def test_log_dropped_online_eval_logs_visibly():
+    """A dropped online evaluation (process-wide concurrency limit hit) must
+    not be silent: it's wired as `on_max_concurrency` in
+    `configure_eval_defaults` precisely so a saturated pipeline is visible."""
+    with structlog.testing.capture_logs() as cap_logs:
+        _log_dropped_online_eval(ctx=None)
+
+    assert any(entry["event"] == "online_eval_dropped_max_concurrency" for entry in cap_logs)
