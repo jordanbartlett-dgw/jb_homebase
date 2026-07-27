@@ -13,13 +13,22 @@ from typing import Any
 
 from pydantic_evals.evaluators import Evaluator
 
-from evals.scorers import PhraseAssertionScorer, RequiredFactsScorer, TopKMembershipScorer
+from evals.scorers import (
+    PhraseAssertionScorer,
+    RequiredFactsScorer,
+    TopKMembershipScorer,
+    TriagePhraseScorer,
+)
+from evals.tasks.email_triage import TARGET_MODEL as EMAIL_TRIAGE_TARGET_MODEL
+from evals.tasks.email_triage import email_triage_task
 from evals.tasks.med_check import TARGET_MODEL as MED_CHECK_TARGET_MODEL
 from evals.tasks.med_check import med_check_task
 from evals.tasks.memory_recall import TARGET_MODEL as MEMORY_RECALL_TARGET_MODEL
 from evals.tasks.memory_recall import memory_recall_task
 from evals.tasks.obsidian_retrieval import obsidian_retrieval_task
 from evals.types import (
+    EmailTriageExpected,
+    EmailTriageInputs,
     MedCheckExpected,
     MedCheckInputs,
     MemoryRecallExpected,
@@ -78,5 +87,15 @@ REGISTRY: dict[str, EvalSpec] = {
         output_type=str,
         custom_evaluators=(PhraseAssertionScorer,),
         target_model=MED_CHECK_TARGET_MODEL,
+    ),
+    "email_triage": EvalSpec(
+        name="email_triage",
+        yaml_path=DATASETS_DIR / "email_triage.yaml",
+        task_fn=email_triage_task,
+        inputs_type=EmailTriageInputs,
+        expected_type=EmailTriageExpected,
+        output_type=str,
+        custom_evaluators=(TriagePhraseScorer,),
+        target_model=EMAIL_TRIAGE_TARGET_MODEL,
     ),
 }
