@@ -7,7 +7,7 @@ import pytest
 import structlog.testing
 
 from jordan_claw.analytics.types import RunKind
-from jordan_claw.db.usage_events import most_recent_agent, save_usage_event
+from jordan_claw.db.usage_events import save_usage_event
 
 ORG_ID = "00000000-0000-0000-0000-000000000001"
 
@@ -218,23 +218,3 @@ async def test_save_usage_event_write_failure_logs_and_does_not_raise():
     assert warnings[0]["agent_slug"] == "claw-main"
     assert warnings[0]["run_kind"] == "user_message"
     assert warnings[0]["error"] == "db unreachable"
-
-
-@pytest.mark.asyncio
-async def test_most_recent_agent_returns_slug():
-    db, query = _mock_db(select_data=[{"agent_slug": "claw-main"}])
-
-    result = await most_recent_agent(db, org_id=ORG_ID, channel="app")
-
-    assert result == "claw-main"
-    db.table.assert_called_once_with("usage_events")
-    query.eq.assert_any_call("org_id", ORG_ID)
-    query.eq.assert_any_call("channel", "app")
-    query.eq.assert_any_call("run_kind", "user_message")
-
-
-@pytest.mark.asyncio
-async def test_most_recent_agent_returns_none_when_no_rows():
-    db, _ = _mock_db(select_data=[])
-    result = await most_recent_agent(db, org_id=ORG_ID, channel="app")
-    assert result is None

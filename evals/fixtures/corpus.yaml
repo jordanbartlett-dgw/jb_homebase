@@ -288,8 +288,8 @@ notes:
     body: |
       PostHog is the product-analytics roll-up — aggregate trends across
       agents over time. Backend events: agent_run_completed, proactive_sent,
-      agent_session_started, eval_run_completed, feedback_submitted. Never
-      dual-emit metrics from the agent hot path; PostHog reads usage_events.
+      agent_session_started, eval_run_completed. Never dual-emit metrics
+      from the agent hot path; PostHog reads usage_events.
 
   - slug: obs-evals-pydantic
     title: "Observability: Pydantic Evals for regressions"

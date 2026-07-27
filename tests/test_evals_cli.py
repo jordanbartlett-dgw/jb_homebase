@@ -1,7 +1,7 @@
 """Tests for `claw-eval list`, `claw-eval compare`, and the `--json` summary helper.
 
 `list` and `compare` must work with no API keys configured (no get_settings() call), so
-these tests never touch Settings — they either exercise the pure helpers directly or run
+these tests never touch Settings. They either exercise the pure helpers directly or run
 the CliRunner against a real REGISTRY import with report files monkeypatched into a tmp
 dir. `--json` is covered via the pure serialization helper, not by spawning the CLI
 process, per the task brief.
@@ -17,8 +17,10 @@ from click.testing import CliRunner
 import evals.run_eval as run_eval_module
 from evals.registry import REGISTRY
 from evals.run_eval import (
+    REPORTS_KEEP_PER_DATASET,
     RunSummary,
     _dataset_rows,
+    _prune_reports,
     _report_delta,
     _summary_json,
     cli,
@@ -176,3 +178,93 @@ def test_summary_json_defaults_are_present_when_not_set() -> None:
     assert payload["cost_usd"] is None
     assert payload["experiment_name"] == ""
     json.dumps(payload)  # still valid JSON
+
+
+# --- report pruning ---
+
+
+def _write_reports(reports_dir: Path, dataset: str, count: int) -> list[Path]:
+    """Write `count` fake report files with lexicographically-increasing names."""
+    paths = []
+    for i in range(count):
+        ts = f"202601{(i // 24) % 28 + 1:02d}T{i % 24:02d}0000Z"
+        path = reports_dir / f"{dataset}_{ts}.json"
+        path.write_text("{}")
+        paths.append(path)
+    return paths
+
+
+def test_prune_reports_keeps_only_newest_n(tmp_path: Path) -> None:
+    paths = _write_reports(tmp_path, "memory_recall", 10)
+
+    _prune_reports(tmp_path, "memory_recall", keep=4)
+
+    remaining = sorted(p.name for p in tmp_path.glob("*.json"))
+    expected = sorted(p.name for p in paths)[-4:]
+    assert remaining == expected
+
+
+def test_prune_reports_noop_when_under_limit(tmp_path: Path) -> None:
+    _write_reports(tmp_path, "memory_recall", 3)
+
+    _prune_reports(tmp_path, "memory_recall", keep=60)
+
+    assert len(list(tmp_path.glob("*.json"))) == 3
+
+
+def test_prune_reports_ignores_non_json_files(tmp_path: Path) -> None:
+    _write_reports(tmp_path, "memory_recall", 5)
+    (tmp_path / "notes.txt").write_text("keep me")
+
+    _prune_reports(tmp_path, "memory_recall", keep=2)
+
+    assert (tmp_path / "notes.txt").exists()
+    assert len(list(tmp_path.glob("*.json"))) == 2
+
+
+def test_prune_reports_is_scoped_per_dataset_not_global_sort(tmp_path: Path) -> None:
+    """Reproduces the cross-dataset bug: pruning must never sort all *.json
+    together (that sorts purely on the dataset-name prefix, deleting fresh
+    reports from an alphabetically-early dataset while keeping ancient ones
+    from a later dataset). code_mode < tool_routing lexicographically, so 3
+    ancient tool_routing reports plus 3 just-written code_mode reports, with
+    keep=3, must retain ALL of the fresh code_mode files and ALL of the
+    tool_routing files (each dataset is independently under its own limit).
+    """
+    ancient = _write_reports(tmp_path, "tool_routing", 3)
+    fresh = _write_reports(tmp_path, "code_mode", 3)
+    # Make the "ancient" set sort earlier by timestamp than the "fresh" set,
+    # while still being an alphabetically-LATER dataset name.
+    for i, path in enumerate(ancient):
+        path.rename(tmp_path / f"tool_routing_202501{i + 1:02d}T000000Z.json")
+    for i, path in enumerate(fresh):
+        path.rename(tmp_path / f"code_mode_202607{i + 1:02d}T000000Z.json")
+
+    _prune_reports(tmp_path, "code_mode", keep=3)
+    _prune_reports(tmp_path, "tool_routing", keep=3)
+
+    remaining = {p.name for p in tmp_path.glob("*.json")}
+    assert remaining == {
+        "code_mode_20260701T000000Z.json",
+        "code_mode_20260702T000000Z.json",
+        "code_mode_20260703T000000Z.json",
+        "tool_routing_20250101T000000Z.json",
+        "tool_routing_20250102T000000Z.json",
+        "tool_routing_20250103T000000Z.json",
+    }
+
+
+def test_prune_reports_only_touches_its_own_dataset(tmp_path: Path) -> None:
+    """Pruning dataset A must never delete dataset B's files, even when B is
+    over ITS OWN limit. Each call is scoped to one dataset's glob."""
+    _write_reports(tmp_path, "memory_recall", 15)
+    _write_reports(tmp_path, "obsidian_retrieval", 15)
+
+    _prune_reports(tmp_path, "memory_recall", keep=5)
+
+    assert len(list(tmp_path.glob("memory_recall_*.json"))) == 5
+    assert len(list(tmp_path.glob("obsidian_retrieval_*.json"))) == 15
+
+
+def test_reports_keep_per_dataset_default_is_ten() -> None:
+    assert REPORTS_KEEP_PER_DATASET == 10

@@ -34,7 +34,6 @@ The scheduler persists proactive artifacts for app surfaces:
 - **Calendar reminders** 30 minutes before meetings with attendee context
 - **Memory corrections** notifies when a remembered fact is updated
 - **Daily scan** alerts on calendar conflicts (quiet, only messages if something found)
-- **Weekly feedback request** (Sundays 7pm Central) asks for a 1-5 rating on the week's interactions, persisted via `/feedback`
 - **Daily workout** (6am Central) sends the day's session from the active training plan; silent on rest days
 
 Beyond schedules, events can trigger agents:
@@ -104,8 +103,7 @@ src/jordan_claw/
       messages.py        # Message CRUD
       obsidian.py        # Obsidian notes and chunks CRUD
       proactive.py       # Schedule and proactive message CRUD
-      usage_events.py    # Per-run analytics rows + most_recent_agent helper
-      feedback.py        # Feedback table CRUD
+      usage_events.py    # Per-run analytics rows
     analytics/
       types.py           # RunKind StrEnum, AgentRunResult dataclass
       posthog_client.py  # PostHog client factory + shutdown
@@ -122,10 +120,10 @@ evals/                   # Top-level (not under tests/) — eval runs cost money
   tasks/                 # memory_recall_task, obsidian_retrieval_task
   fixtures/corpus.yaml   # 30-note synthetic eval corpus
   baselines/             # Committed score baselines for regression detection
-tests/                   # 307 unit and integration tests
+tests/                   # unit and integration tests (`uv run pytest tests/`)
 scripts/
   obsidian_sync/         # CLI for vault ingest/export
-supabase/migrations/     # 001-014 schema migrations (005 removed as a no-op)
+supabase/migrations/     # hand-numbered SQL, applied manually (005 removed as a no-op)
 docs/plans/              # Implementation plans (Flutter PRD, locked decisions)
 Dockerfile
 pyproject.toml
@@ -199,7 +197,7 @@ Port:   8000
 
 ## Database
 
-Sixteen tables in Supabase:
+Tables in Supabase (see `supabase/migrations/` for the authoritative, current schema):
 
 - **organizations** stores tenants (one today: Jordan Bartlett)
 - **agents** stores agent config (one today: claw-main), DB-driven tools and system prompts
@@ -211,22 +209,22 @@ Sixteen tables in Supabase:
 - **obsidian_notes** / **obsidian_note_chunks** vault notes with pgvector embeddings
 - **proactive_schedules** cron-driven task definitions for outbound messaging
 - **proactive_messages** audit log of every proactive message sent
-- **usage_events** one row per agent run — cost, tokens, latency, outcome (source of truth for cost / quality dashboards)
-- **feedback** rating + optional note per `/feedback` submission, attributed to the most recent agent
+- **usage_events** one row per agent run: cost, tokens, latency, outcome (source of truth for cost / quality dashboards)
 - **workout_profiles** / **workout_plans** / **workout_logs** training preferences, one-active-per-org plans, and logged workouts for the workout coach
 
 RLS is enabled on all tables. Uses the service role key (server-side only).
 
 ## Observability
 
-Every agent run goes through `src/jordan_claw/utils/agent_runner.py:run_agent_instrumented`, which produces four signals:
+Three pillars share one `trace_id` per run: a Logfire trace, a Supabase `usage_events` row (cache-aware cost), and a PostHog `agent_run_completed` event. Agent runs (chat, proactive, events, memory extraction) go through `src/jordan_claw/utils/agent_runner.py:run_agent_instrumented`, the shared instrumentation choke point; a couple of non-agent-run call sites (voice classifier, Whisper transcription) self-instrument outside it by design. Full signal map, event catalogue, and dashboard definitions: `docs/observability.md`.
 
-1. **Logfire trace** — parent `agent run` span carrying `agent_slug`, `channel`, `run_kind`, `usage.cost_usd`, `usage.duration_ms`, `usage.tool_call_count`, `outcome.success`. Auto-instrumentation via `logfire.instrument_pydantic_ai()` populates the child `chat anthropic:*` spans.
-2. **`usage_events` row** — fire-and-forget INSERT for queryable analytics (`run_kind` ∈ `user_message` / `proactive` / `memory_extract` / `eval`).
-3. **PostHog `agent_run_completed` event** — feeds the production dashboard (id `1543058`) with cost, latency, runs-per-agent, and feedback rollups.
-4. **Token-budget guardrail** — runs that exceed 200K total tokens raise `TokenBudgetExceededError` and record a failure row instead of melting the bill.
+Nightly regression evals (`claw-eval`, Railway cron service `evals-cron`) score fixed datasets against committed baselines and fail the run on a drop. Online evaluation continuously scores a sample of live production traffic with the same evaluators, judge-bearing on `claw-main`, deterministic-only on `med-check` (its content stays out of Logfire by design). Dataset catalogue, cost, and CLI usage: `docs/evals.md`.
 
-A separate Railway service (`evals-cron`) runs the Pydantic Evals suite nightly at 03:00 UTC against `memory_recall` and `obsidian_retrieval` datasets. Baselines are committed; >5pp drops exit non-zero and emit a regression event. See `docs/evals.md` for the harness and `docs/observability.md` for the run-time signal map. `POST /api/analytics/event` is mounted as a frontend proxy for future client-side emissions.
+User feedback attaches directly to a completed run's Logfire trace via `POST /app/feedback` (bearer app token, W3C traceparent carried on the assistant message), unifying manual feedback with automated eval results in one place.
+
+Alert queries and the Logfire MCP setup: `docs/alerts.md`.
+
+`POST /api/analytics/event` is mounted as a frontend proxy for future client-side emissions.
 
 ## What's Next
 
@@ -236,8 +234,10 @@ A separate Railway service (`evals-cron`) runs the Pydantic Evals suite nightly 
 
 ## Docs
 
+- `docs/architecture.md`: maintained system map, read this first for any change
 - `docs/observability.md` — Logfire / `usage_events` / PostHog signal map
 - `docs/evals.md` — Pydantic Evals harness and dataset authoring guide
+- `docs/alerts.md`: Logfire alert queries and MCP setup
 - `docs/claw-main-prompt-reference.md` — agent prompt reference
 - `docs/jordan-claw-lessons-learned.md` — retrospective notes
 - `docs/superpowers/specs/` — older design specs

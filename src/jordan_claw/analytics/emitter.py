@@ -15,7 +15,6 @@ ALLOWED_EVENTS: set[str] = {
     "proactive_sent",
     "agent_session_started",
     "eval_run_completed",
-    "feedback_submitted",
     "transcription_completed",
     "email_sent",
     "event_trigger_fired",
@@ -217,23 +216,3 @@ async def event_trigger_fired(
         "duration_ms": duration_ms,
     }
     _fire("event_trigger_fired", _resolve_distinct_id(user_id, org_id), props)
-
-
-async def feedback_submitted(
-    *,
-    org_id: str,
-    user_id: str | None,
-    agent_slug: str,
-    rating: int,
-    has_note: bool,
-    prompt_source: str,
-    conversation_id: str | None,
-) -> None:
-    props = {
-        "agent_slug": agent_slug,
-        "rating": rating,
-        "has_note": has_note,
-        "prompt_source": prompt_source,
-        "conversation_id": conversation_id,
-    }
-    _fire("feedback_submitted", _resolve_distinct_id(user_id, org_id), props)

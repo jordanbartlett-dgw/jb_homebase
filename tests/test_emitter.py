@@ -28,7 +28,6 @@ def test_allowed_events_matches_emitter_function_names():
         "proactive_sent",
         "agent_session_started",
         "eval_run_completed",
-        "feedback_submitted",
         "transcription_completed",
         "email_sent",
         "event_trigger_fired",
@@ -227,29 +226,6 @@ async def test_eval_run_completed_handles_none_cost(mock_client):
     props = mock_client.capture.call_args.kwargs["properties"]
     assert props["cost_usd"] is None
     assert props["failures"] == 0
-
-
-@pytest.mark.asyncio
-async def test_feedback_submitted_emits(mock_client):
-    await emitter.feedback_submitted(
-        org_id="org-1",
-        user_id=None,
-        agent_slug="claw-main",
-        rating=5,
-        has_note=True,
-        prompt_source="manual",
-        conversation_id="conv-1",
-    )
-    await _drain()
-
-    kwargs = mock_client.capture.call_args.kwargs
-    assert kwargs["event"] == "feedback_submitted"
-    props = kwargs["properties"]
-    assert props["agent_slug"] == "claw-main"
-    assert props["rating"] == 5
-    assert props["has_note"] is True
-    assert props["prompt_source"] == "manual"
-    assert props["conversation_id"] == "conv-1"
 
 
 @pytest.mark.asyncio

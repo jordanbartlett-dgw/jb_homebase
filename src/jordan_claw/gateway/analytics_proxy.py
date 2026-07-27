@@ -112,13 +112,3 @@ async def _dispatch(event: str, distinct_id: str, props: dict, org_id: str) -> N
             cost_usd=props.get("cost_usd"),
             failures=props.get("failures", 0),
         )
-    elif event == "feedback_submitted":
-        await emitter.feedback_submitted(
-            org_id=org_id,
-            user_id=distinct_id,
-            agent_slug=props["agent_slug"],
-            rating=props["rating"],
-            has_note=props["has_note"],
-            prompt_source=props["prompt_source"],
-            conversation_id=props.get("conversation_id"),
-        )

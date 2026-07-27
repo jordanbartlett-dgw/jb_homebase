@@ -79,29 +79,3 @@ async def save_usage_event(
             run_kind=run_kind_value,
             error=str(exc),
         )
-
-
-async def most_recent_agent(
-    client: AsyncClient,
-    *,
-    org_id: str,
-    channel: str,
-) -> str | None:
-    """Return the agent_slug of the most recent user_message run on this channel.
-
-    No time cutoff — used by the /feedback command (PR4) to attribute a
-    rating to the agent the user was most recently talking to.
-    """
-    result = (
-        await client.table("usage_events")
-        .select("agent_slug")
-        .eq("org_id", org_id)
-        .eq("channel", channel)
-        .eq("run_kind", RunKind.USER_MESSAGE.value)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    )
-    if not result.data:
-        return None
-    return result.data[0]["agent_slug"]

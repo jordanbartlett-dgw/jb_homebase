@@ -22,14 +22,13 @@ Every agent run produces all three: a Logfire trace, a `usage_events` row, and a
 | `proactive_sent` | user_id | `schedule_name?, task_type, channel, content_length, agent_slug?, trigger` |
 | `agent_session_started` | user_id | `channel, agent_slug` (emitted on conversation insert) |
 | `eval_run_completed` | `system:eval` | `dataset, total_cases, passed, score, prev_score?, regression, duration_ms` |
-| `feedback_submitted` | user_id | `agent_slug, rating, has_note, prompt_source, conversation_id?` |
 | `transcription_completed` | org_id | `duration_s?, audio_bytes, cost_usd?, latency_ms` |
 | `email_sent` | user_id, else org_id | `direction, message_id, thread_id, body_length, subject_length?` |
 | `event_trigger_fired` | user_id, else org_id | `trigger_name, source, outcome, cost_usd?, input_tokens, output_tokens, duration_ms` |
 
 In-process runs always pass `user_id=None` to the emitter today (`utils/agent_runner.py` does not yet populate it), so `distinct_id` currently resolves to `org_id` for every in-process `agent_run_completed` event. Same today for `email_sent` and `event_trigger_fired`: both call sites pass `user_id=None`. The user_id path exists for the frontend proxy, which does supply a real user id.
 
-Event names are constants in `jordan_claw.analytics.emitter.ALLOWED_EVENTS` (8 events, table above). Never inline an event string at a call site. Use the typed emitter function.
+Event names are constants in `jordan_claw.analytics.emitter.ALLOWED_EVENTS` (7 events, table above). Never inline an event string at a call site. Use the typed emitter function.
 
 ## Frontend proxy
 
@@ -57,6 +56,10 @@ Some call sites get no free span coverage from FastAPI/httpx/pydantic-ai autoins
 
 `main.py::configure_logging` appends `logfire.StructlogProcessor(console_log=False)` to the structlog processor chain whenever a Logfire token is configured. Every structured log line (`log.info`, `log.warning`, `log.exception`, ...) now also lands in Logfire, correlated to the active trace/span. Console/JSON rendering is unchanged; `console_log=False` keeps the bridge additive so lines don't double-print.
 
+## Alerts
+
+Logfire alert queries (error rate, cost ceiling, trace-silence heartbeat, online-eval failures) and the Logfire MCP setup live in `docs/alerts.md`.
+
 ## Production dashboard
 
 **Name:** Jordan Claw — Production
@@ -71,8 +74,15 @@ Built via the PostHog MCP server (install: `npx @posthog/wizard mcp add`). Defin
 | 2 | Runs per agent per day | `lSiprPuZ` | `agent_run_completed`, count, breakdown `agent_slug`, daily, last 30d |
 | 3 | p95 latency by agent and run kind | `MNyUxBXZ` | `agent_run_completed`, p95(`duration_ms`), breakdown `agent_slug` × `run_kind`, daily, last 14d, `duration_ms` Y axis |
 | 4 | Proactive delivery rate | `jPYFbymj` | `proactive_sent`, count, breakdown `schedule_name`, daily, last 30d |
-| 5 | Avg feedback per agent | `j8ldY5Dv` | `feedback_submitted`, avg(`rating`), breakdown `agent_slug`, weekly, last 90d |
-| 6 | Low-rating count (rating ≤ 2) | `Qa0lS17U` | `feedback_submitted` filtered to `rating < 3` (PostHog has no `lte` operator on numerics; integer-equivalent), count, breakdown `agent_slug`, daily, last 30d |
+| 5 | Eval scores over time | `hcIUgaby` | `eval_run_completed`, avg(`score`), breakdown `dataset`, daily, last 30d. Added 2026-07-05 directly in PostHog; this doc had drifted out of sync with the live dashboard until this refresh caught it up |
+| 6 | Eval regressions | `TyOn7q2h` | `eval_run_completed` filtered `regression = true` (event property, boolean `exact` match on string `"true"`), count, breakdown `dataset`, daily, last 30d. Backs the regression alert below |
+| 7 | Transcription cost (daily) | `eyMFzGCr` | sum(`cost_usd`) on `transcription_completed`, daily, last 30d, `$`-prefixed Y axis. Classifier and offline-eval costs are NOT in this event, they live in Supabase `usage_events` and Logfire only (see "Coverage: classifier, whisper, embeddings" above); this tile covers Whisper transcription spend exclusively. Empty as of 2026-07-27, zero `transcription_completed` events have landed in this PostHog project yet, so the tile reads $0 across the full 30d window until the first transcription fires (same "empty until first real event" pattern as `Proactive delivery rate` at launch) |
+
+Insights 5 (`j8ldY5Dv`, avg feedback per agent) and 6 (`Qa0lS17U`, low-rating count), both built on the now-retired `feedback_submitted` event, were unpinned from the dashboard on 2026-07-27 (`dashboard-delete-tile`, tile ids `7547983`/`7547984`). The underlying insight objects still exist in PostHog (soft-delete only removes the tile) but no longer render on this dashboard.
+
+### Regression alert
+
+An alert (`Eval regressions > 0`, id `019fa4a2-b83b-0000-b7e0-77a6c8e79abc`) is wired to insight 6 above via the PostHog MCP `alert-create` tool: `TrendsAlertConfig` on series 0, condition `absolute_value`, threshold bounds `{upper: 0}` (type `absolute`, fires whenever the daily regression count exceeds zero), `calculation_interval: daily`, subscribed user `me@jordanbartlett.co` (PostHog user id `524929`). No manual two-click setup was needed; the MCP's `alert-create` domain covers insight-level threshold alerts directly.
 
 ## Data starts on migration date
 
@@ -86,6 +96,8 @@ Built via the PostHog MCP server (install: `npx @posthog/wizard mcp add`). Defin
 - **Drain the queue**: FastAPI lifespan teardown awaits `drain_pending_writes()` (pending `usage_events` inserts) first, then `emitter.drain_pending_emits()` (pending PostHog captures), then `posthog.shutdown()`.
 - **PostHog "Sessions" tab is empty by design**: we use the server-side Python SDK and don't emit `$session_id`. PostHog Sessions is a frontend-SDK concept. Use Live events / the Events explorer / the dashboard above instead.
 - **Project key vs. personal key**: `POSTHOG_API_KEY` must be the *Project* API key (`phc_*`) from PostHog → Project settings. The *Personal* API key (`phx_*`) from user settings will return 401 from the capture endpoint.
+- **`usage_events` retention**: migration 035 schedules a daily `pg_cron` job (`usage-events-retention`, 04:30 UTC) that deletes rows older than 180 days. If `pg_cron` is unavailable on the Supabase plan, the migration skips the schedule and the delete becomes a manual runbook line — run `delete from usage_events where created_at < now() - interval '180 days';` periodically by hand.
+- **Eval report retention**: `evals/run_eval.py` prunes `evals/reports/{dataset}_*.json` to the newest `REPORTS_KEEP_PER_DATASET` (10, ~10 days of nightlies) per dataset after every write, by filename sort scoped to that dataset's own files (timestamps in the name make lexicographic order chronological within one dataset's prefix; sorting across datasets together would sort on the dataset-name prefix instead of by date).
 
 ## Content privacy
 
@@ -176,9 +188,10 @@ Flutter UI for submitting feedback is deferred to the TestFlight track. The
 endpoint exists, nothing in the app calls it yet.
 
 The old PostHog `feedback_submitted` path (`/feedback` bot command →
-`feedback` table → `most_recent_agent`) still runs today but is superseded by
-this trace-attached path. Phase 4 retires it: drops the `feedback` table,
-`save_feedback`, and `most_recent_agent`.
+`feedback` table → `most_recent_agent`) is retired (migration 035): the
+`feedback` table is dropped, `save_feedback` and `most_recent_agent` are
+deleted, and `feedback_submitted` is removed from `ALLOWED_EVENTS`. This
+trace-attached path is the only feedback surface now.
 
 ## Verification log
 
@@ -187,6 +200,7 @@ this trace-attached path. Phase 4 retires it: drops the `feedback` table,
 - 2026-05-04: PR4 deployed to Railway, migration 007 applied. `/feedback 4 testing` and `/feedback weekly 5 great week` both produce rows in `feedback` (`prompt_source` correctly attributed) and `feedback_submitted` PostHog events with all 5 props. Cross-reference confirmed: `feedback.agent_slug` matches `most_recent_agent` from `usage_events` for the same channel. Insights 5 and 6 added to the dashboard.
 - 2026-05-04: PR5 evals scaffold + 2 datasets shipped. Initial baselines: `obsidian_retrieval` 1.000 (20/20), `memory_recall` 0.975 (20/20). RLS verification gate (`tests/test_evals_isolation.py`) green — anon-key returns zero rows from `obsidian_notes` and `obsidian_note_chunks`. `eval_run_completed` event verified in PostHog. Railway cron not yet provisioned (next step).
 - 2026-05-22: PR5 merged to main (commit `0f66501`). Railway cron service `evals-cron` provisioned in `JB-HomeBase/production` (id `46b6e9d6-78f2-4b22-afe1-b6e669d1e183`), schedule `0 3 * * *` UTC, start command `uv run claw-eval run --all`. First green nightly-equivalent run 18:06 UTC: `memory_recall` 0.9625 (20/20, no regression vs baseline), `obsidian_retrieval` 1.000 (20/20). Both `eval_run_completed` events visible in PostHog. Bug discovered + fixed mid-day: cron was missing `OPENAI_API_KEY`/`TAVILY_API_KEY`/`TELEGRAM_BOT_TOKEN` references; `get_settings()` raised inside each task and pydantic-evals silently dropped cases. Fix at `evals/run_eval.py` (commit `20d622f`) now validates settings at startup.
+- 2026-07-27: Dashboard + regression alert refresh via PostHog MCP. Discovered the live dashboard already had a 7th tile (`Eval scores over time`, `hcIUgaby`, added 2026-07-05) that this doc never recorded; added it to the table. Created insight `Eval regressions` (`TyOn7q2h`, id `10493401`), pinned; created insight `Transcription cost (daily)` (`eyMFzGCr`, id `10493403`), pinned, reads $0 today, zero `transcription_completed` events exist in the project yet. Created alert `Eval regressions > 0` (id `019fa4a2-b83b-0000-b7e0-77a6c8e79abc`) on the regressions insight via `alert-create`, threshold count > 0 daily, confirmed via `alerts-list`. Unpinned the two `feedback_submitted`-based tiles (`j8ldY5Dv`, `Qa0lS17U`) via `dashboard-delete-tile`; underlying insights preserved (soft-delete). `dashboard-get` readback after all mutations confirms 7 tiles: the 4 original + `hcIUgaby` + the 2 new, feedback tiles gone.
 
 ## Evals
 
