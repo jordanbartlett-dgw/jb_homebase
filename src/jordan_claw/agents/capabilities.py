@@ -7,8 +7,12 @@ from pydantic_ai import InstrumentationSettings
 from pydantic_ai.capabilities import AbstractCapability, Instrumentation
 from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai_harness import CodeMode
+from pydantic_evals.evaluators import MaxToolCalls
+from pydantic_evals.online import OnlineEvaluator
+from pydantic_evals.online_capability import OnlineEvaluation
 
 from jordan_claw.agents.deps import AgentDeps
+from jordan_claw.agents.online_evaluators import GROUNDEDNESS_JUDGE, OutputSanity
 from jordan_claw.tools.calendar import check_calendar, schedule_event
 from jordan_claw.tools.email import (
     list_email_threads,
@@ -207,6 +211,22 @@ CAPABILITY_REGISTRY: dict[str, AbstractCapability[AgentDeps]] = {
     # apply to gen_ai message attributes, so this is the only content lever.
     "private_content": Instrumentation(
         settings=InstrumentationSettings(include_content=False),
+    ),
+    # Not a ToolGroup: grants NOTHING to the model. Runs online evaluators in
+    # the background after each agent run (non-blocking). A single
+    # OnlineEvaluation instance is shared across every agent it's granted to
+    # and across every run — its evaluators' concurrency semaphores are
+    # process-wide, not per-agent. The groundedness judge's sample rate is
+    # left unset on its OnlineEvaluator wrapper, so it inherits the
+    # process-wide default_sample_rate (ONLINE_EVAL_SAMPLE_RATE, wired in
+    # main.configure_eval_defaults) rather than pinning a rate here.
+    "online_eval": OnlineEvaluation(
+        id="online_eval",
+        evaluators=[
+            OnlineEvaluator(evaluator=MaxToolCalls(max_calls=20), sample_rate=1.0),
+            OnlineEvaluator(evaluator=OutputSanity(), sample_rate=1.0),
+            OnlineEvaluator(evaluator=GROUNDEDNESS_JUDGE),
+        ],
     ),
 }
 
