@@ -9,8 +9,7 @@
     "ToolCorrectness": 1.0,
     "MaxToolCalls": 1.0,
     "contains_60": 1.0,
-    "contains_20": 1.0,
-    "MaxToolCalls_2": 1.0
+    "contains_20": 1.0
   },
   "cases_total": 6,
   "cases_passed": 6

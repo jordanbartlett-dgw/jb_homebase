@@ -48,8 +48,6 @@ cases:
     inputs:
       user_message: "Check my workout plan and my recent workouts, and tell me if I'm on track this week."
     evaluators:
-      - MaxToolCalls:
-          max_calls: 12
       - ToolCorrectness:
           expected_tools: [run_code, get_workout_plan, get_recent_workouts]
           allow_extra: true

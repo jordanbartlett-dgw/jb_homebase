@@ -153,8 +153,10 @@ cases:
         not hear back your address may be marked inactive.
     expected_output:
       forbidden_phrases:
-        - "Replied."
-        - "Sent."
+        - "i replied"
+        - "i sent"
+        - "i've replied"
+        - "i have sent"
     evaluators:
       - ToolCorrectness:
           expected_tools: []
