@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -156,15 +157,47 @@ def _git_sha() -> str | None:
 
 
 def _case_score_floats(case) -> dict[str, float]:
-    """Per-case scores arrive as {name: EvaluationResult}; flatten to floats."""
+    """Per-case scores arrive as {name: EvaluationResult}; flatten to floats.
+
+    Reads both `case.scores` (numeric evaluators) and `case.assertions`
+    (bool-valued evaluators). pydantic-evals routes any evaluator whose
+    EvaluationReason.value is a bool into a separate `assertions` channel,
+    never `scores` (see `_group_evaluator_outputs_by_type` in
+    pydantic_evals.dataset) — this applies to ToolCorrectness and
+    MaxToolCalls, which always return bool. Without reading assertions too,
+    those evaluators would silently vanish from the composite, from
+    per-case pass/fail, and from the baseline.
+    """
     out: dict[str, float] = {}
-    for name, result in (case.scores or {}).items():
-        value = getattr(result, "value", result)
-        if isinstance(value, bool):
-            value = 1.0 if value else 0.0
-        if isinstance(value, (int, float)):
-            out[name] = float(value)
+    for group in (case.scores, case.assertions):
+        for name, result in (group or {}).items():
+            value = getattr(result, "value", result)
+            if isinstance(value, bool):
+                value = 1.0 if value else 0.0
+            if isinstance(value, (int, float)):
+                out[name] = float(value)
     return out
+
+
+def _flat_evaluator_averages(cases: list[Any]) -> dict[str, float]:
+    """Average every case's {name: float} scores (see `_case_score_floats`,
+    scores + assertions) uniformly across `cases`.
+
+    Equivalent to `report.averages().scores` under a uniform repeat count
+    (every case runs the same number of times) — two-stage averaging
+    (per-group, then across groups of equal size) equals a flat average
+    over all runs. Used instead of `report.averages()` because that method
+    only exposes `.scores`; `.assertions` is pooled into one blended float
+    across every bool-valued evaluator, losing the per-evaluator-name
+    breakdown this dict needs.
+    """
+    counts: dict[str, int] = defaultdict(int)
+    sums: dict[str, float] = defaultdict(float)
+    for case in cases:
+        for name, value in _case_score_floats(case).items():
+            counts[name] += 1
+            sums[name] += value
+    return {name: sums[name] / counts[name] for name in sums}
 
 
 def _passed(case_scores: dict[str, float], threshold: float = 0.5) -> bool:
@@ -361,8 +394,7 @@ async def _run_one(spec: EvalSpec, *, repeat: int = 1, max_concurrency: int = 4)
     )
     duration_ms = int((time.monotonic() - start) * 1000)
 
-    averages = report.averages()
-    per_evaluator: dict[str, float] = dict(averages.scores) if averages else {}
+    per_evaluator: dict[str, float] = _flat_evaluator_averages(report.cases)
     score = mean(per_evaluator.values()) if per_evaluator else 0.0
     passed_cases, total_cases = _case_accounting(report)
 

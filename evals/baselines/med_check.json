@@ -1,12 +1,15 @@
 {
   "schema": 2,
   "dataset": "med_check",
-  "ran_at": "2026-07-26T02:35:40.949363+00:00",
-  "git_sha": "6c5aa94",
-  "composite": 0.9791666666666667,
+  "ran_at": "2026-07-27T12:57:36.749775+00:00",
+  "git_sha": "e3af051",
+  "composite": 0.8547222222222222,
   "evaluators": {
-    "llm_judge": 0.9875,
-    "phrase_assertion": 1.0
+    "llm_judge": 0.9125,
+    "phrase_assertion": 1.0,
+    "TrajectoryMatch": 0.4444444444444445,
+    "ToolCorrectness": 0.9166666666666666,
+    "MaxToolCalls": 1.0
   },
   "cases_total": 12,
   "cases_passed": 12
