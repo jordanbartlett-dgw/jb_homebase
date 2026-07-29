@@ -2,11 +2,25 @@ from __future__ import annotations
 
 from pydantic_ai import Agent, ModelRequest, ModelResponse, TextPart, ToolReturnPart, UserPromptPart
 from pydantic_ai.capabilities import ProcessHistory
+from pydantic_ai.models.anthropic import AnthropicModelSettings
 from supabase._async.client import AsyncClient
 
 from jordan_claw.agents.capabilities import resolve_capabilities
 from jordan_claw.agents.deps import AgentDeps
 from jordan_claw.db.agents import AgentConfig, get_agent_config
+
+# Anthropic prompt caching: automatic caching moves a breakpoint forward with
+# the conversation (and covers intra-run tool loops, where each round-trip
+# re-sends the whole prefix); instructions and tool definitions get explicit
+# breakpoints. The memory context block prepended to instructions is cached
+# DB-side and only recomputed when facts change, so the instruction block is
+# byte-stable across turns. anthropic_* settings are ignored by non-Anthropic
+# models, so a future per-agent model pin doesn't need a branch here.
+CACHE_SETTINGS = AnthropicModelSettings(
+    anthropic_cache=True,
+    anthropic_cache_instructions=True,
+    anthropic_cache_tool_definitions=True,
+)
 
 
 def create_agent(
@@ -31,6 +45,7 @@ def create_agent(
             ProcessHistory(trim_history_processor),
         ],
         deps_type=AgentDeps,
+        model_settings=CACHE_SETTINGS,
     )
     return agent, config.model
 

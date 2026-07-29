@@ -244,6 +244,30 @@ def test_create_agent_sets_name_from_slug():
     assert agent.name == "test-agent"
 
 
+def test_create_agent_enables_prompt_caching():
+    """Every gateway agent must carry the Anthropic cache settings: automatic
+    conversation caching plus explicit instruction/tool-definition breakpoints.
+    cache_read was 0 on every prod run before this (full-price prefix resend
+    on every turn and every intra-run tool loop)."""
+    fake_config = AgentConfig(
+        id="agent-001",
+        org_id="org-001",
+        name="Test Agent",
+        slug="test-agent",
+        system_prompt="Be helpful.",
+        model="test",
+        capabilities=[],
+        is_active=True,
+    )
+
+    agent, _ = create_agent(fake_config)
+
+    assert agent.model_settings is not None
+    assert agent.model_settings.get("anthropic_cache") is True
+    assert agent.model_settings.get("anthropic_cache_instructions") is True
+    assert agent.model_settings.get("anthropic_cache_tool_definitions") is True
+
+
 @pytest.mark.asyncio
 async def test_build_agent_skips_unknown_capabilities():
     fake_config = AgentConfig(
