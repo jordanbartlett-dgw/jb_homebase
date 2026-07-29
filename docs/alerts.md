@@ -6,9 +6,13 @@ not push. Alerts are the push layer. Each one below closes a specific incident
 class we've already hit or specifically want to catch before it repeats, not a
 generic "something might be wrong" tripwire.
 
-Logfire alerts are SQL conditions over the `records` table, evaluated on a
-schedule, firing to a notification channel (email or Slack). Span/log attributes
-live in the `attributes` JSON column: `attributes->>'agent_slug'` style. Column
+Logfire alerts are SQL queries over the `records` table, evaluated on a
+schedule, firing to a notification channel (email or Slack). The UI has no
+separate threshold field: the threshold lives in the SQL as a `having` clause,
+the alert is set to fire when the query HAS RESULTS, and the "Look at rows
+from" window must be at least as wide as the query's own interval or the data
+is silently truncated. Span/log attributes live in the `attributes` JSON
+column: `attributes->>'agent_slug'` style. Column
 names below (`start_timestamp`, `span_name`, `attributes`) are Logfire's standard
 `records` schema as of this writing. **Test-run every query in the Logfire SQL
 editor before wiring it to an alert.** A drifted column name usually errors
@@ -27,10 +31,11 @@ from records
 where span_name = 'agent_run'
   and attributes->>'outcome.success' = 'false'
   and start_timestamp > now() - interval '15 minutes'
+having count(*) > 3
 ```
 
-- Schedule: every 5 min.
-- Threshold: fire when `failure_count > 3` (more than 3 failed `agent_run` spans in 15 min).
+- Fire when: has results. Look at rows from: the last hour. Check every: 5 min.
+- Healthy preview: no rows.
 - Channel: email to Jordan's Fastmail. Slack webhook is the alternative if email gets noisy.
 
 ## 2. Daily cost ceiling
@@ -42,10 +47,11 @@ select sum((attributes->>'usage.cost_usd')::float8) as total_cost_usd
 from records
 where span_name = 'agent_run'
   and start_timestamp > now() - interval '24 hours'
+having sum((attributes->>'usage.cost_usd')::float8) > 10
 ```
 
-- Schedule: hourly.
-- Threshold: fire when `total_cost_usd > 10` (24h rolling spend over $10).
+- Fire when: has results. Look at rows from: the last day (must cover the 24h sum). Check every: hour.
+- Healthy preview: no rows.
 - Channel: email to Jordan's Fastmail.
 
 ## 3. Trace-silence heartbeat
@@ -69,10 +75,15 @@ select count(*) as span_count
 from records
 where span_name in ('agent_run', 'proactive.dispatch')
   and start_timestamp > now() - interval '45 minutes'
+having count(*) = 0
 ```
 
-- Schedule: every 15 min.
-- Threshold: fire when `span_count = 0`.
+An aggregate query over zero matching rows still returns one row (count = 0),
+so `having count(*) = 0` yields a row exactly when everything is silent, which
+is when the alert should fire.
+
+- Fire when: has results. Look at rows from: the last hour. Check every: 15 min.
+- Healthy preview: no rows (watchers dispatch every ~5 min).
 - Channel: email to Jordan's Fastmail. This one earns Slack too if/when Slack is wired up. Silence alerts are the ones you want redundant.
 
 ## 4. Online-eval failures
@@ -101,6 +112,7 @@ where span_name = 'gen_ai.evaluation.result'
       and (attributes->>'gen_ai.evaluation.score.value')::float8 = 0
     )
   )
+having count(*) > 2
 ```
 
 Fallback (if attempt 1's positive control returns zero): filter on record kind
@@ -120,10 +132,10 @@ where kind = 'log'
       and (attributes->>'gen_ai.evaluation.score.value')::float8 = 0
     )
   )
+having count(*) > 2
 ```
 
-- Schedule: every 15 min.
-- Threshold: fire when `failure_count > 2` (more than 2 in 1h).
+- Fire when: has results. Look at rows from: the last hour. Check every: 15 min.
 - Channel: email to Jordan's Fastmail.
 - Note: online eval judge sampling defaults to `0.0` (see `docs/observability.md`
   "Online evaluation"). `OutputSanity` runs at `sample_rate=1.0` regardless, so
@@ -173,7 +185,7 @@ What it unlocks:
 3. Paste alert 1's query, run it, adjust column names if the editor errors, confirm it returns a sane count (a zero here is plausible if no runs have failed recently, that's fine).
 4. Repeat step 3 for alerts 2 and 3.
 5. For alert 4: send one `/app/messages` round-trip first (the positive control), then run attempt 1's query (count all results, not just failures) and confirm it returns nonzero. If it returns zero, switch to the fallback query and repeat the check. Do not proceed to alert creation until one of the two returns nonzero on the positive control.
-6. For each of the 4 queries: create an alert from it with the schedule, threshold, and channel listed above.
+6. For each of the 4 queries: create an alert from it. Fire when = has results (never "results change"), with the look-at-rows-from window and check interval listed above. The having clause IS the threshold.
 7. Add an email notification channel pointed at Jordan's Fastmail address (if not already configured) and attach it to all 4 alerts.
 8. Run `claude mcp add logfire --transport http https://logfire-us.pydantic.dev/mcp` in a terminal.
 9. Run `/mcp` in Claude Code, complete the OAuth flow.
