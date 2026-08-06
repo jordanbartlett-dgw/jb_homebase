@@ -191,6 +191,42 @@ def _parse_exercises(details: dict) -> dict[str, _Exercise]:
     return parsed
 
 
+def _effective_sets(exercise: _Exercise) -> float:
+    """Sets for volume math; unrecorded sets default to 1 (weight x reps x sets where available)."""
+    return exercise.sets if exercise.sets is not None else 1.0
+
+
+def _compare_reps_sets(current: _Exercise, previous: _Exercise) -> tuple[_Cmp, str]:
+    """Compare reps/sets for a matched exercise at equal (or absent) weight.
+
+    Priority: sets equal or both absent -> compare reps directly; reps equal but
+    sets differ -> compare set count; otherwise compare total volume
+    (reps x effective sets).
+    """
+    reps_delta = current.reps - previous.reps
+    if current.sets == previous.sets:
+        if reps_delta == 0:
+            return "same", f"same {current.name}"
+        unit = "rep" if abs(reps_delta) == 1 else "reps"
+        return ("better" if reps_delta > 0 else "worse", f"{reps_delta:+.0f} {unit} {current.name}")
+
+    if reps_delta == 0:
+        sets_delta = _effective_sets(current) - _effective_sets(previous)
+        unit = "set" if abs(sets_delta) == 1 else "sets"
+        return ("better" if sets_delta > 0 else "worse", f"{sets_delta:+.0f} {unit} {current.name}")
+
+    volume_delta = current.reps * _effective_sets(current) - previous.reps * _effective_sets(
+        previous
+    )
+    if volume_delta == 0:
+        return "same", f"same {current.name}"
+    unit = "rep" if abs(volume_delta) == 1 else "reps"
+    return (
+        "better" if volume_delta > 0 else "worse",
+        f"{volume_delta:+.0f} total {unit} {current.name}",
+    )
+
+
 def _compare_exercise(current: _Exercise, previous: _Exercise) -> tuple[_Cmp, str] | None:
     """One exercise vs its baseline. None = not comparable (no shared numbers)."""
     if current.weight is not None and previous.weight is not None:
@@ -198,17 +234,11 @@ def _compare_exercise(current: _Exercise, previous: _Exercise) -> tuple[_Cmp, st
             return "better", f"{current.weight - previous.weight:+.0f} lb {current.name}"
         if current.weight < previous.weight:
             return "worse", f"{current.weight - previous.weight:+.0f} lb {current.name}"
-        if current.reps is not None and previous.reps is not None and current.reps != previous.reps:
-            delta = current.reps - previous.reps
-            unit = "rep" if abs(delta) == 1 else "reps"
-            return ("better" if delta > 0 else "worse", f"{delta:+.0f} {unit} {current.name}")
+        if current.reps is not None and previous.reps is not None:
+            return _compare_reps_sets(current, previous)
         return "same", f"same {current.name}"
     if current.reps is not None and previous.reps is not None:
-        if current.reps == previous.reps:
-            return "same", f"same {current.name}"
-        delta = current.reps - previous.reps
-        unit = "rep" if abs(delta) == 1 else "reps"
-        return ("better" if delta > 0 else "worse", f"{delta:+.0f} {unit} {current.name}")
+        return _compare_reps_sets(current, previous)
     return None
 
 

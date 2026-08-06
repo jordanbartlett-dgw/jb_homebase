@@ -151,6 +151,69 @@ def test_strength_same_weight_more_reps_is_positive():
     assert "+1 rep bench" in result.reason
 
 
+def test_strength_same_weight_more_sets_is_positive():
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={"exercises": [{"name": "squat", "weight": 185, "sets": 3, "reps": 5}]},
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={"exercises": [{"name": "squat", "weight": 185, "sets": 5, "reps": 5}]},
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "positive"
+    assert "+2 sets squat" in result.reason
+
+
+def test_strength_same_weight_more_volume_via_sets_is_positive():
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={"exercises": [{"name": "squat", "weight": 185, "sets": 3, "reps": 5}]},
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={"exercises": [{"name": "squat", "weight": 185, "sets": 5, "reps": 4}]},
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "positive"
+    assert "+5 total reps squat" in result.reason
+
+
+def test_strength_same_weight_fewer_sets_is_negative():
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={"exercises": [{"name": "squat", "weight": 185, "sets": 5, "reps": 5}]},
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={"exercises": [{"name": "squat", "weight": 185, "sets": 3, "reps": 5}]},
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "negative"
+
+
+def test_strength_reps_only_more_volume_is_positive():
+    """No weight keys on either side (e.g. plank hold): volume up still scores positive."""
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={"exercises": [{"name": "plank", "reps": 30, "sets": 2}]},
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={"exercises": [{"name": "plank", "reps": 40, "sets": 2}]},
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "positive"
+
+
 def test_strength_lighter_weight_is_negative():
     baseline = _log(
         "2026-07-29",
