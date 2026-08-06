@@ -1,7 +1,14 @@
 from __future__ import annotations
 
-from jordan_claw.workout.analysis import judge_overload
-from jordan_claw.workout.models import WorkoutLog
+from datetime import date
+
+from jordan_claw.workout.analysis import (
+    day_status,
+    judge_overload,
+    plan_status_for_week,
+    planned_for_date,
+)
+from jordan_claw.workout.models import PlanDay, PlanWeek, WorkoutLog, WorkoutPlan
 
 
 def _log(date: str, activity: str = "run", details: dict | None = None) -> WorkoutLog:
@@ -274,3 +281,72 @@ def test_strength_zero_weight_baseline_then_weighted_is_positive():
     result = judge_overload(log, [baseline])
     assert result.verdict == "positive"
     assert "+25 lb pushup" in result.reason
+
+
+def _plan(starts_on: str, n_weeks: int = 2) -> WorkoutPlan:
+    return WorkoutPlan(
+        id="plan-1",
+        org_id="org-1",
+        status="active",
+        starts_on=starts_on,
+        weeks=[
+            PlanWeek(
+                week_number=i + 1,
+                focus=f"week {i + 1}",
+                days=[
+                    PlanDay(day="Monday", session_type="run", description=f"w{i + 1} easy run"),
+                    PlanDay(day="Wednesday", session_type="strength", description="lift"),
+                    PlanDay(day="Sunday", session_type="rest", description="rest"),
+                ],
+            )
+            for i in range(n_weeks)
+        ],
+    )
+
+
+def test_planned_for_date_maps_week_and_weekday():
+    plan = _plan("2026-08-03")  # a Monday
+    assert planned_for_date(plan, date(2026, 8, 3)).description == "w1 easy run"
+    assert planned_for_date(plan, date(2026, 8, 10)).description == "w2 easy run"
+    assert planned_for_date(plan, date(2026, 8, 5)).session_type == "strength"
+    assert planned_for_date(plan, date(2026, 8, 4)) is None  # Tuesday: nothing planned
+
+
+def test_planned_for_date_outside_plan_is_none():
+    plan = _plan("2026-08-03", n_weeks=1)
+    assert planned_for_date(plan, date(2026, 8, 2)) is None  # before starts_on
+    assert planned_for_date(plan, date(2026, 8, 10)) is None  # past last week
+    assert planned_for_date(None, date(2026, 8, 3)) is None
+
+
+def test_plan_status_for_week():
+    plan = _plan("2026-08-03", n_weeks=1)  # covers Aug 3-9
+    assert plan_status_for_week(plan, date(2026, 8, 3)) == "active"
+    assert plan_status_for_week(plan, date(2026, 8, 10)) == "ended"
+    assert plan_status_for_week(None, date(2026, 8, 3)) == "none"
+
+
+def test_day_status_rules():
+    today = date(2026, 8, 6)  # Thursday
+    run = PlanDay(day="Monday", session_type="run", description="easy run")
+    rest = PlanDay(day="Sunday", session_type="rest", description="rest")
+
+    assert day_status(date(2026, 8, 3), today, run, has_logs=True) == "logged"
+    assert day_status(date(2026, 8, 3), today, run, has_logs=False) == "missed"
+    assert day_status(date(2026, 8, 2), today, rest, has_logs=False) == "rest"
+    assert day_status(date(2026, 8, 7), today, run, has_logs=False) == "upcoming"
+    assert day_status(today, today, run, has_logs=False) == "today"
+    assert day_status(today, today, run, has_logs=True) == "logged"
+    assert day_status(today, today, None, has_logs=False) == "empty"
+    assert day_status(date(2026, 8, 4), today, None, has_logs=False) == "empty"
+    assert day_status(date(2026, 8, 8), today, None, has_logs=False) == "empty"
+
+
+def test_planned_for_date_malformed_starts_on_returns_none():
+    plan = _plan("garbage")  # malformed date
+    assert planned_for_date(plan, date(2026, 8, 3)) is None
+
+
+def test_plan_status_for_week_malformed_starts_on_returns_none():
+    plan = _plan("garbage")  # malformed date
+    assert plan_status_for_week(plan, date(2026, 8, 3)) == "none"

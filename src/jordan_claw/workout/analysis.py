@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from jordan_claw.workout.models import WorkoutLog
+from jordan_claw.workout.models import PlanDay, WorkoutLog, WorkoutPlan
 
 OVERLOAD_TOLERANCE = 0.03
 BASELINE_LOOKBACK_DAYS = 45
@@ -241,3 +241,56 @@ def _judge_strength(log: WorkoutLog, all_logs: list[WorkoutLog]) -> OverloadResu
             reason=f"no matching exercises in the last {BASELINE_LOOKBACK_DAYS} days",
         )
     return OverloadResult(verdict=_aggregate(comparisons), reason=", ".join(parts))
+
+
+DayStatus = Literal["logged", "missed", "rest", "upcoming", "today", "empty"]
+
+
+def planned_for_date(plan: WorkoutPlan | None, target: date) -> PlanDay | None:
+    """Pure arithmetic date -> PlanDay mapping. None outside the plan window."""
+    if plan is None:
+        return None
+    try:
+        starts = date.fromisoformat(plan.starts_on)
+    except ValueError:
+        return None
+    offset = (target - starts).days
+    if offset < 0:
+        return None
+    week_index = offset // 7
+    if week_index >= len(plan.weeks):
+        return None
+    weekday_name = target.strftime("%A")
+    for plan_day in plan.weeks[week_index].days:
+        if plan_day.day.strip().lower() == weekday_name.lower():
+            return plan_day
+    return None
+
+
+def plan_status_for_week(
+    plan: WorkoutPlan | None, week_start: date
+) -> Literal["active", "none", "ended"]:
+    if plan is None:
+        return "none"
+    try:
+        starts = date.fromisoformat(plan.starts_on)
+    except ValueError:
+        return "none"
+    plan_end = starts + timedelta(days=7 * len(plan.weeks) - 1)
+    if week_start > plan_end:
+        return "ended"
+    return "active"
+
+
+def day_status(target: date, today: date, planned: PlanDay | None, *, has_logs: bool) -> DayStatus:
+    if has_logs:
+        return "logged"
+    if planned is None:
+        return "empty"
+    if planned.session_type == "rest":
+        return "rest"
+    if target == today:
+        return "today"
+    if target < today:
+        return "missed"
+    return "upcoming"
