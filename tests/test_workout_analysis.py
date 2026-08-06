@@ -257,3 +257,20 @@ def test_strength_malformed_exercises_is_no_baseline():
     log = _log("2026-08-05", activity="strength", details={})
     result = judge_overload(log, [baseline])
     assert result.verdict == "no_baseline"
+
+
+def test_strength_zero_weight_baseline_then_weighted_is_positive():
+    """Bodyweight exercise (weight 0) upgraded to weighted (e.g., weighted vest)."""
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={"exercises": [{"name": "pushup", "weight": 0, "reps": 20}]},
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={"exercises": [{"name": "pushup", "weight": 25, "reps": 20}]},
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "positive"
+    assert "+25 lb pushup" in result.reason

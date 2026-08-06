@@ -153,6 +153,15 @@ class _Exercise(BaseModel):
     sets: float | None = None
 
 
+def _first_number(stats: dict, *keys: str) -> float | None:
+    """Return the first non-None numeric value from stats for the given keys."""
+    for key in keys:
+        value = _number(stats.get(key))
+        if value is not None:
+            return value
+    return None
+
+
 def _parse_exercises(details: dict) -> dict[str, _Exercise]:
     """Lenient parse of details['exercises'] into name -> stats. Empty on mess."""
     raw = details.get("exercises")
@@ -175,7 +184,7 @@ def _parse_exercises(details: dict) -> dict[str, _Exercise]:
             continue
         parsed[key] = _Exercise(
             name=key,
-            weight=_number(stats.get("weight") or stats.get("weight_lb") or stats.get("lbs")),
+            weight=_first_number(stats, "weight", "weight_lb", "lbs"),
             reps=_number(stats.get("reps")),
             sets=_number(stats.get("sets")),
         )
