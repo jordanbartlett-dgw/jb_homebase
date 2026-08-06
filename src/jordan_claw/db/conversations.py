@@ -203,3 +203,56 @@ async def update_conversation_status(
     await (
         client.table("conversations").update({"status": status}).eq("id", conversation_id).execute()
     )
+
+
+async def list_recallable_conversations(
+    client: AsyncClient,
+    *,
+    org_id: str,
+    agent_slug: str,
+    window_start: str,
+    window_end: str | None = None,
+    limit: int = 10,
+) -> list[dict]:
+    """Archived app-channel sessions for one agent inside the recall window."""
+    query = (
+        client.table("conversations")
+        .select("id, created_at")
+        .eq("org_id", org_id)
+        .eq("channel", "app")
+        .eq("channel_thread_id", agent_slug)
+        .eq("status", "archived")
+        .gte("created_at", window_start)
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+    if window_end is not None:
+        query = query.lte("created_at", window_end)
+    result = await query.execute()
+    return result.data
+
+
+async def get_recallable_conversation(
+    client: AsyncClient,
+    *,
+    conversation_id: str,
+    org_id: str,
+    agent_slug: str,
+    window_start: str,
+) -> dict | None:
+    """One ARCHIVED conversation, only if it belongs to this org + agent
+    thread and started inside the recall window. Ownership enforcement for
+    read_past_conversation lives here, in the query."""
+    result = (
+        await client.table("conversations")
+        .select("id, created_at")
+        .eq("id", conversation_id)
+        .eq("org_id", org_id)
+        .eq("channel", "app")
+        .eq("channel_thread_id", agent_slug)
+        .eq("status", "archived")
+        .gte("created_at", window_start)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None

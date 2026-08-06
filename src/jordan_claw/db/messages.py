@@ -139,3 +139,61 @@ async def get_conversation_messages(
         .execute()
     )
     return result.data
+
+
+async def search_archived_messages(
+    client: AsyncClient,
+    *,
+    org_id: str,
+    agent_slug: str,
+    query: str,
+    window_start: str,
+    window_end: str | None = None,
+    limit: int = 10,
+) -> list[dict]:
+    """ILIKE search over one agent's archived app-channel transcripts.
+
+    The !inner join makes the conversation filters restrict message rows;
+    without it PostgREST returns messages with a null embed instead of
+    filtering them out.
+    """
+    q = (
+        client.table("messages")
+        .select(
+            "content, role, created_at, conversation_id, "
+            "conversations!inner(org_id, channel, channel_thread_id, status, created_at)"
+        )
+        .eq("conversations.org_id", org_id)
+        .eq("conversations.channel", "app")
+        .eq("conversations.channel_thread_id", agent_slug)
+        .eq("conversations.status", "archived")
+        .gte("conversations.created_at", window_start)
+        .in_("role", ["user", "assistant"])
+        .ilike("content", f"%{query}%")
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+    if window_end is not None:
+        q = q.lte("conversations.created_at", window_end)
+    result = await q.execute()
+    return result.data
+
+
+async def get_conversation_messages_page(
+    client: AsyncClient,
+    conversation_id: str,
+    *,
+    offset: int,
+    limit: int,
+) -> tuple[list[dict], int]:
+    """One oldest-first page of a transcript plus the exact total row count."""
+    result = (
+        await client.table("messages")
+        .select("role, content, created_at", count="exact")
+        .eq("conversation_id", conversation_id)
+        .in_("role", ["user", "assistant"])
+        .order("created_at", desc=False)
+        .range(offset, offset + limit - 1)
+        .execute()
+    )
+    return result.data, result.count or 0
