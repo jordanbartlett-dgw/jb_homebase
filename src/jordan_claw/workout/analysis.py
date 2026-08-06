@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 from typing import Literal
 
@@ -153,13 +154,41 @@ class _Exercise(BaseModel):
     sets: float | None = None
 
 
+_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _number_loose(value: object) -> float | None:
+    """Like _number, but also extracts a leading number embedded in a string
+    (e.g. "130lb sandbag" -> 130.0, "50 lb" -> 50.0). Strings with no digits
+    (e.g. "bodyweight") return None."""
+    if isinstance(value, str):
+        match = _NUMBER_RE.search(value)
+        return float(match.group()) if match else None
+    return _number(value)
+
+
 def _first_number(stats: dict, *keys: str) -> float | None:
     """Return the first non-None numeric value from stats for the given keys."""
     for key in keys:
-        value = _number(stats.get(key))
+        value = _number_loose(stats.get(key))
         if value is not None:
             return value
     return None
+
+
+def _parse_reps(value: object) -> tuple[float | None, bool]:
+    """Parse a reps value. Returns (total_reps, came_from_list).
+
+    A list is treated as per-set reps (e.g. [7, 6] for assisted pull-ups):
+    numeric elements are summed for the total. An empty or all-non-numeric
+    list yields reps=None. came_from_list is True whenever the raw value was
+    a list, so callers can drop a redundant `sets` key (the list already
+    enumerates sets).
+    """
+    if isinstance(value, list):
+        numbers = [n for n in (_number(item) for item in value) if n is not None]
+        return (sum(numbers) if numbers else None), True
+    return _number(value), False
 
 
 def _parse_exercises(details: dict) -> dict[str, _Exercise]:
@@ -182,11 +211,12 @@ def _parse_exercises(details: dict) -> dict[str, _Exercise]:
         key = name.strip().lower()
         if not key:
             continue
+        reps, reps_from_list = _parse_reps(stats.get("reps"))
         parsed[key] = _Exercise(
             name=key,
-            weight=_first_number(stats, "weight", "weight_lb", "lbs"),
-            reps=_number(stats.get("reps")),
-            sets=_number(stats.get("sets")),
+            weight=_first_number(stats, "weight", "weight_lb", "lbs", "load"),
+            reps=reps,
+            sets=None if reps_from_list else _number(stats.get("sets")),
         )
     return parsed
 

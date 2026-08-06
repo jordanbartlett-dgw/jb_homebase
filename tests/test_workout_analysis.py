@@ -346,6 +346,116 @@ def test_strength_zero_weight_baseline_then_weighted_is_positive():
     assert "+25 lb pushup" in result.reason
 
 
+def test_strength_load_string_weight_heavier_is_positive():
+    """Real prod shape: weight embedded in a 'load' string, e.g. '130lb sandbag'."""
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={
+            "exercises": [
+                {"load": "130lb sandbag", "name": "sandbag box squat", "reps": 10, "sets": 2}
+            ]
+        },
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={
+            "exercises": [
+                {"load": "140lb sandbag", "name": "sandbag box squat", "reps": 10, "sets": 2}
+            ]
+        },
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "positive"
+    assert "+10 lb sandbag box squat" in result.reason
+
+
+def test_strength_load_string_weight_same_more_reps_is_positive():
+    """Real prod shape: kettlebell load string, same weight, more reps."""
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={
+            "exercises": [
+                {
+                    "load": "50lb kettlebell",
+                    "name": "kettlebell shoulder press",
+                    "reps": 7,
+                    "sets": 2,
+                }
+            ]
+        },
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={
+            "exercises": [
+                {
+                    "load": "50lb kettlebell",
+                    "name": "kettlebell shoulder press",
+                    "reps": 8,
+                    "sets": 2,
+                }
+            ]
+        },
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "positive"
+    assert "+1 rep kettlebell shoulder press" in result.reason
+
+
+def test_strength_reps_list_more_total_is_positive():
+    """Real prod shape: reps is a per-set list; sets key must be ignored when reps is a list."""
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={"exercises": [{"name": "assisted pull ups", "reps": [7, 6], "sets": 2}]},
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={"exercises": [{"name": "assisted pull ups", "reps": [8, 7], "sets": 2}]},
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "positive"
+    assert "assisted pull ups" in result.reason
+
+
+def test_strength_reps_list_parses_with_sets_none():
+    """A reps-list exercise ignores the sets key entirely (list already enumerates sets)."""
+    from jordan_claw.workout.analysis import _parse_exercises
+
+    parsed = _parse_exercises(
+        {"exercises": [{"name": "assisted pull ups", "reps": [7, 6], "sets": 2}]}
+    )
+    exercise = parsed["assisted pull ups"]
+    assert exercise.reps == 13.0
+    assert exercise.sets is None
+
+
+def test_strength_load_string_without_number_falls_back_to_reps():
+    """'bodyweight' has no embedded number: weight parses to None, no crash."""
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={
+            "exercises": [{"load": "bodyweight", "name": "pistol squat", "reps": 5, "sets": 3}]
+        },
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={
+            "exercises": [{"load": "bodyweight", "name": "pistol squat", "reps": 6, "sets": 3}]
+        },
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "positive"
+    assert "+1 rep pistol squat" in result.reason
+
+
 def _plan(starts_on: str, n_weeks: int = 2) -> WorkoutPlan:
     return WorkoutPlan(
         id="plan-1",
