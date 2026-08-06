@@ -107,7 +107,10 @@ async def log_workout(
     allow_duplicate: bool = False,
 ) -> str:
     """Record a NEW completed workout when Jordan reports one. details holds numbers
-    (distance_mi, duration_min, exercises). logged_date defaults to today.
+    (distance_mi, duration_min, exercises). For strength, prefer exercises as a list
+    of {name, weight (numeric lb), reps, sets} — put loads in the numeric weight key,
+    not prose like "130lb sandbag", so progress can be tracked automatically.
+    logged_date defaults to today.
     NOT for adding detail or corrections to a session already logged in this
     conversation — use amend_last_workout for that. If Jordan genuinely did two
     separate sessions of the same activity on one day, pass allow_duplicate=true."""
