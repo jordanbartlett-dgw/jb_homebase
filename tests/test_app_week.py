@@ -4,7 +4,9 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
-from jordan_claw.gateway.app_week import load_workout_week
+import httpx
+
+from jordan_claw.gateway.app_week import WeekDay, WorkoutWeekResponse, load_workout_week
 from jordan_claw.workout.models import WorkoutLog, WorkoutPlan
 
 CHICAGO = ZoneInfo("America/Chicago")
@@ -135,3 +137,68 @@ async def test_unscored_activity_has_null_verdict():
     entry = response.days[1].logs[0]
     assert entry.verdict is None
     assert entry.reason is None
+
+
+def _client() -> httpx.AsyncClient:
+    from jordan_claw.main import app
+
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+    )
+
+
+def _wire_app_state(app_token: str = "app-token") -> None:
+    from jordan_claw.main import app
+
+    settings = MagicMock()
+    settings.claw_app_token = app_token
+    settings.default_org_id = "org-1"
+    app.state.settings = settings
+    app.state.db = MagicMock()
+
+
+async def test_week_route_requires_app_auth():
+    _wire_app_state()
+    async with _client() as client:
+        response = await client.get(
+            "/app/workout/week",
+            headers={"Authorization": "Bearer wrong"},
+        )
+    assert response.status_code == 401
+
+
+async def test_week_route_returns_structured_payload():
+    from jordan_claw import main
+
+    _wire_app_state()
+    payload = WorkoutWeekResponse(
+        week_start="2026-08-03",
+        week_end="2026-08-09",
+        timezone="America/Chicago",
+        plan_status="active",
+        days=[
+            WeekDay(
+                date=f"2026-08-0{n}",
+                is_today=n == 6,
+                planned=None,
+                logs=[],
+                day_status="empty",
+            )
+            for n in range(3, 10)
+        ],
+    )
+
+    with patch.object(main, "load_workout_week", new=AsyncMock(return_value=payload)) as loader:
+        async with _client() as client:
+            response = await client.get(
+                "/app/workout/week",
+                headers={"Authorization": "Bearer app-token"},
+            )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["week_start"] == "2026-08-03"
+    assert body["plan_status"] == "active"
+    assert len(body["days"]) == 7
+    assert loader.await_args.kwargs["org_id"] == "org-1"

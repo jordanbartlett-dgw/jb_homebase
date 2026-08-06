@@ -54,6 +54,7 @@ from jordan_claw.gateway.app_stream import (
     start_app_message_stream,
 )
 from jordan_claw.gateway.app_today import TodayResponse, load_today
+from jordan_claw.gateway.app_week import WorkoutWeekResponse, load_workout_week
 from jordan_claw.gateway.classifier import classify
 from jordan_claw.gateway.voice import (
     OriginalRunIncompleteError,
@@ -453,6 +454,17 @@ async def app_today(
         fastmail_username=settings.fastmail_username,
         fastmail_app_password=settings.fastmail_app_password,
         days=days,
+    )
+
+
+@app.get("/app/workout/week", response_model=WorkoutWeekResponse)
+async def app_workout_week(request: Request) -> WorkoutWeekResponse:
+    """Current Mon-Sun training week: plan ahead, logged workouts + overload
+    verdicts behind. Pure DB reads, no agent run."""
+    _require_app_token(request, surface="app workout week")
+    return await load_workout_week(
+        request.app.state.db,
+        org_id=request.app.state.settings.default_org_id,
     )
 
 
