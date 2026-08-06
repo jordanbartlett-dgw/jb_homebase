@@ -1,6 +1,7 @@
 import '../models/conversation.dart';
 import '../models/message.dart';
 import '../models/today.dart';
+import '../models/workout_week.dart';
 
 /// All mock data for the design build. Replace with real API calls in PR2.
 ///
@@ -225,6 +226,72 @@ class MockData {
                 timestamp: summary.lastMessageAt,
               ),
             ],
+    );
+  }
+
+  static WorkoutWeek get workoutWeek {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    final sessions = <int, PlannedSession>{
+      0: const PlannedSession(sessionType: 'run', description: 'Easy run, 3 mi', targets: {}),
+      2: const PlannedSession(sessionType: 'strength', description: 'Lower body', targets: {}),
+      4: const PlannedSession(sessionType: 'run', description: 'Tempo run', targets: {}),
+      5: const PlannedSession(sessionType: 'strength', description: 'Upper body', targets: {}),
+      6: const PlannedSession(sessionType: 'rest', description: 'Rest day', targets: {}),
+    };
+    final days = <WorkoutDay>[];
+    for (var offset = 0; offset < 7; offset++) {
+      final date = monday.add(Duration(days: offset));
+      final isToday = date == today;
+      final planned = sessions[offset];
+      final past = date.isBefore(today);
+      List<LoggedWorkout> logs = const [];
+      DayStatus status;
+      if (past && planned != null && planned.sessionType != 'rest') {
+        final positive = offset.isEven;
+        logs = [
+          LoggedWorkout(
+            id: 'mock-log-$offset',
+            activity: planned.sessionType,
+            details: planned.sessionType == 'run'
+                ? const {'distance_mi': 3.4, 'duration_min': 32}
+                : const {
+                    'exercises': [
+                      {'name': 'squat', 'weight': 195, 'sets': 3, 'reps': 5},
+                    ],
+                  },
+            notes: positive ? 'Felt strong.' : 'Tired today.',
+            verdict: positive ? OverloadVerdict.positive : OverloadVerdict.negative,
+            reason: positive ? '+0.4 mi at same pace vs last week' : '-5 lb squat vs last week',
+          ),
+        ];
+        status = DayStatus.logged;
+      } else if (planned == null) {
+        status = DayStatus.empty;
+      } else if (planned.sessionType == 'rest') {
+        status = DayStatus.rest;
+      } else if (isToday) {
+        status = DayStatus.today;
+      } else if (past) {
+        status = DayStatus.missed;
+      } else {
+        status = DayStatus.upcoming;
+      }
+      days.add(WorkoutDay(
+        date: date,
+        isToday: isToday,
+        planned: planned,
+        logs: logs,
+        status: status,
+      ));
+    }
+    return WorkoutWeek(
+      weekStart: monday,
+      weekEnd: monday.add(const Duration(days: 6)),
+      timezone: 'America/Chicago',
+      planStatus: PlanStatus.active,
+      days: days,
     );
   }
 }

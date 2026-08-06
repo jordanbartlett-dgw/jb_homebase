@@ -10,6 +10,7 @@ import '../features/history/history_screen.dart';
 import '../features/home/calendar_screen.dart';
 import '../features/home/dashboard_screen.dart';
 import '../features/home/digest_detail_screen.dart';
+import '../features/home/week_schedule_screen.dart';
 import '../features/voice/voice_overlay.dart';
 import '../features/voice/voice_draft.dart';
 import '../features/voice/voice_preview.dart';
@@ -87,6 +88,10 @@ GoRouter buildAppRouter(WidgetRef ref) {
                   GoRoute(
                     path: 'calendar',
                     builder: (context, state) => const CalendarScreen(),
+                  ),
+                  GoRoute(
+                    path: 'training',
+                    builder: (context, state) => const WeekScheduleScreen(),
                   ),
                 ],
               ),

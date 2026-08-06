@@ -179,3 +179,20 @@ async def get_recent_workout_logs(
         .execute()
     )
     return [WorkoutLog.model_validate(row) for row in result.data]
+
+
+async def get_logs_since(
+    client: AsyncClient,
+    org_id: str,
+    since_date: str,
+) -> list[WorkoutLog]:
+    """All logs on or after since_date (YYYY-MM-DD), oldest first."""
+    result = (
+        await client.table("workout_logs")
+        .select("*")
+        .eq("org_id", org_id)
+        .gte("logged_date", since_date)
+        .order("logged_date", desc=False)
+        .execute()
+    )
+    return [WorkoutLog.model_validate(row) for row in result.data]
