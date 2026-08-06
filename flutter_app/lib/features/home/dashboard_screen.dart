@@ -15,6 +15,7 @@ import '../../state/today_state.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/colors.dart';
 import 'widgets/proactive_artifact_card.dart';
+import 'widgets/this_week_card.dart';
 
 /// Homebase landing view: server-truth digest, calendar, and agent dock.
 class DashboardScreen extends ConsumerWidget {
@@ -84,6 +85,11 @@ class DashboardScreen extends ConsumerWidget {
                     overview: overview,
                     onViewCalendar: () => context.push(Routes.calendar),
                   ),
+                ),
+                const SizedBox(height: 28),
+                const FadeSlideIn(
+                  delay: Duration(milliseconds: 240),
+                  child: ThisWeekCard(),
                 ),
                 if (overview.artifacts.isNotEmpty) ...[
                   const SizedBox(height: 28),
