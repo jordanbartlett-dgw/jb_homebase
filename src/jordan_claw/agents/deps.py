@@ -11,6 +11,7 @@ class AgentDeps(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     org_id: str
+    agent_slug: str = ""
     tavily_api_key: str
     fastmail_username: str
     fastmail_app_password: str

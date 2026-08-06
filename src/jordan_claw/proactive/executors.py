@@ -83,6 +83,7 @@ async def _run_agent_prompt(
     # prompt-only. Chat runs (gateway/router.py) still get real creds.
     deps = AgentDeps(
         org_id=org_id,
+        agent_slug=agent_slug,
         tavily_api_key=settings.tavily_api_key,
         fastmail_username=settings.fastmail_username,
         fastmail_app_password=settings.fastmail_app_password,
