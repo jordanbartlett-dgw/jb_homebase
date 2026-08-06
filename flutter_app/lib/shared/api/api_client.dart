@@ -6,6 +6,7 @@ import 'conversation_api_models.dart';
 import 'gateway_config.dart';
 import 'message_stream_event.dart';
 import 'today_api_models.dart';
+import 'workout_api_models.dart';
 
 /// Reply from the gateway for one sent message (text or voice).
 class AgentReply {
@@ -297,6 +298,13 @@ class ApiClient {
     ).replace(queryParameters: {'days': '7'});
     final resp = await _inner.get(uri, headers: _authorizationHeaders()).timeout(_timeout);
     return TodayPayload.fromJson(_decode(resp));
+  }
+
+  /// GET /app/workout/week — current Mon-Sun training week with verdicts.
+  Future<WorkoutWeekPayload> fetchWorkoutWeek() async {
+    final uri = Uri.parse('$baseUrl/app/workout/week');
+    final resp = await _inner.get(uri, headers: _authorizationHeaders()).timeout(_timeout);
+    return WorkoutWeekPayload.fromJson(_decode(resp));
   }
 
   Map<String, String> _authorizationHeaders() {
