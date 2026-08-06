@@ -420,7 +420,7 @@ def test_strength_reps_list_more_total_is_positive():
     )
     result = judge_overload(log, [baseline])
     assert result.verdict == "positive"
-    assert "assisted pull ups" in result.reason
+    assert "+2 reps assisted pull ups" in result.reason
 
 
 def test_strength_reps_list_parses_with_sets_none():
