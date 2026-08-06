@@ -146,5 +146,89 @@ def _judge_run(log: WorkoutLog, all_logs: list[WorkoutLog]) -> OverloadResult:
     )
 
 
+class _Exercise(BaseModel):
+    name: str
+    weight: float | None = None
+    reps: float | None = None
+    sets: float | None = None
+
+
+def _parse_exercises(details: dict) -> dict[str, _Exercise]:
+    """Lenient parse of details['exercises'] into name -> stats. Empty on mess."""
+    raw = details.get("exercises")
+    entries: list[tuple[str, dict]] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict):
+                name = item.get("name") or item.get("exercise")
+                if isinstance(name, str):
+                    entries.append((name, item))
+    elif isinstance(raw, dict):
+        for name, stats in raw.items():
+            if isinstance(name, str) and isinstance(stats, dict):
+                entries.append((name, stats))
+
+    parsed: dict[str, _Exercise] = {}
+    for name, stats in entries:
+        key = name.strip().lower()
+        if not key:
+            continue
+        parsed[key] = _Exercise(
+            name=key,
+            weight=_number(stats.get("weight") or stats.get("weight_lb") or stats.get("lbs")),
+            reps=_number(stats.get("reps")),
+            sets=_number(stats.get("sets")),
+        )
+    return parsed
+
+
+def _compare_exercise(current: _Exercise, previous: _Exercise) -> tuple[_Cmp, str] | None:
+    """One exercise vs its baseline. None = not comparable (no shared numbers)."""
+    if current.weight is not None and previous.weight is not None:
+        if current.weight > previous.weight:
+            return "better", f"{current.weight - previous.weight:+.0f} lb {current.name}"
+        if current.weight < previous.weight:
+            return "worse", f"{current.weight - previous.weight:+.0f} lb {current.name}"
+        if current.reps is not None and previous.reps is not None and current.reps != previous.reps:
+            delta = current.reps - previous.reps
+            unit = "rep" if abs(delta) == 1 else "reps"
+            return ("better" if delta > 0 else "worse", f"{delta:+.0f} {unit} {current.name}")
+        return "same", f"same {current.name}"
+    if current.reps is not None and previous.reps is not None:
+        if current.reps == previous.reps:
+            return "same", f"same {current.name}"
+        delta = current.reps - previous.reps
+        unit = "rep" if abs(delta) == 1 else "reps"
+        return ("better" if delta > 0 else "worse", f"{delta:+.0f} {unit} {current.name}")
+    return None
+
+
 def _judge_strength(log: WorkoutLog, all_logs: list[WorkoutLog]) -> OverloadResult:
-    raise NotImplementedError  # Task 2
+    current = _parse_exercises(log.details)
+    if not current:
+        return OverloadResult(
+            verdict="no_baseline", reason="no parseable exercises in this session"
+        )
+
+    candidates = _baseline_candidates(log, all_logs)
+    comparisons: list[_Cmp] = []
+    parts: list[str] = []
+    for name, exercise in current.items():
+        for candidate in candidates:  # most recent first
+            previous = _parse_exercises(candidate.details).get(name)
+            if previous is None:
+                continue
+            compared = _compare_exercise(exercise, previous)
+            if compared is None:
+                continue
+            cmp, phrase = compared
+            comparisons.append(cmp)
+            parts.append(f"{phrase} ({_vs(candidate)})")
+            break
+
+    if not comparisons:
+        return OverloadResult(
+            verdict="no_baseline",
+            reason=f"no matching exercises in the last {BASELINE_LOOKBACK_DAYS} days",
+        )
+    return OverloadResult(verdict=_aggregate(comparisons), reason=", ".join(parts))

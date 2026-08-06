@@ -109,3 +109,151 @@ def test_run_baseline_with_malformed_date_is_skipped():
     assert result is not None
     assert result.verdict == "positive"
     assert "vs Jul 30" in result.reason
+
+
+def test_strength_heavier_weight_is_positive():
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={"exercises": [{"name": "squat", "weight": 185, "sets": 3, "reps": 5}]},
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={"exercises": [{"name": "squat", "weight": 195, "sets": 3, "reps": 5}]},
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "positive"
+    assert "+10 lb squat" in result.reason
+    assert "vs Jul 29" in result.reason
+
+
+def test_strength_same_weight_more_reps_is_positive():
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={"exercises": [{"name": "bench", "weight": 135, "sets": 3, "reps": 5}]},
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={"exercises": [{"name": "bench", "weight": 135, "sets": 3, "reps": 6}]},
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "positive"
+    assert "+1 rep bench" in result.reason
+
+
+def test_strength_lighter_weight_is_negative():
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={"exercises": [{"name": "squat", "weight": 195}]},
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={"exercises": [{"name": "squat", "weight": 185}]},
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "negative"
+
+
+def test_strength_mixed_exercises_is_none():
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={
+            "exercises": [
+                {"name": "squat", "weight": 185, "reps": 5},
+                {"name": "bench", "weight": 135, "reps": 5},
+            ]
+        },
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={
+            "exercises": [
+                {"name": "squat", "weight": 195, "reps": 5},
+                {"name": "bench", "weight": 135, "reps": 4},
+            ]
+        },
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "none"
+
+
+def test_strength_split_routine_matches_per_exercise_across_sessions():
+    """Push day compares against the last push day, skipping leg day between."""
+    push_baseline = _log(
+        "2026-07-27",
+        activity="strength",
+        details={"exercises": [{"name": "bench", "weight": 135, "reps": 5}]},
+    )
+    leg_day = _log(
+        "2026-08-03",
+        activity="strength",
+        details={"exercises": [{"name": "squat", "weight": 185, "reps": 5}]},
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={"exercises": [{"name": "bench", "weight": 145, "reps": 5}]},
+    )
+    result = judge_overload(log, [push_baseline, leg_day, log])
+    assert result.verdict == "positive"
+    assert "vs Jul 27" in result.reason
+
+
+def test_strength_exercise_names_normalized():
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={"exercises": [{"name": "  Bench Press ", "weight": 135}]},
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={"exercises": [{"name": "bench press", "weight": 145}]},
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "positive"
+
+
+def test_strength_no_matching_exercises_is_no_baseline():
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={"exercises": [{"name": "deadlift", "weight": 225}]},
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={"exercises": [{"name": "overhead press", "weight": 95}]},
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "no_baseline"
+
+
+def test_strength_dict_shaped_exercises_parse():
+    """The LLM sometimes writes exercises as a name->stats mapping."""
+    baseline = _log(
+        "2026-07-29",
+        activity="strength",
+        details={"exercises": {"squat": {"weight": 185, "reps": 5}}},
+    )
+    log = _log(
+        "2026-08-05",
+        activity="strength",
+        details={"exercises": {"squat": {"weight": 195, "reps": 5}}},
+    )
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "positive"
+
+
+def test_strength_malformed_exercises_is_no_baseline():
+    baseline = _log("2026-07-29", activity="strength", details={"exercises": "heavy day"})
+    log = _log("2026-08-05", activity="strength", details={})
+    result = judge_overload(log, [baseline])
+    assert result.verdict == "no_baseline"
