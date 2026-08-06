@@ -50,6 +50,8 @@ EXPECTED_TOOLS = [
     "reply_to_email",
     "list_email_threads",
     "read_email_thread",
+    "search_past_conversations",
+    "read_past_conversation",
 ]
 
 
@@ -113,6 +115,8 @@ def test_deps_tools_have_ctx_param():
         "reply_to_email",
         "list_email_threads",
         "read_email_thread",
+        "search_past_conversations",
+        "read_past_conversation",
     ]
     for name in deps_tools:
         sig = inspect.signature(ALL_TOOLS[name].function)
