@@ -44,6 +44,15 @@ Every inbound message, regardless of channel, funnels into
   an agent run. Calendar failure degrades to `calendar_status="unavailable"`
   while preserving the digest. Briefings are persisted directly as app
   artifacts, independent of an outbound delivery channel.
+- `GET /app/workout/week` (`gateway/app_week.py`): authenticated, read-only
+  current Mon-Sun training week (America/Chicago). Maps the active
+  `workout_plans` row onto the week (planned sessions ahead, `plan_status`
+  active/none/ended) and attaches logged `workout_logs` behind, each scored
+  against its own-activity baseline by `workout/analysis.py` — pure,
+  deterministic comparison functions (run distance/pace with 3% tolerance,
+  per-exercise strength weight/reps, 45-day lookback) yielding a
+  `positive`/`none`/`negative`/`no_baseline` verdict. No LLM in the path; it
+  never triggers an agent run.
 - Voice supports both the original one-shot adapter and the app's
   preview-before-send flow. `POST /voice` (`main.py::voice_message`) remains
   raw audio → Whisper → classifier → agent for backward compatibility.
