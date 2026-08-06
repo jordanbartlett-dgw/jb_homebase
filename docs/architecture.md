@@ -134,10 +134,13 @@ ever list/cancel `source='reminder'` rows.
   workout-coach) that reuse the same tool fns — never grant a *_readonly group
   alongside its full group (duplicate names), plus **email** (4 tools:
   send_email, reply_to_email, list_email_threads, read_email_thread; the
-  agent's own AgentMail inbox, on claw-main), plus **code_mode** (a CodeMode
-  wrapper capability, not a ToolGroup: replaces the agent's granted tools with
+  agent's own AgentMail inbox, on claw-main), plus **chat_history**
+  (search_past_conversations + read_past_conversation: the agent's own
+  archived app conversations, 30-day window, on all three agents), plus
+  **code_mode** (a CodeMode wrapper capability, not a ToolGroup: replaces
+  the agent's granted tools with
   a single sandboxed `run_code` tool that composes them in one step, loops,
-  parallel fan-out; rollback = `array_remove` on the agent row). 37 distinct
+  parallel fan-out; rollback = `array_remove` on the agent row). 39 distinct
   tools total. Unknown ids are skipped with a warning (safe deploy ordering).
   log_workout refuses
   same-day same-activity duplicates unless allow_duplicate=true;
@@ -196,9 +199,9 @@ Observability details, event catalogue, dashboard ids: `docs/observability.md`.
 
 ## Database (Supabase, hosted)
 
-Migrations `001`–`035` (005 removed as a no-op), applied by hand in the SQL
+Migrations `001`–`037` (005 removed as a no-op), applied by hand in the SQL
 Editor. 016/019/021/023/025/028/032/033/035 are schema (run before their code
-deploy), 015/017/018/020/022/024/026/027/029/030/031/034 are data grants/seeds
+deploy), 015/017/018/020/022/024/026/027/029/030/031/034/037 are data grants/seeds
 (015 applied 2026-07-25; the rest run only after their code deploy; headers
 state the ordering). 024, 027, 029, and 031 are applied via `supabase-py`,
 not pasted into the SQL Editor, because the system-prompt or trigger-prompt

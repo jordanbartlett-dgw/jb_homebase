@@ -93,6 +93,7 @@ async def handle_message(
         agent, model_name = create_agent(agent_config, memory_context=memory_context)
         deps = AgentDeps(
             org_id=msg.org_id,
+            agent_slug=agent_slug,
             tavily_api_key=tavily_api_key,
             fastmail_username=fastmail_username,
             fastmail_app_password=fastmail_app_password,

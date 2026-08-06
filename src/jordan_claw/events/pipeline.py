@@ -54,6 +54,7 @@ async def _run_trigger(
     # prompt-only. Chat runs (gateway/router.py) still get real creds.
     deps = AgentDeps(
         org_id=trigger.org_id,
+        agent_slug=trigger.agent_slug,
         tavily_api_key=settings.tavily_api_key,
         fastmail_username=settings.fastmail_username,
         fastmail_app_password=settings.fastmail_app_password,

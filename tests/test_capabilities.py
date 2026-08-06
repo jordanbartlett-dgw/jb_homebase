@@ -20,7 +20,7 @@ def test_tool_counts_ignore_non_toolgroup_capabilities():
     for group in CAPABILITY_REGISTRY.values():
         if isinstance(group, ToolGroup):
             tool_names.update(group.toolset.tools)
-    assert len(tool_names) == 37
+    assert len(tool_names) == 39
 
 
 def test_private_content_capability_disables_content_capture():
@@ -90,6 +90,7 @@ def test_expected_groups_exist():
         "reminders",
         "meds",
         "email",
+        "chat_history",
         "code_mode",
         "private_content",
         "online_eval",
@@ -211,6 +212,13 @@ async def test_email_capability_reaches_the_model():
         "list_email_threads",
         "read_email_thread",
     } <= sent
+
+
+@pytest.mark.asyncio
+async def test_chat_history_capability_reaches_the_model():
+    """Wiring proof: an agent granted chat_history sends both recall tool defs."""
+    sent = await _sent_tools(_prod_shaped_config("claw-main", ["core", "chat_history"]))
+    assert {"search_past_conversations", "read_past_conversation"} <= sent
 
 
 @pytest.mark.asyncio
