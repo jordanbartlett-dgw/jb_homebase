@@ -28,20 +28,34 @@ def judge_overload(log: WorkoutLog, all_logs: list[WorkoutLog]) -> OverloadResul
     return None
 
 
+def _safe_log_date(log: WorkoutLog) -> date | None:
+    """Parse logged_date safely, returning None if unparseable."""
+    try:
+        return date.fromisoformat(log.logged_date)
+    except ValueError:
+        return None
+
+
 def _log_date(log: WorkoutLog) -> date:
     return date.fromisoformat(log.logged_date)
 
 
 def _baseline_candidates(log: WorkoutLog, all_logs: list[WorkoutLog]) -> list[WorkoutLog]:
     """Earlier logs of the same activity within the lookback, most recent first."""
-    own = _log_date(log)
+    own = _safe_log_date(log)
+    if own is None:
+        return []
     floor = own - timedelta(days=BASELINE_LOOKBACK_DAYS)
-    matches = [
-        other
-        for other in all_logs
-        if other.id != log.id and other.activity == log.activity and floor <= _log_date(other) < own
-    ]
-    return sorted(matches, key=_log_date, reverse=True)
+    matches = []
+    for other in all_logs:
+        if other.id == log.id or other.activity != log.activity:
+            continue
+        other_date = _safe_log_date(other)
+        if other_date is None:
+            continue
+        if floor <= other_date < own:
+            matches.append(other)
+    return sorted(matches, key=lambda x: _safe_log_date(x) or date.min, reverse=True)
 
 
 def _number(value: object) -> float | None:
@@ -81,6 +95,11 @@ def _vs(baseline: WorkoutLog) -> str:
 
 
 def _judge_run(log: WorkoutLog, all_logs: list[WorkoutLog]) -> OverloadResult:
+    if _safe_log_date(log) is None:
+        return OverloadResult(
+            verdict="no_baseline",
+            reason="unreadable workout date",
+        )
     candidates = _baseline_candidates(log, all_logs)
     if not candidates:
         return OverloadResult(

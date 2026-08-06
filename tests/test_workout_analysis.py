@@ -79,3 +79,33 @@ def test_unscored_activities_return_none():
     assert judge_overload(log, []) is None
     assert judge_overload(_log("2026-08-04", activity="rest"), []) is None
     assert judge_overload(_log("2026-08-04", activity="other"), []) is None
+
+
+def test_run_malformed_logged_date_is_no_baseline():
+    log = WorkoutLog(
+        id="log-bad",
+        org_id="org-1",
+        logged_date="not-a-date",
+        activity="run",
+        details={"distance_mi": 3.0},
+    )
+    result = judge_overload(log, [])
+    assert result is not None
+    assert result.verdict == "no_baseline"
+    assert "unreadable" in result.reason
+
+
+def test_run_baseline_with_malformed_date_is_skipped():
+    good_baseline = _log("2026-07-30", details={"distance_mi": 3.0, "duration_min": 30})
+    bad_baseline = WorkoutLog(
+        id="log-bad",
+        org_id="org-1",
+        logged_date="not-a-date",
+        activity="run",
+        details={"distance_mi": 2.0, "duration_min": 25},
+    )
+    log = _log("2026-08-04", details={"distance_mi": 3.5, "duration_min": 35})
+    result = judge_overload(log, [bad_baseline, good_baseline])
+    assert result is not None
+    assert result.verdict == "positive"
+    assert "vs Jul 30" in result.reason
