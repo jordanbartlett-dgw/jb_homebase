@@ -11,6 +11,7 @@ class Routes {
   static const String history = '/history';
   static const String digest = '/home/digest';
   static const String calendar = '/home/calendar';
+  static const String training = '/home/training';
 
   static String historyDetail(String conversationId) {
     return '$history/${Uri.encodeComponent(conversationId)}';
