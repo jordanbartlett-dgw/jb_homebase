@@ -21,6 +21,7 @@ from __future__ import annotations
 from pydantic_ai import Agent
 from pydantic_ai.toolsets import FunctionToolset
 
+from evals.target import target_model
 from evals.types import ToolRoutingInputs
 from jordan_claw.tools import calendar as calendar_tools
 from jordan_claw.tools import email as email_tools
@@ -171,7 +172,7 @@ def _build_toolset() -> FunctionToolset:
 
 async def tool_routing_task(inputs: ToolRoutingInputs) -> str:
     agent = Agent(
-        TARGET_MODEL,
+        target_model(TARGET_MODEL),
         instructions=INSTRUCTIONS,
         toolsets=[_build_toolset()],
     )

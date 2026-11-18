@@ -5,6 +5,7 @@ Usage:
     claw-eval run obsidian_retrieval --save-baseline
     claw-eval run --all
     claw-eval run memory_recall --json
+    claw-eval run tool_routing --model local:Qwen3-14B-Q4_K_M
     claw-eval list
     claw-eval compare memory_recall
 """
@@ -13,10 +14,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sys
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -32,6 +34,7 @@ from pydantic_evals.evaluators.llm_as_a_judge import set_default_judge_model
 from pydantic_evals.reporting import EvaluationReport
 
 from evals.registry import BASELINES_DIR, REGISTRY, REPORTS_DIR, EvalSpec
+from evals.target import LOCAL_PREFIX, build_target_model, set_target_override
 from jordan_claw.analytics import emitter
 from jordan_claw.analytics.types import RunKind
 from jordan_claw.config import get_settings
@@ -423,14 +426,34 @@ def _exit_code(summaries: list[RunSummary]) -> int:
     return 0
 
 
-async def _run_one(spec: EvalSpec, *, repeat: int = 1, max_concurrency: int = 4) -> RunSummary:
+def _report_key(dataset: str, model_override: str | None) -> str:
+    """Report filename stem. Override runs get `{dataset}@{model}` so they never
+    match the pinned dataset's `{dataset}_*.json` glob (prune, compare)."""
+    if model_override is None:
+        return dataset
+    return f"{dataset}@{re.sub(r'[^A-Za-z0-9._-]+', '-', model_override)}"
+
+
+async def _run_one(
+    spec: EvalSpec,
+    *,
+    repeat: int = 1,
+    max_concurrency: int = 4,
+    model_override: str | None = None,
+) -> RunSummary:
+    """Run one dataset. With `model_override` the run is exploratory: the
+    baseline is shown for reference but never flags a regression, the report
+    lands under its own key, and nothing is written to usage_events or PostHog
+    (those feed the prod eval ledger, score trend, and alerts).
+    """
     ds: Dataset[Any, Any, Any] = Dataset[spec.inputs_type, spec.expected_type, dict].from_file(
         spec.yaml_path,
         custom_evaluator_types=spec.custom_evaluators,
     )
 
     start = time.monotonic()
-    experiment_name = f"{spec.name}@{_git_sha() or 'local'}"
+    report_key = _report_key(spec.name, model_override)
+    experiment_name = f"{report_key}@{_git_sha() or 'local'}"
     report = await ds.evaluate(
         spec.task_fn,
         name=experiment_name,
@@ -447,7 +470,9 @@ async def _run_one(spec: EvalSpec, *, repeat: int = 1, max_concurrency: int = 4)
 
     baseline = _load_baseline(spec.name)
     prev_score = baseline["composite"] if baseline else None
-    regression, regression_reasons = _detect_regression(score, per_evaluator, baseline)
+    regression, regression_reasons = (
+        (False, []) if model_override else _detect_regression(score, per_evaluator, baseline)
+    )
 
     report_dict = _build_report_dict(
         dataset=spec.name,
@@ -463,38 +488,41 @@ async def _run_one(spec: EvalSpec, *, repeat: int = 1, max_concurrency: int = 4)
     )
 
     settings = get_settings()
+    usage_spec = replace(spec, target_model=model_override) if model_override else spec
     usage_kwargs = _usage_event_kwargs(
-        spec=spec, report=report, duration_ms=duration_ms, org_id=settings.eval_test_org_id
+        spec=usage_spec, report=report, duration_ms=duration_ms, org_id=settings.eval_test_org_id
     )
     cost_usd = usage_kwargs["cost_usd"]
     # The compute_cost fallback in _usage_event_kwargs is the resolved cost of
     # record. Carry it into the report file too, not just the DB row.
     report_dict["cost_usd"] = float(cost_usd) if cost_usd is not None else None
+    report_dict["target_model"] = usage_spec.target_model
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    report_path = REPORTS_DIR / f"{spec.name}_{ts}.json"
+    report_path = REPORTS_DIR / f"{report_key}_{ts}.json"
     report_path.write_text(json.dumps(report_dict, indent=2, default=str) + "\n")
-    _prune_reports(REPORTS_DIR, spec.name)
+    _prune_reports(REPORTS_DIR, report_key)
 
-    client = await get_supabase_client(settings.supabase_url, settings.supabase_service_key)
-    try:
-        await save_usage_event(client, **usage_kwargs)
-    finally:
-        await close_supabase_client()
+    if model_override is None:
+        client = await get_supabase_client(settings.supabase_url, settings.supabase_service_key)
+        try:
+            await save_usage_event(client, **usage_kwargs)
+        finally:
+            await close_supabase_client()
 
-    await emitter.eval_run_completed(
-        dataset=spec.name,
-        total_cases=total_cases,
-        passed=passed_cases,
-        score=score,
-        prev_score=prev_score,
-        regression=regression,
-        duration_ms=duration_ms,
-        cost_usd=float(cost_usd) if cost_usd is not None else None,
-        failures=len(report.failures),
-    )
-    await emitter.drain_pending_emits()
+        await emitter.eval_run_completed(
+            dataset=spec.name,
+            total_cases=total_cases,
+            passed=passed_cases,
+            score=score,
+            prev_score=prev_score,
+            regression=regression,
+            duration_ms=duration_ms,
+            cost_usd=float(cost_usd) if cost_usd is not None else None,
+            failures=len(report.failures),
+        )
+        await emitter.drain_pending_emits()
 
     return RunSummary(
         dataset=spec.name,
@@ -727,13 +755,25 @@ def compare(dataset: str) -> None:
     is_flag=True,
     help="Print one JSON summary line per dataset to stdout. Human output moves to stderr.",
 )
+@click.option(
+    "--model",
+    "model_override",
+    default=None,
+    help="Run the target on this model instead of each dataset's pin: `provider:model`, "
+    "or `local:<name>` for the LOCAL_LLM_BASE_URL endpoint. The judge is unchanged. "
+    "Exploratory: no regression check, no usage_events row, no PostHog event. "
+    "`local:` defaults --concurrency to 1.",
+)
+@click.pass_context
 def run(
+    ctx: click.Context,
     dataset: str | None,
     run_all: bool,
     save_baseline: bool,
     repeat: int,
     concurrency: int,
     json_output: bool,
+    model_override: str | None,
 ) -> None:
     if run_all and dataset:
         raise click.UsageError("Pass either a dataset name OR --all, not both.")
@@ -741,6 +781,13 @@ def run(
         raise click.UsageError("Provide a dataset name or --all.")
     if run_all and save_baseline:
         raise click.UsageError("--save-baseline only works with a single dataset.")
+    if model_override and save_baseline:
+        raise click.UsageError("--save-baseline cannot be combined with --model.")
+    if dataset and dataset not in REGISTRY:
+        known = ", ".join(REGISTRY)
+        raise click.UsageError(f"Unknown dataset '{dataset}'. Known: {known}")
+    if model_override and dataset and not REGISTRY[dataset].llm_target:
+        raise click.UsageError(f"'{dataset}' has no LLM target to override.")
 
     # Fail fast on missing env vars. Without this, get_settings() raises inside
     # each task and pydantic-evals silently drops the case, producing a phantom
@@ -785,20 +832,38 @@ def run(
     # `model:` key (see evals/datasets/*.yaml) and fall through to this default.
     set_default_judge_model(settings.eval_judge_model)
 
+    if model_override:
+        try:
+            set_target_override(build_target_model(model_override, settings))
+        except ValueError as e:
+            raise click.UsageError(str(e)) from e
+        # llama.cpp serves one slot; concurrent cases just queue and time out.
+        concurrency_source = ctx.get_parameter_source("concurrency")
+        if (
+            model_override.startswith(LOCAL_PREFIX)
+            and concurrency_source is click.core.ParameterSource.DEFAULT
+        ):
+            concurrency = 1
+
     targets: list[EvalSpec]
     if run_all:
-        targets = list(REGISTRY.values())
+        targets = [s for s in REGISTRY.values() if s.llm_target or not model_override]
     else:
-        if dataset not in REGISTRY:
-            known = ", ".join(REGISTRY)
-            raise click.UsageError(f"Unknown dataset '{dataset}'. Known: {known}")
+        assert dataset is not None
         targets = [REGISTRY[dataset]]
 
     summaries: list[RunSummary] = []
     sha = _git_sha()
     for spec in targets:
         click.echo(f"Running {spec.name}…", err=json_output)
-        summary = asyncio.run(_run_one(spec, repeat=repeat, max_concurrency=concurrency))
+        summary = asyncio.run(
+            _run_one(
+                spec,
+                repeat=repeat,
+                max_concurrency=concurrency,
+                model_override=model_override,
+            )
+        )
         summaries.append(summary)
         if save_baseline:
             path = _save_baseline(spec.name, summary, sha)

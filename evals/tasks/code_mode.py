@@ -42,6 +42,7 @@ from pydantic_ai import Agent
 from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai_harness import CodeMode
 
+from evals.target import target_model
 from evals.types import CodeModeInputs
 from jordan_claw.agents.capabilities import CAPABILITY_REGISTRY
 from jordan_claw.tools import obsidian as obsidian_tools
@@ -155,7 +156,7 @@ def _build_toolset() -> FunctionToolset:
 
 async def code_mode_task(inputs: CodeModeInputs) -> str:
     agent = Agent(
-        TARGET_MODEL,
+        target_model(TARGET_MODEL),
         instructions=INSTRUCTIONS,
         toolsets=[_build_toolset()],
         capabilities=[

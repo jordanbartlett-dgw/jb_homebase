@@ -15,6 +15,7 @@ from __future__ import annotations
 from pydantic_ai import Agent
 from pydantic_ai.toolsets import FunctionToolset
 
+from evals.target import target_model
 from evals.types import EmailTriageInputs
 from jordan_claw.agents.capabilities import CAPABILITY_REGISTRY
 from jordan_claw.events.pipeline import render_prompt
@@ -78,7 +79,7 @@ async def email_triage_task(inputs: EmailTriageInputs) -> str:
         {"from": inputs.from_, "subject": inputs.subject, "snippet": inputs.snippet},
     )
     agent = Agent(
-        TARGET_MODEL,
+        target_model(TARGET_MODEL),
         instructions=EMAIL_GROUP_INSTRUCTIONS,
         toolsets=[_build_toolset()],
     )

@@ -13,6 +13,7 @@ from pydantic_ai import Agent
 from pydantic_ai.toolsets import FunctionToolset
 
 from evals.fixtures.med_check import FIXTURES
+from evals.target import target_model
 from evals.types import MedCheckInputs
 from jordan_claw.meds.models import CareContact, HealthCategory, MedicationEntry
 from jordan_claw.tools.meds import CARE_DOC_CHAR_BUDGET
@@ -321,7 +322,7 @@ async def med_check_task(inputs: MedCheckInputs) -> str:
     # cross-contaminate each other's captured notes (see fixtures/med_check.py).
     captured_notes: list[str] = []
     agent = Agent(
-        TARGET_MODEL,
+        target_model(TARGET_MODEL),
         instructions=MED_CHECK_PROMPT,
         toolsets=[_build_toolset(fixture, captured_notes)],
     )
