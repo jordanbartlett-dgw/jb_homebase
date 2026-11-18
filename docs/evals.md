@@ -62,6 +62,34 @@ uv run claw-eval compare med_check
 `claw-eval compare` errors with a clear message and exit code 1 if fewer than two
 reports exist for that dataset yet. Run it twice first.
 
+## Running against another model (`--model`)
+
+`--model` swaps the target for one run. Each dataset's pinned `TARGET_MODEL`
+stays the default. The judge stays on `EVAL_JUDGE_MODEL`.
+
+```bash
+# Local llama.cpp (OpenAI-compatible). Needs LOCAL_LLM_BASE_URL and
+# LOCAL_LLM_API_KEY in the environment. One model at a time: the server has
+# one slot and reloads on a model switch.
+infisical run --env=dev -- uv run claw-eval run tool_routing --model local:Qwen3-14B-Q4_K_M
+
+# Any pydantic-ai provider:model string also works.
+infisical run --env=dev -- uv run claw-eval run tool_routing --model anthropic:claude-haiku-5-5
+```
+
+Override runs are exploratory and stay out of the prod signal:
+
+- No regression check. The baseline shows as `prev_score` for reference only.
+  `--save-baseline` is rejected.
+- No `usage_events` row and no PostHog `eval_run_completed` event.
+- Reports land as `reports/{dataset}@{model}_{ts}.json`, apart from the pinned
+  dataset's reports. Compare two with `claw-eval compare '{dataset}@{model}'`.
+- `local:` defaults `--concurrency` to 1.
+- `obsidian_retrieval` has no LLM target. `--all --model` skips it.
+
+`local:` builds its own chat-completions client (`evals/target.py`). Do not set
+`OPENAI_BASE_URL` instead: the embeddings client reads it and would follow.
+
 ## Seeding the eval corpus
 
 The `obsidian_retrieval` dataset reads from a synthetic corpus seeded into the

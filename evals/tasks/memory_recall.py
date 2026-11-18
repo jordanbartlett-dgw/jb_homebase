@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from pydantic_ai import Agent
 
+from evals.target import target_model
 from evals.types import MemoryRecallInputs
 from jordan_claw.config import get_settings
 from jordan_claw.memory.models import MemoryFact
@@ -59,6 +60,6 @@ async def memory_recall_task(inputs: MemoryRecallInputs) -> str:
 
     instructions = f"{memory_block}\n\n{SYSTEM_SUFFIX}" if memory_block else SYSTEM_SUFFIX
 
-    agent = Agent(TARGET_MODEL, instructions=instructions)
+    agent = Agent(target_model(TARGET_MODEL), instructions=instructions)
     result = await agent.run(inputs.question)
     return str(result.output)

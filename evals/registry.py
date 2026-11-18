@@ -60,6 +60,8 @@ class EvalSpec:
     output_type: type
     custom_evaluators: tuple[type[Evaluator], ...]
     target_model: str
+    # False = no LLM call to swap; `claw-eval run --model` skips or rejects it.
+    llm_target: bool = True
 
 
 REGISTRY: dict[str, EvalSpec] = {
@@ -83,6 +85,7 @@ REGISTRY: dict[str, EvalSpec] = {
         custom_evaluators=(TopKMembershipScorer,),
         # No LLM call — embeddings-only retrieval.
         target_model=f"openai:{OBSIDIAN_EMBEDDING_MODEL}",
+        llm_target=False,
     ),
     "med_check": EvalSpec(
         name="med_check",

@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     # 0 = judge-sampled online evals off; deterministic per-evaluator checks
     # run regardless, pinned at 1.0 at the evaluator level.
     online_eval_sample_rate: float = 0.0
+    # `claw-eval run --model local:<name>` only. OpenAI-compatible endpoint
+    # (llama.cpp). Never read by the gateway.
+    local_llm_base_url: str = ""
+    local_llm_api_key: str = ""
     # Event/voice surfaces. Empty string means the feature is disabled:
     # the webhook returns 503, the fastmail watcher skips. Defaults stay
     # empty so services sharing Settings (evals-cron) boot without them.
