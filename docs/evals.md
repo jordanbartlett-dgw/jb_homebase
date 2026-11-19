@@ -156,7 +156,11 @@ alerting, and on cost if you want a spend ceiling alert.
 Exit codes:
 - **2**: any dataset in the run regressed. Takes precedence.
 - **1**: no regression, but at least one case's task_fn raised (`report.failures`
-  non-empty).
+  non-empty) or at least one evaluator raised (`evaluator_failures` non-empty,
+  e.g. every `LLMJudge` call failing on a bad key or an empty API balance). An
+  evaluator that raises leaves no score, so the composite silently averages
+  what is left. The run prints `EVALUATOR FAILURES [...]` and the report JSON
+  lists each (case, evaluator, error).
 - **0**: clean.
 
 A Railway cron job reports non-zero on either condition.
@@ -236,7 +240,7 @@ raises a settings `ValidationError`, producing a phantom regression (see commit
 Each nightly run writes one `usage_events` row per dataset (`agent_slug =
 eval:{dataset}`, `channel = eval`) and one `eval_run_completed` PostHog event per
 dataset, carrying `cost_usd` and `regression`. Cron exits non-zero on regression
-(exit 2) or bare failures (exit 1), surfacing as a failed run in Railway.
+(exit 2) or task/evaluator failures (exit 1), surfacing as a failed run in Railway.
 
 ## Why this exists
 

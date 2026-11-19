@@ -61,6 +61,9 @@ class RunSummary:
     report_path: Path
     failures: list[dict[str, Any]]
     regression_reasons: list[str] = field(default_factory=list)
+    # Evaluators that raised (e.g. an LLMJudge provider error). They leave no
+    # score, so without this a judge-less run reads as a clean one.
+    evaluator_failures: list[dict[str, Any]] = field(default_factory=list)
     cost_usd: float | None = None
     experiment_name: str = ""
 
@@ -304,6 +307,15 @@ def _case_results(case: Any) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _evaluator_failures(cases: list[Any]) -> list[dict[str, Any]]:
+    """One entry per (case, evaluator) whose evaluate() raised."""
+    return [
+        {"case": c.name, "evaluator": f.name, "error_message": f.error_message}
+        for c in cases
+        for f in c.evaluator_failures
+    ]
+
+
 def _sum_metric(cases: list[Any], key: str) -> float | None:
     """Sum a metric across cases; None if no case reported it (vs. 0 if all reported 0)."""
     values = [c.metrics[key] for c in cases if key in (c.metrics or {})]
@@ -354,6 +366,7 @@ def _build_report_dict(
             }
             for f in report.failures
         ],
+        "evaluator_failures": _evaluator_failures(report.cases),
         "cases": [
             {
                 "name": c.name,
@@ -418,10 +431,10 @@ def _usage_event_kwargs(
 
 
 def _exit_code(summaries: list[RunSummary]) -> int:
-    """Regression (exit 2) takes precedence over a bare task_fn failure (exit 1)."""
+    """Regression (exit 2) takes precedence over a task_fn or evaluator failure (exit 1)."""
     if any(s.regression for s in summaries):
         return 2
-    if any(s.failures for s in summaries):
+    if any(s.failures or s.evaluator_failures for s in summaries):
         return 1
     return 0
 
@@ -535,6 +548,7 @@ async def _run_one(
         per_evaluator=per_evaluator,
         report_path=report_path,
         failures=report_dict["failures"],
+        evaluator_failures=report_dict["evaluator_failures"],
         regression_reasons=regression_reasons,
         cost_usd=report_dict["cost_usd"],
         experiment_name=experiment_name,
@@ -572,6 +586,7 @@ def _summary_json(s: RunSummary) -> dict[str, Any]:
         "report_path": str(s.report_path),
         "cost_usd": s.cost_usd,
         "failures": s.failures,
+        "evaluator_failures": s.evaluator_failures,
         "experiment_name": s.experiment_name,
     }
 
@@ -876,6 +891,19 @@ def run(
     for s in failed:
         for f in s.failures:
             click.echo(f"FAILURES ({len(s.failures)}): {f['name']}: {f['error_message']}", err=True)
+
+    for s in summaries:
+        # Grouped: a dead judge fails on every case with the same message.
+        by_evaluator: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for f in s.evaluator_failures:
+            by_evaluator[f["evaluator"]].append(f)
+        for name, group in by_evaluator.items():
+            click.echo(
+                f"EVALUATOR FAILURES [{s.dataset}]: {name} raised on {len(group)} case(s), "
+                f"its score is missing from those cases. First error: "
+                f"{group[0]['error_message']}",
+                err=True,
+            )
 
     regressions = [s for s in summaries if s.regression]
     if regressions:
