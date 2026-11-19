@@ -230,7 +230,9 @@ Defaulted/optional: `DEFAULT_AGENT_SLUG` (claw-main),
 `ENVIRONMENT` (development|production), `MESSAGE_HISTORY_LIMIT` (50),
 `LOGFIRE_TOKEN`, `POSTHOG_API_KEY` (project key `phc_*`, never personal `phx_*`),
 `POSTHOG_HOST`, `POSTHOG_ENABLED`, `FRONTEND_ANALYTICS_TOKEN`,
-`EVAL_JUDGE_MODEL`, `EVAL_TEST_ORG_ID`, `CLAW_WEBHOOK_SECRET` ("" = webhooks
+`EVAL_JUDGE_MODEL`, `EVAL_TEST_ORG_ID`, `LOCAL_LLM_BASE_URL` / `LOCAL_LLM_API_KEY`
+("" = unset; read only by `claw-eval run --model local:<name>`, see
+`evals/target.py` and `docs/evals.md`), `CLAW_WEBHOOK_SECRET` ("" = webhooks
 disabled), `CLAW_APP_TOKEN` ("" = app/voice endpoints disabled),
 `FASTMAIL_API_TOKEN` ("" = mail watching/reading off), `AGENTMAIL_API_KEY`
 ("" = email tools degraded and the agentmail watcher off),
