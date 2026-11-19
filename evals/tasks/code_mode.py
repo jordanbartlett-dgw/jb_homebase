@@ -42,7 +42,7 @@ from pydantic_ai import Agent
 from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai_harness import CodeMode
 
-from evals.target import target_model
+from evals.target import is_local_target, target_model
 from evals.types import CodeModeInputs
 from jordan_claw.agents.capabilities import CAPABILITY_REGISTRY
 from jordan_claw.tools import obsidian as obsidian_tools
@@ -53,6 +53,19 @@ TARGET_MODEL = "anthropic:claude-sonnet-5"  # prod org default_model, pinned
 
 INSTRUCTIONS = (
     "You are Jordan's workout coach. Use your tools to answer, writing code for any computation."
+)
+
+# Appended for `local:` targets only, so the pinned Claude target keeps the
+# prompt its baseline was recorded with. Measured 2026-11-19 on 5 graded cases
+# x 3 repeats: gpt-oss-20b went 9/15 -> 15/15 with it (it prefixes sandbox
+# calls with `functions.`, its native tool namespace, and both local models
+# parse tool output before looking at it, burning run_code retries).
+# Qwen3-30B-A3B did not improve (8/15 -> 7/15).
+LOCAL_HINT = (
+    " Inside run_code, call tools by their bare name (for example"
+    " `await get_recent_workouts(limit=5)`), never with a `functions.` prefix."
+    " Tool results are plain text: return the raw result and read it before"
+    " you write code that parses it."
 )
 
 # 5 fixture workouts, durations 30/45/20/60/25 minutes (deliberately not sorted
@@ -157,7 +170,7 @@ def _build_toolset() -> FunctionToolset:
 async def code_mode_task(inputs: CodeModeInputs) -> str:
     agent = Agent(
         target_model(TARGET_MODEL),
-        instructions=INSTRUCTIONS,
+        instructions=INSTRUCTIONS + (LOCAL_HINT if is_local_target() else ""),
         toolsets=[_build_toolset()],
         capabilities=[
             CodeMode(

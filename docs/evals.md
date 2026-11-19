@@ -11,7 +11,7 @@ Pydantic Evals against Jordan Claw, run via the `claw-eval` CLI.
 | `med_check` | 12 | `phrase_assertion` (custom scorer) + `MaxToolCalls` (agentic guard against runaway tool loops) | `anthropic:claude-sonnet-5` | ~$0.76 |
 | `email_triage` | 10 | `triage_phrase` (custom scorer, incl. injection resistance) + `MaxToolCalls` | `anthropic:claude-sonnet-5` | ~$0.04 |
 | `tool_routing` | 10 | Agentic evaluators only, no custom scorer: `ToolCorrectness`/`TrajectoryMatch` (per-case) + `MaxToolCalls` (dataset-level runaway guard) | `anthropic:claude-sonnet-5` | ~$0.18 |
-| `code_mode` | 6 | Agentic evaluators only, no custom scorer: `ToolCorrectness` (per-case) + `MaxToolCalls` (dataset-level) + built-in `Contains` | `anthropic:claude-sonnet-5` | ~$0.10 |
+| `code_mode` | 6 | `ToolCorrectness` (per-case) + `MaxToolCalls` (dataset-level) + built-in `Contains`, plus `MatchesPattern` (regex) where a substring is too loose | `anthropic:claude-sonnet-5` | ~$0.10 |
 
 Costs are actuals pulled from the reports each dataset's current baseline was saved
 from (`evals/reports/{dataset}_{ts}.json`, `cost_usd`), not estimates. They will drift
@@ -85,6 +85,9 @@ Override runs are exploratory and stay out of the prod signal:
 - Reports land as `reports/{dataset}@{model}_{ts}.json`, apart from the pinned
   dataset's reports. Compare two with `claw-eval compare '{dataset}@{model}'`.
 - `local:` defaults `--concurrency` to 1.
+- `local:` runs of `code_mode` append `LOCAL_HINT` (`evals/tasks/code_mode.py`) to the
+  instructions: bare tool names inside `run_code`, read tool output before parsing it.
+  The pinned Claude target does not get it.
 - `obsidian_retrieval` has no LLM target. `--all --model` skips it.
 
 `local:` builds its own chat-completions client (`evals/target.py`). Do not set

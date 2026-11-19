@@ -834,7 +834,10 @@ def run(
 
     if model_override:
         try:
-            set_target_override(build_target_model(model_override, settings))
+            set_target_override(
+                build_target_model(model_override, settings),
+                local=model_override.startswith(LOCAL_PREFIX),
+            )
         except ValueError as e:
             raise click.UsageError(str(e)) from e
         # llama.cpp serves one slot; concurrent cases just queue and time out.
