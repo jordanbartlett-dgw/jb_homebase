@@ -9,6 +9,7 @@ Railway run instead.
 from __future__ import annotations
 
 import glob
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ import yaml
 from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 from pydantic_evals import Case, Dataset
+from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 
 from evals.run_eval import RunSummary, _build_report_dict, _case_accounting, _exit_code
 from evals.scorers import RequiredFactsScorer
@@ -35,6 +37,14 @@ async def _flaky_task(inputs: MemoryRecallInputs) -> str:
     agent = Agent(TestModel(custom_output_text="uv is the answer"))
     result = await agent.run(inputs.question)
     return str(result.output)
+
+
+@dataclass
+class _BrokenJudge(Evaluator[MemoryRecallInputs, str, dict]):
+    """Stands in for an LLMJudge whose provider call fails (no credit, bad key)."""
+
+    def evaluate(self, ctx: EvaluatorContext[MemoryRecallInputs, str, dict]) -> float:
+        raise RuntimeError("credit balance is too low")
 
 
 def _two_cases() -> list[Case]:
@@ -130,6 +140,59 @@ async def test_report_dict_counts_failures_and_carries_results() -> None:
         "reason": case_dict["results"]["required_facts"]["reason"],
     }
     assert "reason" in case_dict["results"]["required_facts"]
+
+
+@pytest.mark.asyncio
+async def test_report_dict_carries_evaluator_failures() -> None:
+    """An evaluator that raises leaves no score behind: pydantic-evals parks it
+    in case.evaluator_failures and the composite averages what is left. On
+    2026-11-18 every LLMJudge call failed on an empty API balance and the run
+    looked like a healthy one with a single scorer."""
+    ds = Dataset[MemoryRecallInputs, MemoryRecallExpected, dict](
+        name="smoke",
+        cases=_two_cases(),
+        evaluators=[RequiredFactsScorer(), _BrokenJudge()],
+    )
+
+    report = await ds.evaluate(_smoke_task, max_concurrency=2, progress=False)
+    assert len(report.cases) == 2  # the task itself succeeded
+
+    report_dict = _build_report_dict(
+        dataset="smoke",
+        report=report,
+        score=0.5,
+        per_evaluator={"required_facts": 0.5},
+        passed_cases=1,
+        total_cases=2,
+        duration_ms=10,
+        prev_score=None,
+        regression=False,
+        experiment_name="smoke@local",
+    )
+
+    failures = report_dict["evaluator_failures"]
+    assert sorted(f["case"] for f in failures) == ["hits_required_fact", "misses_required_fact"]
+    assert {f["evaluator"] for f in failures} == {"_BrokenJudge"}
+    assert all("credit balance is too low" in f["error_message"] for f in failures)
+
+
+def test_exit_code_is_1_when_an_evaluator_failed() -> None:
+    summary = RunSummary(
+        dataset="smoke",
+        score=1.0,
+        total_cases=2,
+        passed_cases=2,
+        duration_ms=1,
+        prev_score=None,
+        regression=False,
+        per_evaluator={},
+        report_path=Path("unused.json"),
+        failures=[],
+        evaluator_failures=[
+            {"case": "x", "evaluator": "LLMJudge", "error_message": "credit balance is too low"}
+        ],
+    )
+    assert _exit_code([summary]) == 1
 
 
 def test_exit_code_regression_takes_precedence_over_failures() -> None:
