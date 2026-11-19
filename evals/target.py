@@ -14,6 +14,7 @@ from pydantic_ai.models import Model
 LOCAL_PREFIX = "local:"
 
 _override: Model | str | None = None
+_local = False
 
 
 class _LocalLLMSettings(Protocol):
@@ -21,9 +22,16 @@ class _LocalLLMSettings(Protocol):
     local_llm_api_key: str
 
 
-def set_target_override(model: Model | str | None) -> None:
-    global _override
+def set_target_override(model: Model | str | None, *, local: bool = False) -> None:
+    global _override, _local
     _override = model
+    _local = local and model is not None
+
+
+def is_local_target() -> bool:
+    """True when the override is a `local:` model. Tasks use it to add
+    instructions that small open-weight models need and Claude does not."""
+    return _local
 
 
 def target_model(default: str) -> Model | str:

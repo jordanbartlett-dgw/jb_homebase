@@ -14,6 +14,7 @@ from typing import Any
 from pydantic_evals.evaluators import Evaluator
 
 from evals.scorers import (
+    MatchesPattern,
     PhraseAssertionScorer,
     RequiredFactsScorer,
     TopKMembershipScorer,
@@ -126,9 +127,9 @@ REGISTRY: dict[str, EvalSpec] = {
         inputs_type=CodeModeInputs,
         expected_type=type(None),
         output_type=str,
-        # Agentic evaluators only (ToolCorrectness, MaxToolCalls) plus
-        # built-in Contains — no custom scorer.
-        custom_evaluators=(),
+        # Agentic evaluators (ToolCorrectness, MaxToolCalls) plus built-in
+        # Contains; MatchesPattern where a substring check is too loose.
+        custom_evaluators=(MatchesPattern,),
         target_model=CODE_MODE_TARGET_MODEL,
     ),
 }

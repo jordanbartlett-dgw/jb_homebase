@@ -11,14 +11,17 @@ from types import SimpleNamespace
 
 import pytest
 from click.testing import CliRunner
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.models.test import TestModel
 
 from evals import target
 from evals.registry import REGISTRY
 from evals.run_eval import _report_key, cli
+from evals.tasks.code_mode import LOCAL_HINT, code_mode_task
 from evals.tasks.tool_routing import tool_routing_task
-from evals.types import ToolRoutingInputs
+from evals.types import CodeModeInputs, ToolRoutingInputs
 
 
 @pytest.fixture(autouse=True)
@@ -96,3 +99,35 @@ def test_model_on_embeddings_only_dataset_is_rejected() -> None:
     result = CliRunner().invoke(cli, ["run", "obsidian_retrieval", "--model", "local:x"])
     assert result.exit_code == 2
     assert "no LLM target" in result.output
+
+
+def test_is_local_target_follows_the_override() -> None:
+    assert target.is_local_target() is False
+    target.set_target_override(TestModel(), local=True)
+    assert target.is_local_target() is True
+    target.set_target_override(None)
+    assert target.is_local_target() is False
+
+
+async def _code_mode_instructions() -> str:
+    seen: list[str | None] = []
+
+    def capture(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        seen.append(info.instructions)
+        return ModelResponse(parts=[TextPart("done")])
+
+    target.set_target_override(FunctionModel(capture), local=target.is_local_target())
+    await code_mode_task(CodeModeInputs(user_message="hi"))
+    assert seen[0] is not None
+    return seen[0]
+
+
+async def test_code_mode_adds_the_sandbox_hint_only_for_local_targets() -> None:
+    """Local models burn run_code retries on `functions.`-prefixed calls and on
+    parsing tool output unseen. The pinned Claude target must keep the prompt
+    its baseline was recorded with."""
+    target.set_target_override(TestModel(), local=False)
+    assert LOCAL_HINT not in await _code_mode_instructions()
+
+    target.set_target_override(TestModel(), local=True)
+    assert LOCAL_HINT.strip() in await _code_mode_instructions()

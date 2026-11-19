@@ -24,8 +24,9 @@ cases:
     inputs:
       user_message: "How many of my last 5 workouts were 30 minutes or longer?"
     evaluators:
-      - Contains:
-          value: "3"
+      # Not Contains "3": that passes on the "3" in "30 minutes".
+      - MatchesPattern:
+          pattern: '\b(3|three)\b'
       - ToolCorrectness:
           expected_tools: [run_code, get_recent_workouts]
           allow_extra: true
