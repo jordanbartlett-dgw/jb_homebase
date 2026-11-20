@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from jordan_claw.memory.models import MemoryFact
-from jordan_claw.memory.reader import load_memory_context, render_context_block
+from jordan_claw.memory.reader import (
+    EMPTY_CONTEXT_BLOCK,
+    load_memory_context,
+    render_context_block,
+)
 
 
 def _make_fact(
@@ -27,9 +31,11 @@ def _make_fact(
     )
 
 
-def test_render_context_block_empty():
+def test_render_context_block_empty_says_nothing_is_recorded():
     result = render_context_block(facts=[], events=[])
-    assert result == ""
+    assert result == EMPTY_CONTEXT_BLOCK
+    assert "## Memory Context" in result
+    assert "No facts or events are recorded yet." in result
 
 
 def test_render_context_block_single_category():

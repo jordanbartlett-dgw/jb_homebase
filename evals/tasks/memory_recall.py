@@ -58,7 +58,7 @@ async def memory_recall_task(inputs: MemoryRecallInputs) -> str:
     events = _state_to_events(inputs.memory_state)
     memory_block = render_context_block(facts, events)
 
-    instructions = f"{memory_block}\n\n{SYSTEM_SUFFIX}" if memory_block else SYSTEM_SUFFIX
+    instructions = f"{memory_block}\n\n{SYSTEM_SUFFIX}"
 
     agent = Agent(target_model(TARGET_MODEL), instructions=instructions)
     result = await agent.run(inputs.question)
