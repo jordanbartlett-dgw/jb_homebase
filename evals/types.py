@@ -29,8 +29,11 @@ class MemoryRecallInputs(BaseModel):
 
 
 class MemoryRecallExpected(BaseModel):
-    required_facts: list[str] = Field(
-        description="Substrings that MUST appear in the agent response (case-insensitive)."
+    required_facts: list[str | list[str]] = Field(
+        description=(
+            "Substrings that MUST appear in the agent response (case-insensitive). "
+            "A nested list is satisfied by any one of its alternatives."
+        )
     )
 
 
