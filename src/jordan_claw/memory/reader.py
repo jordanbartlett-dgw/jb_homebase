@@ -22,6 +22,10 @@ CATEGORY_LABELS = {
 # Rough estimate: 1 token ≈ 4 chars
 CHARS_PER_TOKEN = 4
 
+# Rendered when memory is empty. Without it the prompt has no memory section
+# at all, and small models invent an answer rather than say nothing is recorded.
+EMPTY_CONTEXT_BLOCK = "## Memory Context\n\nNo facts or events are recorded yet."
+
 
 def render_context_block(
     facts: list[MemoryFact],
@@ -30,7 +34,7 @@ def render_context_block(
 ) -> str:
     """Render facts and events into a markdown context block for system prompt injection."""
     if not facts and not events:
-        return ""
+        return EMPTY_CONTEXT_BLOCK
 
     max_chars = max_tokens * CHARS_PER_TOKEN
 
