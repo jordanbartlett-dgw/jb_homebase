@@ -6,7 +6,7 @@ Pydantic Evals against Jordan Claw, run via the `claw-eval` CLI.
 
 | Dataset | Cases | Scoring | Target model | Cost / run |
 |---|---|---|---|---|
-| `memory_recall` | 20 | `required_facts` (substring match) + `llm_judge` (LLMJudge rubric, central judge model) | `anthropic:claude-sonnet-4-5-20250929` | ~$0.09 (`--repeat 3`) |
+| `memory_recall` | 20 | `required_facts` (substring match, case, quotes and whitespace normalized, any-of alternatives allowed) + `llm_judge` (LLMJudge rubric, central judge model) | `anthropic:claude-sonnet-4-5-20250929` | ~$0.09 (`--repeat 3`) |
 | `obsidian_retrieval` | 20 | `top_k_membership` (set membership in top-3) | `openai:text-embedding-3-small` (embeddings only, no chat call) | ~$0.001 |
 | `med_check` | 12 | `phrase_assertion` (custom scorer) + `MaxToolCalls` (agentic guard against runaway tool loops) | `anthropic:claude-sonnet-5` | ~$0.76 |
 | `email_triage` | 10 | `triage_phrase` (custom scorer, incl. injection resistance) + `MaxToolCalls` | `anthropic:claude-sonnet-5` | ~$0.04 |
